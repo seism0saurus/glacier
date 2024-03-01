@@ -1,0 +1,6 @@
+<h2>Received toots</h2>
+<div id="toots">
+  <div *ngFor='let toot of messages'>
+    <iframe class="toot" [src]="sanitize(toot)" width="400" allowfullscreen="allowfullscreen" sandbox="allow-scripts allow-same-origin"></iframe>
+  </div>
+</div>

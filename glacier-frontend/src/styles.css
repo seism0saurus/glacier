@@ -1,0 +1,8 @@
+/* You can add global styles to this file, and also import other style files */
+@font-face {
+  font-family: "juggerRock";
+  src: url("/assets/juggerrock.ttf");
+}
+body {
+  background-color: #d3ecf0;
+}

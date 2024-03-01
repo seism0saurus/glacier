@@ -1,0 +1,19 @@
+<div class="hashtag">
+  <h2>Hashtag subscription</h2>
+  <form (ngSubmit)="onSubmit()" #hashtagForm="ngForm" [hidden]="submitted">
+    <div class="form-group">
+      <label for="hashtag">Hashtag</label>
+      <input type="text" class="form-control" id="hashtag"
+             required [(ngModel)]="hashtag" name="hashtag" #hashtagField="ngModel">
+      <div [hidden]="hashtagField.valid || hashtagField.pristine"
+           class="alert alert-danger">
+        A hashtag is required.
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-success" [disabled]="!hashtagForm.form.valid">Submit</button>
+  </form>
+  <div class="subscription" [hidden]="!submitted">
+    <h3>#{{ hashtag }}</h3>
+  </div>
+</div>
