@@ -1,6 +1,6 @@
 /glacier.iml
 /src/main/resources/static/
-/glacier-frontend/.angular/
-/glacier-frontend/node_modules/
+/frontend/.angular/
+/frontend/node_modules/
 /.idea/
 /target/

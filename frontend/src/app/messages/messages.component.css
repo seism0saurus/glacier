@@ -1,0 +1,21 @@
+:host {
+  flex: 1;
+
+  display: flex;
+  flex-direction: column;
+  .toots {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+
+
+
+    .toot {
+      height: 600px;
+    }
+  }
+}
+

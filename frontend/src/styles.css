@@ -3,6 +3,18 @@
   font-family: "juggerRock";
   src: url("/assets/juggerrock.ttf");
 }
-body {
+html, body {
+  a {
+    color: #3293a3;
+    text-decoration: none;
+  }
+  a:hover {
+    color: #4acad7;
+  }
+  a:active {
+    color: #4acad7;
+  }
   background-color: #d3ecf0;
+  color: #123342;
+  height: calc(100% - 8px);
 }

@@ -83,8 +83,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         UUID uuid = UUID.randomUUID();
         var executorService = Executors.newVirtualThreadPerTaskExecutor();
         Future<?> future = executorService.submit(() -> {
-            //try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(simpMessagingTemplate, uuid))) {
-            try (Closeable subscription = client.streaming().federatedPublic(false, new StompCallback(simpMessagingTemplate, uuid))) {
+            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(simpMessagingTemplate, uuid))) {
                 LOGGER.info("Virtual thread for asynchronous listening to Mastodon started");
                 sleepForever();
             } catch (IOException e) {

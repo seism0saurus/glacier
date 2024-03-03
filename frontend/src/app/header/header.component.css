@@ -1,0 +1,24 @@
+:host {
+  flex: none;
+}
+
+header {
+  text-align: center;
+  border-bottom: 5px;
+
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+
+  h1 {
+    font-family: "juggerRock";
+  }
+
+  img {
+    width: 100%;
+    max-width: 125px;
+    height: auto;
+  }
+}
+

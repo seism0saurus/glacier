@@ -8,17 +8,21 @@ import { MessagesComponent } from './messages/messages.component';
 import { HeaderComponent } from './header/header.component';
 import { HashtagComponent } from './hashtag/hashtag.component';
 import {FormsModule} from "@angular/forms";
+import { FooterComponent } from './footer/footer.component';
+import {HttpClientModule} from "@angular/common/http";
 
 @NgModule({
   declarations: [
     AppComponent,
     MessagesComponent,
     HeaderComponent,
-    HashtagComponent
+    HashtagComponent,
+    FooterComponent
   ],
   imports: [
     BrowserModule,
-    FormsModule
+    FormsModule,
+    HttpClientModule
   ],
   providers: [
     {

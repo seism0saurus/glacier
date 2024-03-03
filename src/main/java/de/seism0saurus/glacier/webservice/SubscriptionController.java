@@ -26,7 +26,6 @@ import java.util.UUID;
  *
  * @author seism0saurus
  */
-@CrossOrigin(origins = "https://localhost:4200")
 @Controller
 public class SubscriptionController {
 
