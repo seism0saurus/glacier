@@ -3,11 +3,11 @@ import {SubscriptionService} from "../subscription.service";
 import {DomSanitizer} from "@angular/platform-browser";
 
 @Component({
-  selector: 'app-messages',
-  templateUrl: './messages.component.html',
-  styleUrls: ['./messages.component.css'],
+  selector: 'app-wall',
+  templateUrl: './wall.component.html',
+  styleUrls: ['./wall.component.css'],
 })
-export class MessagesComponent implements OnInit, OnDestroy{
+export class WallComponent implements OnInit, OnDestroy{
 
   messages: string[] = [];
 

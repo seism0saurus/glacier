@@ -13,12 +13,30 @@ header {
 
   h1 {
     font-family: "juggerRock";
-  }
-
-  img {
-    width: 100%;
-    max-width: 125px;
-    height: auto;
+    font-size: 3em;
   }
 }
 
+@keyframes shrink {
+  from {
+    height: 175px;
+  }
+
+  to {
+    height: 75px;
+  }
+}
+
+
+img {
+  height: auto;
+  margin-right: 25px;
+  max-width: 250px;
+}
+
+.small {
+  animation-duration: 0.5s;
+  animation-timing-function: linear;
+  animation-name: shrink;
+  animation-fill-mode: forwards;
+}
