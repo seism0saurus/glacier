@@ -10,6 +10,7 @@ import { HashtagComponent } from './hashtag/hashtag.component';
 import {FormsModule} from "@angular/forms";
 import { FooterComponent } from './footer/footer.component';
 import {HttpClientModule} from "@angular/common/http";
+import { TootComponent } from './toot/toot.component';
 
 @NgModule({
   declarations: [
@@ -17,7 +18,8 @@ import {HttpClientModule} from "@angular/common/http";
     WallComponent,
     HeaderComponent,
     HashtagComponent,
-    FooterComponent
+    FooterComponent,
+    TootComponent
   ],
   imports: [
     BrowserModule,

@@ -1,5 +1,8 @@
 :host {
   flex: none;
+
+  border-bottom: 1px solid #10303f;
+  box-shadow: 10px 15px 15px rgba(0, 0, 0, 0.15);
 }
 
 header {
@@ -14,6 +17,7 @@ header {
   h1 {
     font-family: "juggerRock";
     font-size: 3em;
+    font-weight: normal;
   }
 }
 
@@ -35,7 +39,7 @@ img {
 }
 
 .small {
-  animation-duration: 0.5s;
+  animation-duration: 0.25s;
   animation-timing-function: linear;
   animation-name: shrink;
   animation-fill-mode: forwards;

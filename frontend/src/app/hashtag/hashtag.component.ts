@@ -9,7 +9,7 @@ import {AnimationService} from "../animation.service";
 })
 export class HashtagComponent {
 
-  hashtag: string = "myHashtag";
+  hashtag: string = "Enter a hashtag (without #)";
   submitted = false;
 
   constructor(private subscriptionService: SubscriptionService,

@@ -16,5 +16,6 @@ html, body {
   }
   background-color: #d3ecf0;
   color: #123342;
+  margin: 0;
   height: calc(100% - 8px);
 }

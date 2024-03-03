@@ -9,14 +9,14 @@ import {DomSanitizer} from "@angular/platform-browser";
 })
 export class WallComponent implements OnInit, OnDestroy{
 
-  messages: string[] = [];
+  toots: string[] = [];
 
   constructor(private subscriptionService: SubscriptionService, public sanitizer: DomSanitizer) {}
 
   ngOnInit() {
     this.subscriptionService.getCreatedEvents().subscribe((messages: string[]) => {
       console.log('MessageComponent:', 'Got new messages');
-      this.messages = messages;
+      this.toots = messages;
     });
   }
 
