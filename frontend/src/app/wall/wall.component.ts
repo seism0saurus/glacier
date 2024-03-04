@@ -21,7 +21,7 @@ export class WallComponent implements OnInit, OnDestroy{
   }
 
   ngOnDestroy() {
-    this.subscriptionService.unsubscribe();
+    this.subscriptionService.terminateAll();
   }
 
   sanitize(url: string){

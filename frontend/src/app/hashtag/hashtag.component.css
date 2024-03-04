@@ -1,27 +1,16 @@
-:host {
-
-}
-
 .hashtag {
   margin: 8px;
 }
 
-form {
+mat-form-field {
   display: flex;
-  flex-direction: row;
-  justify-content: flex-start;
-  align-items: center;
 }
 
-label {
+mat-label {
   margin-right: 8px;
 }
 
-button {
-  margin-left: 8px;
-}
-
-.hashtag-button {
+mat-chip-row {
   width: 200px;
   border-radius: 4px;
   background-color: #27b0b8;
@@ -29,8 +18,7 @@ button {
   background-position: 0%;
   transition: background-color 300ms;
 }
-.hashtag-button:hover {
+mat-chip-row {
   background-color: #4acad7;
   transition: background-color 300ms;
 }
-

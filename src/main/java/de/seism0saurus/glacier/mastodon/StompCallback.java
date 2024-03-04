@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.seism0saurus.glacier.webservice.messages.*;
 import org.jetbrains.annotations.NotNull;
@@ -75,12 +77,19 @@ public class StompCallback implements WebSocketCallback {
         }
     }
 
-    private void processGenericEvent(GenericMessage genericMessage, String baseDestination) {
+    private void processGenericEvent(GenericMessage genericMessage, String destination) {
+        logEvent("got a GenericMessage event");
         String text = genericMessage.getText();
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            LOGGER.info("Message: " + genericMessageContent);
+            if (genericMessageContent.getStream().contains("hashtag")){
+                if ("update".equals(genericMessageContent.getEvent())){
+                    GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+                    StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl()).build();
+                    this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
+                }
+            }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
         }

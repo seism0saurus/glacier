@@ -15,10 +15,10 @@ export class SubscriptionService{
 
   // @ts-ignore
   private topicSubscription: Subscription;
-  private subscriptionId: string = "";
+  private hashtagMap: Map<string, string> = new Map();
+  private receivedMessages: string[] = [];
+  private subscriptions: { [key: string]: Subscription } = {};
 
-  receivedMessages: string[] = [];
-  subscriptions: { [key: string]: Subscription } = {};
   constructor(private rxStompService: RxStompService) {
     this.topicSubscription = this.rxStompService
       .watch('/user/topic/subscriptions')
@@ -46,7 +46,7 @@ export class SubscriptionService{
   private handleSubscriptionAckMessage(data: SubscriptionAckMessage) {
     if (data.subscribed) {
       console.log('Adding subscriptions for creation, modification and deletion.');
-      this.subscriptionId = data.subscriptionId;
+      this.hashtagMap.set(data.hashtag,data.subscriptionId);
       this.subscriptions[data.subscriptionId + '-creation'] = this.subscribeToStatusCreatedMessages(data.subscriptionId);
       this.subscriptions[data.subscriptionId + '-modification'] = this.subscribeToStatusUpdatedMessages(data.subscriptionId);
       this.subscriptions[data.subscriptionId + '-deletion'] = this.subscribeToStatusDeletedMessages(data.subscriptionId);
@@ -56,23 +56,38 @@ export class SubscriptionService{
   }
 
   private handleTerminationAckMessage(data: TerminationAckMessage) {
+    const subscriptionId = data.subscriptionId;
     if (data.terminated) {
-      console.log('Terminating subscriptions for creation, modification and deletion.');
-      this.subscriptions[data.subscriptionId + '-creation'].unsubscribe();
-      this.subscriptions[data.subscriptionId + '-modification'].unsubscribe();
-      this.subscriptions[data.subscriptionId + '-deletion'].unsubscribe();
-      delete this.subscriptions[data.subscriptionId + '-creation'];
-      delete this.subscriptions[data.subscriptionId + '-modification'];
-      delete this.subscriptions[data.subscriptionId + '-deletion'];
+      this.terminateSubscriptionById(subscriptionId);
     } else {
-      console.error('Could not terminate subscription', data.subscriptionId);
+      console.error('Could not terminate subscription', subscriptionId);
     }
   }
 
-  unsubscribe() {
-    // Tell the backend, that you quit
-    const message = {subscriptionId: this.subscriptionId};
-    this.rxStompService.publish({ destination: '/glacier/termination', body: JSON.stringify(message) });
+  private terminateSubscriptionById(subscriptionId: string) {
+    console.log('Terminating subscriptions for creation, modification and deletion.');
+    for (let [key, value] of this.hashtagMap.entries()) {
+      if (value === subscriptionId)
+        var hashtag = this.hashtagMap.get(subscriptionId);
+      if (hashtag) {
+        this.hashtagMap.delete(hashtag);
+      }
+    }
+    this.subscriptions[subscriptionId + '-creation'].unsubscribe();
+    this.subscriptions[subscriptionId + '-modification'].unsubscribe();
+    this.subscriptions[subscriptionId + '-deletion'].unsubscribe();
+    delete this.subscriptions[subscriptionId + '-creation'];
+    delete this.subscriptions[subscriptionId + '-modification'];
+    delete this.subscriptions[subscriptionId + '-deletion'];
+  }
+
+  terminateAll() {
+    for (let [key, value] of this.hashtagMap.entries()) {
+      // Tell the backend, that you quit
+      const message = {subscriptionId: value};
+      this.rxStompService.publish({ destination: '/glacier/termination', body: JSON.stringify(message) });
+    }
+
 
     // unsubscribe your main subscription
     this.topicSubscription.unsubscribe();
@@ -122,5 +137,11 @@ export class SubscriptionService{
   subsribeHashtag(hashtag: string) {
     const message = {hashtag: hashtag};
     this.rxStompService.publish({ destination: '/glacier/subscription', body: JSON.stringify(message) });
+  }
+
+  unsubscribeHashtag(hashtag: string) {
+    const subscriptionId = this.hashtagMap.get(hashtag);
+    const message = {subscriptionId: subscriptionId};
+    this.rxStompService.publish({ destination: '/glacier/termination', body: JSON.stringify(message) });
   }
 }
