@@ -60,10 +60,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "browserTarget": "glacier-frontend:build:production"
+              "buildTarget": "glacier-frontend:build:production"
             },
             "development": {
-              "browserTarget": "glacier-frontend:build:development"
+              "buildTarget": "glacier-frontend:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -71,7 +71,7 @@
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n",
           "options": {
-            "browserTarget": "glacier-frontend:build"
+            "buildTarget": "glacier-frontend:build"
           }
         },
         "test": {
