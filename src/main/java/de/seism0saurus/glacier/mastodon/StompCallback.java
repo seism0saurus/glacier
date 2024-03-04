@@ -1,15 +1,15 @@
 package de.seism0saurus.glacier.mastodon;
 
-import de.seism0saurus.glacier.webservice.messages.StatusCreatedMessage;
-import de.seism0saurus.glacier.webservice.messages.StatusDeletedMessage;
-import de.seism0saurus.glacier.webservice.messages.StatusMessage;
-import de.seism0saurus.glacier.webservice.messages.StatusUpdatedMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.seism0saurus.glacier.webservice.messages.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.*;
+import social.bigbone.api.entity.streaming.MastodonApiEvent.GenericMessage;
 
 import java.util.UUID;
 
@@ -70,7 +70,19 @@ public class StompCallback implements WebSocketCallback {
                 }
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
+            case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
             default -> LOGGER.info("Subscription " + uuid + " got an unknown event " + event.getClass());
+        }
+    }
+
+    private void processGenericEvent(GenericMessage genericMessage, String baseDestination) {
+        String text = genericMessage.getText();
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
+            LOGGER.info("Message: " + genericMessageContent);
+        } catch (JsonProcessingException e) {
+            LOGGER.error("Could not parse GenericMessage", e);
         }
     }
 

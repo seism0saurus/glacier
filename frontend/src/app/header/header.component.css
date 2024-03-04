@@ -1,6 +1,7 @@
 :host {
   flex: none;
 
+  background-color: #27b0b8;
   border-bottom: 1px solid #10303f;
   box-shadow: 10px 15px 15px rgba(0, 0, 0, 0.15);
 }
