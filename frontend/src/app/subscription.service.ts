@@ -50,11 +50,11 @@ export class SubscriptionService {
   getCreatedEvents(): Observable<MessageQueue> {
     console.log('SubscriptionService:', 'New Observable created');
     this.receivedMessages.restore();
-    this.receivedMessages.enqueue({id:"1", url: 'https://c.im/@GertrudeZane/112038131697458407/embed'});
-    this.receivedMessages.enqueue({id:"2", url: 'https://botsin.space/@hourlyhectoc/112036125133971064/embed'});
-    this.receivedMessages.enqueue({id:"3", url: 'https://mastodon.zergy.net/@Zergy/112038414711064112/embed'});
-    this.receivedMessages.enqueue({id:"4", url: 'https://mstdn.social/@DemocracySpot/112039038866407099/embed'});
-    this.receivedMessages.enqueue({id:"5", url: 'https://social.growyourown.services/@FediTips/112039041940272554/embed'});
+    // this.receivedMessages.enqueue({id:"1", url: 'https://c.im/@GertrudeZane/112038131697458407/embed'});
+    // this.receivedMessages.enqueue({id:"2", url: 'https://botsin.space/@hourlyhectoc/112036125133971064/embed'});
+    // this.receivedMessages.enqueue({id:"3", url: 'https://mastodon.zergy.net/@Zergy/112038414711064112/embed'});
+    // this.receivedMessages.enqueue({id:"4", url: 'https://mstdn.social/@DemocracySpot/112039038866407099/embed'});
+    // this.receivedMessages.enqueue({id:"5", url: 'https://social.growyourown.services/@FediTips/112039041940272554/embed'});
     return this.messageObersavble$;
   }
 
