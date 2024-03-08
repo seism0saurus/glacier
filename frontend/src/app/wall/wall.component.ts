@@ -50,6 +50,6 @@ export class WallComponent implements OnInit, OnDestroy {
   }
 
   getTootsForColumn(column: number): SafeMessage[] {
-    return this.toots.filter((e, i) => i % this.columns === column);
+    return this.toots.reverse().filter((e, i) => i % this.columns === column);
   }
 }
