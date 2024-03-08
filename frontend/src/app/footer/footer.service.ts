@@ -10,6 +10,6 @@ export class FooterService {
   constructor(private http: HttpClient) { }
 
   getMastodonHandle() {
-    return this.http.get<Handle>('http://localhost:8080/rest/mastodon-handle');
+    return this.http.get<Handle>('/rest/mastodon-handle');
   }
 }

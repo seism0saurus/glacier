@@ -1,4 +1,4 @@
-package de.seism0saurus.glacier.webservice.messages;
+package de.seism0saurus.glacier.webservice.messaging.messages;
 
 import lombok.Data;
 
@@ -8,5 +8,5 @@ import lombok.Data;
 @Data
 public class TerminationMessage {
 
-    private String subscriptionId;
+    private String hashtag;
 }

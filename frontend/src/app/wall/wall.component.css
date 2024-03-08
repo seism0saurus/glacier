@@ -1,16 +1,26 @@
 :host {
-  flex: 1;
+  flex-shrink: 1;
+  flex-grow: 1;
+  overflow: hidden;
 
-  display: flex;
-  flex-direction: column;
+  /*display: flex;*/
+  /*flex-direction: column;*/
 }
 
-.toots {
+#toots {
   width: 100%;
+  /*display: flex;*/
+  /*flex-direction: row;*/
+  /*flex-wrap: wrap;*/
+  /*justify-content: flex-start;*/
+  /*align-items: flex-start;*/
+  /*flex-shrink: 1;*/
+  /*overflow: hidden;*/
+}
+.column-of-toots{
+  width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  align-items: center;
+  flex-direction: column;
 }
 

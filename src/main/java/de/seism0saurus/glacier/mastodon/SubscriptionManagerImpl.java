@@ -8,13 +8,13 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
@@ -39,7 +39,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     /**
      * The list of subscriptions as list of Futures.
      */
-    private final Map<UUID, Future<?>> subscriptions;
+    private final Map<String, Map<String, Future<?>>> subscriptions;
 
     /**
      * The mastodon client is required to communicate with the configured mastodon instance.
@@ -53,60 +53,111 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final SimpMessagingTemplate simpMessagingTemplate;
 
     /**
+     * The domain for the Glacier service.
+     */
+    private final String glacierDomain;
+
+    /**
+     * The {@link RestTemplate RestTemplate} of this class.
+     * The template is passed to the {@link StompCallback StompCallback}, so that the callback can check http headers of urls for iframes.
+     */
+    private final RestTemplate restTemplate;
+
+    /**
      * The sole constructor for this class.
      * The needed classes are provided by Spring {@link org.springframework.beans.factory.annotation.Value Values}.
      *
-     * @param instance    The mastodon instance for this repository. Can be configured in the <code>application.properties</code>.
-     * @param accessToken The access token for this repository.
-     *                    You get an access token on the instance of your bot at the {@link <a href="https://docs.joinmastodon.org/spec/oauth/#token">Token Endpoint</a>} of your bot's instance or in the GUI.
-     *                    Can be configured in the <code>application.properties</code>.
+     * @param instance              The mastodon instance for this repository. Can be configured in the <code>application.properties</code>.
+     * @param accessToken           The access token for this repository.
+     *                              You get an access token on the instance of your bot at the {@link <a href="https://docs.joinmastodon.org/spec/oauth/#token">Token Endpoint</a>} of your bot's instance or in the GUI.
+     *                              Can be configured in the <code>application.properties</code>.
      * @param simpMessagingTemplate The {@link SimpMessagingTemplate SimpMessagingTemplate} of this class. Will be stored to {@link SubscriptionManagerImpl#simpMessagingTemplate simpMessagingTemplate}.
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
             @Value(value = "${mastodon.accessToken}") String accessToken,
-            @Autowired SimpMessagingTemplate simpMessagingTemplate) {
+            @Value(value = "${glacier.domain}") String glacierDomain,
+            @Autowired SimpMessagingTemplate simpMessagingTemplate,
+            @Autowired RestTemplate restTemplate) {
+        this.glacierDomain = glacierDomain;
+        this.restTemplate = restTemplate;
         this.client = new MastodonClient.Builder(instance).accessToken(accessToken).setReadTimeoutSeconds(240).setReadTimeoutSeconds(240).build();
         this.simpMessagingTemplate = simpMessagingTemplate;
-        subscriptions = new HashMap<UUID, Future<?>>();
+        subscriptions = new HashMap<String, Map<String, Future<?>>>();
         LOGGER.info("StatusInterfaceImpl for mastodon instance " + instance + " created");
     }
 
     /**
      * Subscribes to a specified hashtag on Mastodon and starts a virtual thread for asynchronous listening.
      *
-     * @param hashtag The hashtag to subscribe to.
-     * @return The unique identifier (UUID) associated with the subscription.
+     * @param principal
+     * @param hashtag   The hashtag to subscribe to.
      */
     @Override
-    public UUID subscribeToHashtag(String hashtag) {
-        UUID uuid = UUID.randomUUID();
+    public void subscribeToHashtag(String principal, String hashtag) {
+        if (subscriptions.get(principal) == null) {
+            subscriptions.put(principal, new HashMap<>());
+        }
+        Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
+        if (previousSubscriptions.get(hashtag) != null) {
+            LOGGER.info("A subscription for principal {} with the hastag {} already exists", principal, hashtag);
+            return;
+        }
+
         var executorService = Executors.newVirtualThreadPerTaskExecutor();
         Future<?> future = executorService.submit(() -> {
-            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(simpMessagingTemplate, uuid))) {
-                LOGGER.info("Virtual thread for asynchronous listening to Mastodon started");
+            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(simpMessagingTemplate, restTemplate, principal, hashtag, glacierDomain))) {
+                LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
                 sleepForever();
             } catch (IOException e) {
-                LOGGER.error("Virtual Thread for asynchronous listening to Mastodon had an exception", e);
+                LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
                 throw new RuntimeException(e);
             }
         });
-        subscriptions.put(uuid, future);
-        return uuid;
+
+        previousSubscriptions.put(hashtag, future);
+        subscriptions.put(principal, previousSubscriptions);
     }
 
     /**
-     * Terminates a subscription with the given UUID.
+     * Terminates a subscription for a given principal and hashtag.
      *
-     * @param uuid The unique identifier (UUID) associated with the subscription
+     * @param principal The principal associated with the subscription.
+     * @param hashtag The hashtag of the subscription to be terminated.
+     * @throws IllegalArgumentException If the provided principal or hashtag is unknown.
      */
     @Override
-    public void terminateSubscription(UUID uuid) {
-        Future<?> subscription = this.subscriptions.get(uuid);
-        if (subscription != null) {
-            this.subscriptions.remove(subscription);
-            subscription.cancel(true);
+    public void terminateSubscription(final String principal, final String hashtag) {
+        Map<String, Future<?>> subscriptionsOfPrincipal = this.subscriptions.get(principal);
+        if (subscriptionsOfPrincipal == null) {
+            throw new IllegalArgumentException("The provided principal " + principal + " is unknown");
         }
+        Future<?> subscription = subscriptionsOfPrincipal.get(hashtag);
+        if (subscription == null) {
+            throw new IllegalArgumentException("The provided hashtag " + hashtag + " for principal " + principal + " is unknown");
+        }
+        subscriptionsOfPrincipal.remove(hashtag);
+        if (subscriptionsOfPrincipal.isEmpty()) {
+            this.subscriptions.remove(principal);
+        } else {
+            this.subscriptions.put(principal, subscriptionsOfPrincipal);
+        }
+        subscription.cancel(true);
+    }
+
+    /**
+     * Terminate all subscriptions for the given principal.
+     *
+     * @param principal The principal for which subscriptions should be terminated.
+     */
+    @Override
+    public void terminateAllSubscriptions(String principal) {
+        Map<String, Future<?>> futureMap = this.subscriptions.get(principal);
+        if (futureMap == null) {
+            return;
+        }
+        futureMap.forEach((tag, future) -> future.cancel(true));
+        this.subscriptions.remove(principal);
     }
 
     /**

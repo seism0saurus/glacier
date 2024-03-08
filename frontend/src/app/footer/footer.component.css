@@ -1,5 +1,6 @@
 :host {
-  flex: none;
+  flex-shrink: 0;
+  flex-grow: 0;
 
   border-top: 1px solid #10303f;
 }

@@ -1,6 +1,8 @@
 <iframe #iframe id="{{uuid}}"
         (load)="configureIframe(iframe)"
+        (error)="handleError(iframe)"
         scrolling="no"
         class="toot mastodon-embed"
-        [src]="url" allowfullscreen="allowfullscreen">
+        allowfullscreen="allowfullscreen"
+        [src]="url">
 </iframe>

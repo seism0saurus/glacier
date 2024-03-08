@@ -16,11 +16,8 @@ export class HashtagComponent {
 
   addOnBlur = true;
   separatorKeysCodes: number[] = [ENTER, COMMA, SEMICOLON];
-  hashtags: string[] = [];
+  hashtags: string[] = JSON.parse(localStorage.getItem('hashtags') || '[]');
   hashtag: string = "Enter a hashtag";
-
-  // @ts-ignore
-  selectedHashtags: Observable<void | string[]>;
 
   // @ts-ignore
   @ViewChild('hashtagInput') hashtagInput: ElementRef<HTMLInputElement>;
@@ -33,7 +30,10 @@ export class HashtagComponent {
       `cancel_icon`,
       this.domSanitizer.bypassSecurityTrustResourceUrl("../assets/cancel.svg")
     );
-
+    this.matIconRegistry.addSvgIcon(
+      `mastodon_icon`,
+      this.domSanitizer.bypassSecurityTrustResourceUrl("../assets/mastodon.svg")
+    );
   }
 
   add(event: MatChipInputEvent): void {
@@ -42,7 +42,7 @@ export class HashtagComponent {
     // Add the hashtag if it isn't already in the list
     if (sanitizedTag && !this.hashtags.includes(sanitizedTag)) {
       this.hashtags.push(sanitizedTag);
-      this.subscriptionService.subsribeHashtag(sanitizedTag);
+      this.subscriptionService.subscribeHashtag(sanitizedTag);
     }
 
     // Clear the input sanitizedTag
@@ -81,9 +81,14 @@ export class HashtagComponent {
       if (index >= 0) {
         this.hashtags[index] = sanitizedTag;
         this.subscriptionService.unsubscribeHashtag(tag);
-        this.subscriptionService.subsribeHashtag(sanitizedTag);
+        this.subscriptionService.subscribeHashtag(sanitizedTag);
       }
     }
+  }
+
+  clear(): void {
+    this.hashtags.forEach( tag => this.subscriptionService.unsubscribeHashtag(tag))
+    this.hashtags = [];
   }
 
   private sanitize(tag: string): string {

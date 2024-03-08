@@ -1,4 +1,4 @@
-package de.seism0saurus.glacier.webservice.messages;
+package de.seism0saurus.glacier.webservice.messaging.messages;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;

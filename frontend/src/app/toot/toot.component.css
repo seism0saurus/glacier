@@ -1,5 +1,7 @@
 :host {
   max-width: fit-content;
+  flex-shrink: 0;
+  flex-grow: 0;
 }
 
 iframe {

@@ -1,19 +1,23 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
-import de.seism0saurus.glacier.webservice.messages.SubscriptionAckMessage;
-import de.seism0saurus.glacier.webservice.messages.SubscriptionMessage;
-import de.seism0saurus.glacier.webservice.messages.TerminationAckMessage;
-import de.seism0saurus.glacier.webservice.messages.TerminationMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionAckMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.TerminationAckMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.TerminationMessage;
+import de.seism0saurus.glacier.webservice.storage.Subscription;
+import de.seism0saurus.glacier.webservice.storage.SubscriptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.CrossOrigin;
 
-import java.util.UUID;
+import java.util.Optional;
+
+import static org.springframework.util.ClassUtils.isPresent;
 
 /**
  * The SubscriptionController is responsible for the subscription management via WebSockets.
@@ -48,10 +52,9 @@ public class SubscriptionController {
      * The needed classes are {@link org.springframework.beans.factory.annotation.Autowired autowired} by Spring.
      *
      * @param subscriptionManager The {@link SubscriptionManager SubscriptionManager} of this class. Will be stored to {@link de.seism0saurus.glacier.webservice.SubscriptionController#subscriptionManager subscriptionManager}.
-     *
      */
     public SubscriptionController(
-            @Autowired SubscriptionManager subscriptionManager) {
+            SubscriptionManager subscriptionManager) {
         this.subscriptionManager = subscriptionManager;
     }
 
@@ -63,13 +66,14 @@ public class SubscriptionController {
      */
     @MessageMapping("/subscription")
     @SendToUser("/topic/subscriptions")
-    public SubscriptionAckMessage subscribe(SubscriptionMessage event) {
-        LOGGER.info(event.toString());
-        UUID uuid = this.subscriptionManager.subscribeToHashtag(event.getHashtag());
-        LOGGER.info("Subscription " + uuid + " created. Sending response to user....");
+    public SubscriptionAckMessage subscribe(SimpMessageHeaderAccessor headerAccessor, SubscriptionMessage event) {
+        String principal = (String) headerAccessor.getSessionAttributes().get("principal");
+        LOGGER.info("Subscription event for principal {} and hashtag {} received", principal, event.getHashtag());
+        this.subscriptionManager.subscribeToHashtag(principal, event.getHashtag());
+        LOGGER.info("Subscription event for principal {} and hashtag {} handled. Sending response to user...", principal, event.getHashtag());
         return SubscriptionAckMessage.builder()
                 .hashtag(event.getHashtag())
-                .subscriptionId(uuid.toString())
+                .principal(principal)
                 .isSubscribed(true)
                 .build();
     }
@@ -82,29 +86,30 @@ public class SubscriptionController {
      */
     @MessageMapping("/termination")
     @SendToUser("/topic/terminations")
-    public TerminationAckMessage unsubscribe(TerminationMessage event) {
-        LOGGER.info(event.toString());
+    public TerminationAckMessage unsubscribe(SimpMessageHeaderAccessor headerAccessor, TerminationMessage event) {
+        String principal = (String) headerAccessor.getSessionAttributes().get("principal");
+        LOGGER.info("Termination event for principal {} and hashtag {} received", principal, event.getHashtag());
         try {
-            UUID uuid = UUID.fromString(event.getSubscriptionId());
-            this.subscriptionManager.terminateSubscription(uuid);
-            return getMessage(uuid.toString(), true, "Subscription " + uuid + " terminates. Sending response to user...");
-        } catch (IllegalArgumentException | NullPointerException e){
-            return getMessage(event.getSubscriptionId(), false, "The subscriptionId " + event.getSubscriptionId() + " is invalid. Sending response to user...");
+            this.subscriptionManager.terminateSubscription(principal, event.getHashtag());
+            return getMessage(principal, event.getHashtag(), true, "Subscription for principal " + principal + " and hashtag " + event.getHashtag() + " terminated. Sending response to user...");
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return getMessage(principal, event.getHashtag(), false, "The subscriptionId " + event.getHashtag() + " is invalid. Sending response to user...");
         }
     }
 
     /**
      * Constructs a TerminationAckMessage with the given parameters.
      *
-     * @param subscriptionId The subscription ID.
+     * @param principal The subscription ID.
      * @param isTerminated   Indicates if the subscription is terminated.
      * @param logMessage     The log message.
      * @return The TerminationAckMessage object.
      */
-    private static TerminationAckMessage getMessage(final String subscriptionId, boolean isTerminated, final String logMessage) {
+    private static TerminationAckMessage getMessage(final String principal, final String hashtag, boolean isTerminated, final String logMessage) {
         LOGGER.info(logMessage);
         return TerminationAckMessage.builder()
-                .subscriptionId(subscriptionId)
+                .principal(principal)
+                .hashtag(hashtag)
                 .isTerminated(isTerminated)
                 .build();
     }

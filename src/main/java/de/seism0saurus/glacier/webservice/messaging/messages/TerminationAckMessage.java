@@ -1,4 +1,4 @@
-package de.seism0saurus.glacier.webservice.messages;
+package de.seism0saurus.glacier.webservice.messaging.messages;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,6 +15,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class TerminationAckMessage {
 
-    private String subscriptionId;
+    private String principal;
+    private String hashtag;
     private boolean isTerminated;
 }

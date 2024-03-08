@@ -1,4 +1,4 @@
-package de.seism0saurus.glacier.webservice.messages;
+package de.seism0saurus.glacier.webservice.messaging.messages;
 
 import lombok.*;
 
@@ -16,5 +16,5 @@ import lombok.*;
 public class StatusUpdatedMessage extends StatusMessage {
 
     private String id;
-    private String text;
+    private String url;
 }

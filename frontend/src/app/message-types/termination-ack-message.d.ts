@@ -1,4 +1,5 @@
 export interface TerminationAckMessage{
-  subscriptionId: string;
+  principal: string;
+  hashtag: string;
   terminated: boolean;
 }

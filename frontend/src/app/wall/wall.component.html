@@ -1,3 +1,23 @@
 <div id="toots">
-  <app-toot *ngFor='let toot of toots' [url]="sanitize(toot)"></app-toot>
+  <mat-grid-list cols="{{columns}}" gutterSize="0px" rowHeight="{{rowHeight}}px">
+      <mat-grid-tile *ngFor='let n of [].constructor(columns); let i = index'
+        [colspan]="1"
+        [rowspan]="1"
+        id="column-{{i}}"
+      >
+        <div class="column-of-toots">
+          <app-toot *ngFor='let toot of getTootsForColumn(i); trackBy: trackToot' [url]="toot.url | resourceUrlSanitizer"></app-toot>
+        </div>
+      </mat-grid-tile>
+  </mat-grid-list>
+
+  <!--  <app-toot *ngFor='let toot of toots.reverse(); trackBy: trackToot' [url]="toot.url | resourceUrlSanitizer"></app-toot>-->
+
+<!--  @for (toot of toots.reverse(); track trackToot) {-->
+<!--    <mat-grid-tile-->
+<!--      [colspan]="1"-->
+<!--      [rowspan]="row(toot)">-->
+<!--      <app-toot [url]="toot.url | resourceUrlSanitizer"></app-toot>-->
+<!--    </mat-grid-tile>-->
+<!--  }-->
 </div>

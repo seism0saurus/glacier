@@ -1,11 +1,10 @@
-import { RxStompConfig } from '@stomp/rx-stomp';
+import {RxStompConfig} from '@stomp/rx-stomp';
 
 export const glacierRxStompConfig: RxStompConfig = {
   brokerURL: 'ws://localhost:8080/websocket',
 
   // Headers
-  connectHeaders: {
-  },
+  connectHeaders: {},
 
   // Heartbeat interval in milliseconds,
   // set to 0 to disable

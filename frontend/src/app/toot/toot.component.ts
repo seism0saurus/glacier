@@ -1,5 +1,6 @@
-import {AfterViewInit, Component, ElementRef, Input, OnInit, ViewChild} from '@angular/core';
-import {SafeResourceUrl} from "@angular/platform-browser";
+import {AfterViewInit, Component, ElementRef, Input, OnInit, SecurityContext, ViewChild} from '@angular/core';
+import {DomSanitizer, SafeResourceUrl} from "@angular/platform-browser";
+import {HttpClient, HttpErrorResponse} from "@angular/common/http";
 
 @Component({
   selector: 'app-toot',
@@ -9,9 +10,10 @@ import {SafeResourceUrl} from "@angular/platform-browser";
 export class TootComponent{
 
   @Input()
-  url: SafeResourceUrl = "";
-
+  url: SafeResourceUrl = {};
   public uuid: string = "";
+
+  constructor(private http: HttpClient) {}
 
   configureIframe(element: HTMLIFrameElement): void {
     this.uuid = self.crypto.randomUUID();
@@ -22,7 +24,16 @@ export class TootComponent{
 
       // send message to global listener
       this.sendHeightToIframe(element);
+
+      if (this.cantBeLoaded()){
+        console.log("documentElement",element);
+        element.style["display"]="none";
+      }
     }
+  }
+
+  private cantBeLoaded(): boolean {
+    return false;
   }
 
   private sendHeightToIframe(element: HTMLIFrameElement) {
@@ -39,16 +50,21 @@ export class TootComponent{
   private getHeightListener(element: HTMLIFrameElement) {
     return function (e: MessageEvent<any>) {
       const data = e.data || {};
-
       if (typeof data !== 'object' || data.type !== 'setHeight' || data.id !== element.id) {
         return;
       }
-
       if ('source' in e && element.contentWindow !== e.source) {
         return;
       }
 
       element.height = data.height;
     };
+  }
+
+  handleError(iframe: HTMLIFrameElement) {
+    console.log('error at iframe',iframe);
+    let frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    // @ts-ignore
+    frameDoc.removeChild(frameDoc.documentElement);
   }
 }

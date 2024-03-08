@@ -14,10 +14,14 @@
         </mat-chip-row>
       }
     </mat-chip-grid>
-    <input placeholder="New hashtag (without #)" #hashtagInput
+    <input placeholder="New hashtag" #hashtagInput
            [matChipInputFor]="chipGrid"
            [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
            [matChipInputAddOnBlur]="addOnBlur"
            (matChipInputTokenEnd)="add($event)"/>
   </mat-form-field>
+  <div id='cancel-all' (click)="clear()">
+    <mat-icon [attr.aria-label]="'remove all hashtags'" svgIcon="cancel_icon"></mat-icon>
+    <span>Cancel All</span>
+  </div>
 </div>

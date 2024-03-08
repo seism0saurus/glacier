@@ -9,13 +9,16 @@ import {HeaderComponent} from './header/header.component';
 import {HashtagComponent} from './hashtag/hashtag.component';
 import {FormsModule, ReactiveFormsModule} from "@angular/forms";
 import {FooterComponent} from './footer/footer.component';
-import {HttpClientModule} from "@angular/common/http";
+import {HttpClient, HttpClientModule} from "@angular/common/http";
 import {TootComponent} from './toot/toot.component';
 import {MatFormField} from "@angular/material/form-field";
 import {MatChipGrid, MatChipInput, MatChipRemove, MatChipRow} from "@angular/material/chips";
-import {MatIcon, MatIconModule} from "@angular/material/icon";
+import {MatIcon} from "@angular/material/icon";
 import {MatInputModule} from "@angular/material/input";
 import {BrowserAnimationsModule} from "@angular/platform-browser/animations";
+import {ResourceUrlSanitizerPipe} from "./wall/resource-url-sanitizer.pipe";
+import {CookieService} from "ngx-cookie-service";
+import {MatGridList, MatGridTile} from "@angular/material/grid-list";
 
 @NgModule({
   declarations: [
@@ -40,12 +43,17 @@ import {BrowserAnimationsModule} from "@angular/platform-browser/animations";
     MatChipInput,
     MatChipGrid,
     MatChipRow,
-    MatChipRemove
+    MatChipRemove,
+    ResourceUrlSanitizerPipe,
+    MatGridList,
+    MatGridTile
   ],
   providers: [
+    CookieService,
     {
       provide: RxStompService,
       useFactory: rxStompServiceFactory,
+      deps: [HttpClient]
     }
   ],
   bootstrap: [AppComponent]

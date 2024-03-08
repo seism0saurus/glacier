@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.config.SimpleBrokerRegistration;

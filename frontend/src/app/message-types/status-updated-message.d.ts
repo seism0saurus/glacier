@@ -1,4 +1,4 @@
 export interface StatusUpdatedMessage{
   id: string;
-  text: string;
+  url: string;
 }

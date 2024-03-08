@@ -1,5 +1,5 @@
 export interface SubscriptionAckMessage{
   hashtag: string;
-  subscriptionId: string;
+  principal: string;
   subscribed: boolean;
 }

@@ -1,30 +1,55 @@
-import {Component, OnDestroy, OnInit} from '@angular/core';
-import {SubscriptionService} from "../subscription.service";
-import {DomSanitizer} from "@angular/platform-browser";
+import {Component, ElementRef, HostListener, OnDestroy, OnInit} from '@angular/core';
+import {MessageQueue, SubscriptionService} from "../subscription.service";
+import {SafeMessage} from "../message-types/safe-message";
+import {Subscription} from "rxjs";
 
 @Component({
   selector: 'app-wall',
   templateUrl: './wall.component.html',
   styleUrls: ['./wall.component.css'],
 })
-export class WallComponent implements OnInit, OnDestroy{
+export class WallComponent implements OnInit, OnDestroy {
 
-  toots: string[] = [];
+  toots: SafeMessage[] = [];
+  // @ts-ignore
+  columns: number;
+  // @ts-ignore
+  rowHeight: number;
+  private serviceSubscription: Subscription | null = null;
 
-  constructor(private subscriptionService: SubscriptionService, public sanitizer: DomSanitizer) {}
+  constructor(private subscriptionService: SubscriptionService, private el: ElementRef) {
+  }
+
+  @HostListener('window:resize', ['$event'])
+  onResize() {
+    this.rowHeight = this.el.nativeElement.offsetHeight - 40;
+    this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
+  }
 
   ngOnInit() {
-    this.subscriptionService.getCreatedEvents().subscribe((messages: string[]) => {
+    this.rowHeight = this.el.nativeElement.offsetHeight - 40;
+    this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
+
+    this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe((messages: MessageQueue) => {
       console.log('MessageComponent:', 'Got new messages');
-      this.toots = messages;
+      this.toots = messages.toArray();
     });
+
   }
 
   ngOnDestroy() {
+    console.log('Terminating subscriptions and storing messages for next session');
     this.subscriptionService.terminateAll();
+    if (this.serviceSubscription) {
+      this.serviceSubscription.unsubscribe();
+    }
   }
 
-  sanitize(url: string){
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+  trackToot(index: number, toot: SafeMessage) {
+    return toot ? toot.id : undefined;
+  }
+
+  getTootsForColumn(column: number): SafeMessage[] {
+    return this.toots.filter((e, i) => i % this.columns === column);
   }
 }

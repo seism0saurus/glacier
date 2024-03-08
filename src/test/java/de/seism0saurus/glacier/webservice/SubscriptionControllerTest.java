@@ -1,10 +1,10 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
-import de.seism0saurus.glacier.webservice.messages.SubscriptionAckMessage;
-import de.seism0saurus.glacier.webservice.messages.SubscriptionMessage;
-import de.seism0saurus.glacier.webservice.messages.TerminationAckMessage;
-import de.seism0saurus.glacier.webservice.messages.TerminationMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionAckMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.TerminationAckMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.TerminationMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,7 +16,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.when;
 
 /**
  * The SubscriptionControllerTest class is responsible for testing the SubscriptionController class.
@@ -39,15 +38,15 @@ public class SubscriptionControllerTest {
         SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
         subscriptionMessage.setHashtag("#TestHashtag");
         UUID uuid = UUID.randomUUID();
-        when(subscriptionManager.subscribeToHashtag(any(String.class))).thenReturn(uuid);
+        doNothing().when(subscriptionManager).subscribeToHashtag(any(String.class), any(String.class));
 
         // Execute
-        SubscriptionAckMessage result = subscriptionController.subscribe(subscriptionMessage);
+        SubscriptionAckMessage result = subscriptionController.subscribe(null,subscriptionMessage);
 
         // Verify
         assertThat(result).isNotNull();
         assertThat(result.isSubscribed()).isTrue();
-        assertThat(result.getSubscriptionId()).isEqualTo(uuid.toString());
+        assertThat(result.getPrincipal()).isEqualTo(uuid.toString());
         assertThat(result.getHashtag()).isEqualTo(subscriptionMessage.getHashtag());
     }
 
@@ -63,16 +62,16 @@ public class SubscriptionControllerTest {
         // Setup
         UUID uuid = UUID.randomUUID();
         TerminationMessage terminationMessage = new TerminationMessage();
-        terminationMessage.setSubscriptionId(uuid.toString());
-        doNothing().when(subscriptionManager).terminateSubscription(uuid);
+        terminationMessage.setHashtag(uuid.toString());
+        doNothing().when(subscriptionManager).terminateSubscription(uuid.toString(),"hashtag");
 
         // Execute
-        TerminationAckMessage result = subscriptionController.unsubscribe(terminationMessage);
+        TerminationAckMessage result = subscriptionController.unsubscribe(null,terminationMessage);
 
         // Verify
         assertThat(result).isNotNull();
         assertThat(result.isTerminated()).isTrue();
-        assertThat(result.getSubscriptionId()).isEqualTo(uuid.toString());
+        assertThat(result.getPrincipal()).isEqualTo(uuid.toString());
     }
 
     /**
@@ -87,15 +86,15 @@ public class SubscriptionControllerTest {
         // Setup
         TerminationMessage terminationMessage = new TerminationMessage();
         String invalidId = "Ph’nglui mglw’nafh Cthulhu R’lyeh wgah’nagl fhtagn.";
-        terminationMessage.setSubscriptionId(invalidId);
+        terminationMessage.setHashtag(invalidId);
 
         // Execute
-        TerminationAckMessage result = subscriptionController.unsubscribe(terminationMessage);
+        TerminationAckMessage result = subscriptionController.unsubscribe(null,terminationMessage);
 
         // Verify
         assertThat(result).isNotNull();
         assertThat(result.isTerminated()).isFalse();
-        assertThat(result.getSubscriptionId()).isEqualTo(invalidId);
+        assertThat(result.getPrincipal()).isEqualTo(invalidId);
     }
 
     /**
@@ -110,11 +109,11 @@ public class SubscriptionControllerTest {
         TerminationMessage terminationMessage = new TerminationMessage();
 
         // Execute
-        TerminationAckMessage result = subscriptionController.unsubscribe(terminationMessage);
+        TerminationAckMessage result = subscriptionController.unsubscribe(null,terminationMessage);
 
         // Verify
         assertThat(result).isNotNull();
         assertThat(result.isTerminated()).isFalse();
-        assertThat(result.getSubscriptionId()).isEqualTo(null);
+        assertThat(result.getPrincipal()).isEqualTo(null);
     }
 }

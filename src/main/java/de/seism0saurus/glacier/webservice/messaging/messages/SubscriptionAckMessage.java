@@ -1,4 +1,4 @@
-package de.seism0saurus.glacier.webservice.messages;
+package de.seism0saurus.glacier.webservice.messaging.messages;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,6 +16,6 @@ import lombok.NoArgsConstructor;
 public class SubscriptionAckMessage {
 
     private String hashtag;
-    private String subscriptionId;
+    private String principal;
     private boolean isSubscribed;
 }

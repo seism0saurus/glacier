@@ -1,14 +1,16 @@
 package de.seism0saurus.glacier.mastodon;
 
-import de.seism0saurus.glacier.webservice.messages.StatusCreatedMessage;
-import de.seism0saurus.glacier.webservice.messages.StatusDeletedMessage;
-import de.seism0saurus.glacier.webservice.messages.StatusUpdatedMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.StatusCreatedMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.StatusDeletedMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.StatusUpdatedMessage;
 import org.junit.jupiter.api.Test;
-import org.mockito.*;
+import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.client.RestTemplate;
 import social.bigbone.api.entity.Account;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.MastodonApiEvent;
@@ -32,6 +34,9 @@ public class StompCallbackTest {
     @MockBean
     SimpMessagingTemplate mockTemplate;
 
+    @MockBean
+    RestTemplate restTemplate;
+
     @Mock
     Status mockStatus;
 
@@ -52,7 +57,7 @@ public class StompCallbackTest {
         when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/1234");
         when(mockStatus.getAccount()).thenReturn(account);
 
-        StompCallback callback = new StompCallback(mockTemplate, uuid);
+        StompCallback callback = new StompCallback(mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
         ParsedStreamEvent.StatusCreated mockEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(mockEvent, List.of());
 
@@ -74,13 +79,13 @@ public class StompCallbackTest {
         // Setup
         UUID uuid = UUID.randomUUID();
         String expectedDestination = "/topic/hashtags/" + uuid + "/modification";
-        StatusUpdatedMessage expectedMessage = StatusUpdatedMessage.builder().id("12345").text("Fixed a typo: FHTAGN").build();
+        StatusUpdatedMessage expectedMessage = StatusUpdatedMessage.builder().id("12345").url("Fixed a typo: FHTAGN").build();
 
         doNothing().when(mockTemplate).convertAndSend(eq(expectedDestination), any(StatusUpdatedMessage.class));
         when(mockStatus.getId()).thenReturn("12345");
         when(mockStatus.getContent()).thenReturn("Fixed a typo: FHTAGN");
 
-        StompCallback callback = new StompCallback(mockTemplate, uuid);
+        StompCallback callback = new StompCallback(mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
         ParsedStreamEvent.StatusEdited mockEvent = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(mockEvent, List.of());
 
@@ -107,7 +112,7 @@ public class StompCallbackTest {
 
         doNothing().when(mockTemplate).convertAndSend(eq(expectedDestination), any(StatusDeletedMessage.class));
 
-        StompCallback callback = new StompCallback(mockTemplate, uuid);
+        StompCallback callback = new StompCallback(mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
         ParsedStreamEvent.StatusDeleted mockEvent = new ParsedStreamEvent.StatusDeleted(statusId);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(mockEvent, List.of());
 
@@ -128,7 +133,7 @@ public class StompCallbackTest {
     public void testOnEventTechnicalFailure() {
         // Setup
         String errorMessage = "Error Message";
-        StompCallback callback = new StompCallback(mockTemplate, UUID.randomUUID());
+        StompCallback callback = new StompCallback(mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "example.com");
         TechnicalEvent.Failure mockEvent = mock(TechnicalEvent.Failure.class);
         Throwable mockException = mock(Throwable.class);
         when(mockEvent.getError()).thenReturn(mockException);

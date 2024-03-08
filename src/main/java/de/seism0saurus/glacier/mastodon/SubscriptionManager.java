@@ -15,15 +15,16 @@ public interface SubscriptionManager {
     /**
      * Subscribes to a hashtag and returns the UUID of the subscription.
      *
-     * @param hashtag The hashtag to subscribe to.
-     * @return The UUID of the newly created subscription.
+     * @param principal
+     * @param hashtag   The hashtag to subscribe to.
      */
-    UUID subscribeToHashtag(final String hashtag);
+    void subscribeToHashtag(final String principal, final String hashtag);
 
     /**
      * Terminate a subscription with the given UUID.
      *
-     * @param uuid The UUID of the subscription to terminate.
      */
-    void terminateSubscription(UUID uuid);
+    void terminateSubscription(final String principal, final String hashtag);
+
+    void terminateAllSubscriptions(final String principal);
 }
