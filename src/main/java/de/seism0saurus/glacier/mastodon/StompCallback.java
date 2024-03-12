@@ -28,6 +28,7 @@ public class StompCallback implements WebSocketCallback {
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(StompCallback.class);
 
+    private final SubscriptionManager subscriptionManager;
     /**
      * The simpMessagingTemplate variable is an instance of the SimpMessagingTemplate class. It is used to send messages to WebSocket destinations.
      * The SimpMessagingTemplate class provides methods such as convertAndSend() to convert and send messages to specified destinations.
@@ -41,27 +42,45 @@ public class StompCallback implements WebSocketCallback {
     private final RestTemplate restTemplate;
 
     /**
-     * The UUID of the subscription.
+     * The principal aka wallId of the subscription this callback.
      */
     private final String principal;
+
+    /**
+     * This variable represents the hashtag of subscription of this callback.
+     */
     private final String hashtag;
+
+    /**
+     * The glacierDomain variable represents the domain used for this instance of glacier.
+     */
     private final String glacierDomain;
 
     /**
+     * Initializes a new instance of the StompCallback class.
      * The StompCallback class represents a callback for handling WebSocket events.
      * It is used in conjunction with the SimpMessagingTemplate class to send messages to websocket destinations.
+     *
+     * @param simpMessagingTemplate The SimpMessagingTemplate instance used for sending WebSocket messages.
+     * @param restTemplate          The RestTemplate instance used for making HTTP requests, to check headers of the embedded iframes.
+     * @param principal             The principal aka wallId associated with the subscription.
+     * @param hashtag               The hashtag to subscribe to.
+     * @param glacierDomain         The glacier domain for checking if a webpage is loadable as an iframe.
      */
-    public StompCallback(final SimpMessagingTemplate simpMessagingTemplate,
+    public StompCallback(final SubscriptionManager subscriptionManager,
+                         final SimpMessagingTemplate simpMessagingTemplate,
                          final RestTemplate restTemplate,
                          final String principal,
                          final String hashtag,
                          final String glacierDomain) {
+        this.subscriptionManager = subscriptionManager;
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.restTemplate = restTemplate;
         this.principal = principal;
         this.hashtag = hashtag;
         this.glacierDomain = glacierDomain;
     }
+
 
     /**
      * Handles WebSocket events.
@@ -97,15 +116,26 @@ public class StompCallback implements WebSocketCallback {
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            if (genericMessageContent.getStream().contains("hashtag")) {
-                if ("update".equals(genericMessageContent.getEvent())) {
-                    GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
-                    HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
-                    if (isLoadable(httpHeaders, glacierDomain)) {
-                        StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
-                        this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
-                    }
+            if (genericMessageContent.getStream().contains("hashtag")
+                    && ("update".equals(genericMessageContent.getEvent())
+                        || "status.update".equals(genericMessageContent.getEvent())
+                        )
+                ) {
+                GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+
+                HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+                if (isLoadable(httpHeaders, glacierDomain)) {
+                    StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
+                    this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
                 }
+            } else if (genericMessageContent.getStream().contains("hashtag")
+                    && ("delete".equals(genericMessageContent.getEvent())
+                    || "status.delete".equals(genericMessageContent.getEvent())
+            )
+            ) {
+                LOGGER.info("Delete toot with id {} id", genericMessageContent.getPayload().textValue());
+            } else{
+                LOGGER.warn("Not an update event for the subscribed hashtag", genericMessageContent);
             }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
@@ -227,11 +257,17 @@ public class StompCallback implements WebSocketCallback {
      * @param event The event to process.
      */
     private void processTechnicalEvent(final WebSocketEvent event) {
-        if (event instanceof TechnicalEvent.Failure) {
-            logError(((TechnicalEvent.Failure) event).getError().getMessage());
-        } else {
-            String eventName = ((TechnicalEvent) event).getClass().getSimpleName();
-            logEvent("got an event for " + eventName);
+        switch (event) {
+            case TechnicalEvent.Open open -> LOGGER.info("Subscription {principal} got a Open event: {}", principal, open);
+            case TechnicalEvent.Closing closing -> LOGGER.info("Subscription {principal} got a Closing event: {}", principal, closing);
+            case TechnicalEvent.Closed closed -> LOGGER.info("Subscription {principal} got a Closed event: {}", principal, closed);
+            case TechnicalEvent.Failure failure ->
+            {
+                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription: {}", principal, failure);
+                this.subscriptionManager.terminateSubscription(principal,hashtag);
+                this.subscriptionManager.subscribeToHashtag(principal,hashtag);
+            }
+            default -> LOGGER.info("Subscription {principal} got an unknown WebSocketEvent: {}", principal, event);
         }
     }
 
@@ -242,14 +278,5 @@ public class StompCallback implements WebSocketCallback {
      */
     private void logEvent(final String msg) {
         LOGGER.info("Subscription " + principal + " " + msg);
-    }
-
-    /**
-     * Logs an error message.
-     *
-     * @param msg The error message to be logged.
-     */
-    private void logError(final String msg) {
-        LOGGER.error("An error occurred in handler for subscription " + principal + " " + msg);
     }
 }

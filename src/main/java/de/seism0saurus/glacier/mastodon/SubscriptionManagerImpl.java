@@ -2,7 +2,6 @@ package de.seism0saurus.glacier.mastodon;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
@@ -75,13 +74,13 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
-            @Value(value = "${mastodon.accessToken}") String accessToken,
             @Value(value = "${glacier.domain}") String glacierDomain,
-            @Autowired SimpMessagingTemplate simpMessagingTemplate,
-            @Autowired RestTemplate restTemplate) {
+            MastodonClient client,
+            SimpMessagingTemplate simpMessagingTemplate,
+            RestTemplate restTemplate) {
         this.glacierDomain = glacierDomain;
         this.restTemplate = restTemplate;
-        this.client = new MastodonClient.Builder(instance).accessToken(accessToken).setReadTimeoutSeconds(240).setReadTimeoutSeconds(240).build();
+        this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
         subscriptions = new HashMap<String, Map<String, Future<?>>>();
         LOGGER.info("StatusInterfaceImpl for mastodon instance " + instance + " created");
@@ -106,9 +105,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
 
         var executorService = Executors.newVirtualThreadPerTaskExecutor();
         Future<?> future = executorService.submit(() -> {
-            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(simpMessagingTemplate, restTemplate, principal, hashtag, glacierDomain))) {
+            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, glacierDomain))) {
                 LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
-                sleepForever();
+                sleepForever(subscription);
             } catch (IOException e) {
                 LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
                 throw new RuntimeException(e);
@@ -167,13 +166,18 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * possible value of {@link Long#MAX_VALUE} until the thread is interrupted. If the sleep is interrupted by an
      * {@link InterruptedException}, the method logs the exception and re-interrupts the thread.
      */
-    private static void sleepForever() {
+    private static void sleepForever(Closeable subscription) {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Thread.sleep(Long.MAX_VALUE);
+                Thread.sleep(60_000L);
             }
         } catch (InterruptedException e) {
-            LOGGER.info("Sleep interrupted by exception. Most likely because it was interrupted by a subscription termination", e);
+            LOGGER.info("Sleep interrupted by InterruptedException. Most likely because it was interrupted by a subscription termination", e);
+            try {
+                subscription.close();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
             Thread.currentThread().interrupt();
         }
     }

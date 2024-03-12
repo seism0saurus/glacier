@@ -11,6 +11,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.client.RestTemplate;
+import social.bigbone.MastodonClient;
 import social.bigbone.api.entity.Account;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.MastodonApiEvent;
@@ -30,6 +31,12 @@ import static org.mockito.Mockito.*;
 @SpringBootTest
 @ActiveProfiles("test")
 public class StompCallbackTest {
+
+    @MockBean
+    SubscriptionManager subscriptionManager;
+
+    @MockBean
+    social.bigbone.MastodonClient client;
 
     @MockBean
     SimpMessagingTemplate mockTemplate;
@@ -57,7 +64,7 @@ public class StompCallbackTest {
         when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/1234");
         when(mockStatus.getAccount()).thenReturn(account);
 
-        StompCallback callback = new StompCallback(mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
         ParsedStreamEvent.StatusCreated mockEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(mockEvent, List.of());
 
@@ -85,7 +92,7 @@ public class StompCallbackTest {
         when(mockStatus.getId()).thenReturn("12345");
         when(mockStatus.getContent()).thenReturn("Fixed a typo: FHTAGN");
 
-        StompCallback callback = new StompCallback(mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
         ParsedStreamEvent.StatusEdited mockEvent = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(mockEvent, List.of());
 
@@ -112,7 +119,7 @@ public class StompCallbackTest {
 
         doNothing().when(mockTemplate).convertAndSend(eq(expectedDestination), any(StatusDeletedMessage.class));
 
-        StompCallback callback = new StompCallback(mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, uuid.toString(), "hashtag", "example.com");
         ParsedStreamEvent.StatusDeleted mockEvent = new ParsedStreamEvent.StatusDeleted(statusId);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(mockEvent, List.of());
 
@@ -133,7 +140,7 @@ public class StompCallbackTest {
     public void testOnEventTechnicalFailure() {
         // Setup
         String errorMessage = "Error Message";
-        StompCallback callback = new StompCallback(mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "example.com");
         TechnicalEvent.Failure mockEvent = mock(TechnicalEvent.Failure.class);
         Throwable mockException = mock(Throwable.class);
         when(mockEvent.getError()).thenReturn(mockException);
