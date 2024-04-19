@@ -1,6 +1,6 @@
 FROM eclipse-temurin:21-jre
 
-ARG JAR_FILE=bot.jar
+ARG JAR_FILE=glacier.jar
 
 COPY ${JAR_FILE} application/application.jar
 RUN groupadd spring && useradd -g spring spring
