@@ -82,7 +82,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: glacier
-          path: glacier/containerimage
+          path: containerimage
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
