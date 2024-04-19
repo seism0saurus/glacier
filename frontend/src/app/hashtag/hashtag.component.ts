@@ -1,7 +1,6 @@
 import {Component, ElementRef, ViewChild} from '@angular/core';
 import {COMMA, ENTER, SEMICOLON} from '@angular/cdk/keycodes';
 import {SubscriptionService} from "../subscription.service";
-import {Observable} from "rxjs";
 import {MatChipEditedEvent, MatChipInputEvent} from "@angular/material/chips";
 import {MatIconRegistry} from "@angular/material/icon";
 import {DomSanitizer} from "@angular/platform-browser";

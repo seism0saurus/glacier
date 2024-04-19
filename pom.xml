@@ -220,7 +220,7 @@
                         <configuration>
                             <workingDirectory>frontend</workingDirectory>
                             <executable>ng</executable>
-                            <commandlineArgs>test</commandlineArgs>
+                            <commandlineArgs>test --no-watch --code-coverage</commandlineArgs>
                         </configuration>
                     </execution>
                 </executions>

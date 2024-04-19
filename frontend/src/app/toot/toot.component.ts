@@ -1,33 +1,34 @@
-import {AfterViewInit, Component, ElementRef, Input, OnInit, SecurityContext, ViewChild} from '@angular/core';
-import {DomSanitizer, SafeResourceUrl} from "@angular/platform-browser";
-import {HttpClient, HttpErrorResponse} from "@angular/common/http";
+import {Component, Input} from '@angular/core';
+import {SafeResourceUrl} from "@angular/platform-browser";
+import {HttpClient} from "@angular/common/http";
 
 @Component({
   selector: 'app-toot',
   templateUrl: './toot.component.html',
   styleUrls: ['./toot.component.css']
 })
-export class TootComponent{
+export class TootComponent {
 
   @Input()
   url: SafeResourceUrl = {};
   public uuid: string = "";
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) {
+  }
 
   configureIframe(element: HTMLIFrameElement): void {
     this.uuid = self.crypto.randomUUID();
 
-    if (element){
+    if (element) {
       // Register global listener that handles only messages for this iframe
       window.addEventListener('message', this.getHeightListener(element));
 
       // send message to global listener
       this.sendHeightToIframe(element);
 
-      if (this.cantBeLoaded()){
-        console.log("documentElement",element);
-        element.style["display"]="none";
+      if (this.cantBeLoaded()) {
+        console.log("documentElement", element);
+        element.style["display"] = "none";
       }
     }
   }
@@ -62,7 +63,7 @@ export class TootComponent{
   }
 
   handleError(iframe: HTMLIFrameElement) {
-    console.log('error at iframe',iframe);
+    console.log('error at iframe', iframe);
     let frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
     // @ts-ignore
     frameDoc.removeChild(frameDoc.documentElement);

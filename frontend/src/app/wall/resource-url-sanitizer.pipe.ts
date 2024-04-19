@@ -14,6 +14,7 @@ export class ResourceUrlSanitizerPipe implements PipeTransform{
     if(!url){
       return '';
     }
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    let sanitizedUrl = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    return sanitizedUrl;
   }
 }
