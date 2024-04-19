@@ -2,7 +2,9 @@ name: "Verify the code"
 
 on:
   push:
-    branches: [ "!main" ]
+    branches:
+      - '*'
+      - '!main'
 
 jobs:
   verify:
