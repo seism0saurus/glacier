@@ -67,7 +67,15 @@ public class SubscriptionController {
     @MessageMapping("/subscription")
     @SendToUser("/topic/subscriptions")
     public SubscriptionAckMessage subscribe(SimpMessageHeaderAccessor headerAccessor, SubscriptionMessage event) {
-        String principal = (String) headerAccessor.getSessionAttributes().get("principal");
+        if (headerAccessor.getUser() == null){
+            LOGGER.error("Someone tried to subscribe without a principal. This is not supported", headerAccessor);
+            return SubscriptionAckMessage.builder()
+                    .hashtag(event.getHashtag())
+                    .principal(null)
+                    .isSubscribed(false)
+                    .build();
+        }
+        String principal = headerAccessor.getUser().getName();
         LOGGER.info("Subscription event for principal {} and hashtag {} received", principal, event.getHashtag());
         this.subscriptionManager.subscribeToHashtag(principal, event.getHashtag());
         LOGGER.info("Subscription event for principal {} and hashtag {} handled. Sending response to user...", principal, event.getHashtag());
@@ -87,7 +95,11 @@ public class SubscriptionController {
     @MessageMapping("/termination")
     @SendToUser("/topic/terminations")
     public TerminationAckMessage unsubscribe(SimpMessageHeaderAccessor headerAccessor, TerminationMessage event) {
-        String principal = (String) headerAccessor.getSessionAttributes().get("principal");
+        if (headerAccessor.getUser() == null){
+            LOGGER.error("Someone tried to unsubscribe without a principal. This is not supported", headerAccessor);
+            return getMessage(null, event.getHashtag(), false, "Could not unsubscibe due to missing principal. Sending response to user...");
+        }
+        String principal = headerAccessor.getUser().getName();
         LOGGER.info("Termination event for principal {} and hashtag {} received", principal, event.getHashtag());
         try {
             this.subscriptionManager.terminateSubscription(principal, event.getHashtag());

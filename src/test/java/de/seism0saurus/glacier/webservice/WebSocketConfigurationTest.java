@@ -2,11 +2,13 @@ package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.config.SimpleBrokerRegistration;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRegistration;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
+import social.bigbone.MastodonClient;
 
 import static org.mockito.Mockito.*;
 

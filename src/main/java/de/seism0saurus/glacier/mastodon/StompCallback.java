@@ -28,7 +28,12 @@ public class StompCallback implements WebSocketCallback {
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(StompCallback.class);
 
+    /**
+     * Represents a callback for handling WebSocket events related to subscriptions.
+     * This class is used in conjunction with SubscriptionManager to manage hashtag subscriptions on Mastodon.
+     */
     private final SubscriptionManager subscriptionManager;
+
     /**
      * The simpMessagingTemplate variable is an instance of the SimpMessagingTemplate class. It is used to send messages to WebSocket destinations.
      * The SimpMessagingTemplate class provides methods such as convertAndSend() to convert and send messages to specified destinations.
@@ -83,7 +88,7 @@ public class StompCallback implements WebSocketCallback {
 
 
     /**
-     * Handles WebSocket events.
+     * Handles a WebSocket event.
      *
      * @param event The WebSocket event to handle.
      */
@@ -110,6 +115,12 @@ public class StompCallback implements WebSocketCallback {
         }
     }
 
+    /**
+     * Process a generic event.
+     *
+     * @param genericMessage The GenericMessage event to process.
+     * @param destination    The destination to send the processed event.
+     */
     private void processGenericEvent(GenericMessage genericMessage, String destination) {
         logEvent("got a GenericMessage event");
         String text = genericMessage.getText();
@@ -263,7 +274,7 @@ public class StompCallback implements WebSocketCallback {
             case TechnicalEvent.Closed closed -> LOGGER.info("Subscription {principal} got a Closed event: {}", principal, closed);
             case TechnicalEvent.Failure failure ->
             {
-                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription: {}", principal, failure);
+                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription. The error is: {}", principal,failure.getError());
                 this.subscriptionManager.terminateSubscription(principal,hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal,hashtag);
             }
