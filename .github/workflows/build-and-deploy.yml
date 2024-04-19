@@ -94,6 +94,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/seism0saurus/glacier
+      - name: Show build dir
+        run: ls -lah containerimage/.
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
