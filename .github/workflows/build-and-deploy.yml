@@ -38,7 +38,7 @@ jobs:
       - name: Build the webapp
         run:  ./mvnw --batch-mode --update-snapshots clean verify package
       - name: Check if frontend is bundled into jar
-        run: "[ ! -d /home/runner/work/glacier/glacier/target/classes/static ] && ls -lah /home/runner/work/glacier/glacier/target/classes/ && exit 1"
+        run: "[ ! -d /home/runner/work/glacier/glacier/target/classes/static ] && echo 'angular not correctly packaged!' && ls -lah /home/runner/work/glacier/glacier/target/classes && exit 1"
       - name: Copy jar
         run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
       - name: Archive glacier jar
