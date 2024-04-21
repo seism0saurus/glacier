@@ -36,9 +36,9 @@ jobs:
       - name: npm dependencies and Angular cli
         run: npm install -g @angular/cli@17
       - name: Build the webapp
-        run:  ./mvnw --batch-mode --update-snapshots clean install
-      - name: Show target directory
-        run: ls -lah /home/runner/work/glacier/glacier/target/classes
+        run:  ./mvnw --batch-mode --update-snapshots clean verify
+      - name: Check if frontend is bundeld into jar
+        run: "[ ! -f /home/runner/work/glacier/glacier/target/classes/static ] && exit 1"
       - name: Copy jar
         run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
       - name: Archive glacier jar

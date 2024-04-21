@@ -31,9 +31,11 @@ A JRE is not sufficient for build. I recommend [Temurin](https://adoptium.net/de
 
 ### Build Jar
 
-To do a complete install including frontend and backend build and tests, run the following command.
+To checkout the code and do a complete install including frontend and backend build and tests, run the following commands.
 ```bash
-maven install
+git clone git@github.com:seism0saurus/glacier.git
+cd glacier
+./mvnw clean install
 ```
 
 After the build you can run Glacier locally from the commandline, to test the jar before packaging it into a container image.
