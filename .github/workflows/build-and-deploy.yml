@@ -37,6 +37,8 @@ jobs:
         run: npm install -g @angular/cli@17
       - name: Build the webapp
         run:  mvn --batch-mode --update-snapshots clean install --file pom.xml
+      - name: Show target directory
+        run: ls -lah /home/runner/work/glacier/glacier/target/ glacier.jar
       - name: Copy jar
         run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
       - name: Archive glacier jar
