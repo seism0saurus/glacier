@@ -38,7 +38,7 @@ jobs:
       - name: Build the webapp
         run:  mvn --batch-mode --update-snapshots clean install --file pom.xml
       - name: Show target directory
-        run: ls -lah /home/runner/work/glacier/glacier/target/ glacier.jar
+        run: ls -lah /home/runner/work/glacier/glacier/target/classes
       - name: Copy jar
         run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
       - name: Archive glacier jar
