@@ -1,13 +1,13 @@
 package de.seism0saurus.glacier;
 
-import org.springframework.boot.test.context.SpringBootTest;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import social.bigbone.MastodonClient;
 
 /**
  * Test class for GlacierApplication.
- *
+ * <p>
  * This class contains test methods to ensure the proper functioning of
  * GlacierApplication class.
  */

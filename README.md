@@ -17,11 +17,57 @@ and is under the [CC BY 4.0 Deed license](https://creativecommons.org/licenses/b
 
 A complete free usable test installation of **glacier** will be available soon under [glacier.seism0saurus.de](https://glacier.seism0saurus.de).
 
+## Built it
+
+### Requirements
+
+Glacier is built with maven and based on Java 21 and typescript.
+To execute the built or run Glacier locally you need a Java 21 JDK.
+A JRE is not sufficient for build. I recommend [Temurin](https://adoptium.net/de/temurin/releases/).
+
+### Build Jar
+
+To do a complete install including frontend and backend build and tests, run the following command.
+```bash
+maven install
+```
+
+After the build you can run Glacier locally from the commandline, to test the jar before packaging it into a container image.
+```bash
+ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.1-SNAPSHOT.jar
+```
+
+### Build container image
+
+First create the jar.
+To create a container image for Docker or other engines,
+copy the created jar into the [containerimage](./containerimage) folder.
+Then change into the folder and run docker build.
+```bash
+cp target/glacier-0.0.1-SNAPSHOT.jar containerimage/
+cd containerimage
+```
+
+#### Docker
+
+```bash
+docker build -t glacier --build-arg JAR_FILE=glacier-0.0.1-SNAPSHOT.jar .
+```
+
+#### Buildah
+
+```bash
+buildah build --build-arg JAR_FILE=glacier-0.0.1-SNAPSHOT.jar  -f Dockerfile -t glacier .
+```
+
+## Run it
+
 ### Container Image
 
 A container image with latest stable version is available: [ghcr.io/seism0saurus/glacier:main](ghcr.io/seism0saurus/glacier:main)
+Or you can build your own version with the steps from Build it.
 
-You can run it locally with docker or other compatible container runtimes.
+You can run the image locally with docker or other compatible container runtimes.
 Four environment variables are needed.
 
 #### INSTANCE
@@ -45,7 +91,6 @@ Create a new application with read access.
 The domain of your personal Glacier installation.
 If run locally use your hostname or localhost.
 
-
 #### Docker
 
 ```bash
@@ -57,21 +102,3 @@ docker run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-ha
 ```bash
 nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 -p 8080:8080 ghcr.io/seism0saurus/glacier:main
 ```
-
-## Built it
-
-Glacier is built with maven.
-To do a complete install including frontend and backend build and tests, run the following command.
-```bash
-maven install
-```
-
-To create a container image for Docker or other engines,
-copy the created jar into the [containerimage](./containerimage) folder.
-Then change into the folder and run docker build.
-```bash
-cd containerimage
-docker build -t glacier --build-arg JAR_FILE=name-of-the-created-jar .
-```
-
-For mor details you can look into the [pipeline](.github/workflows/build-and-deploy.yml).

@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -42,7 +41,7 @@ public class InformationController {
     @GetMapping("/rest/wall-id")
     public WallId readCookie(@CookieValue(value = "wallId", required = false) String wallId, HttpServletResponse response) {
         LOGGER.info("Fetching cookie");
-        if (wallId == null){
+        if (wallId == null) {
             String newWallId = generateRandomWallId();
             Cookie cookie = new Cookie("wallId", newWallId);
             cookie.setPath("/");
@@ -66,12 +65,12 @@ public class InformationController {
     }
 
     @Data
-    static class Handle{
+    static class Handle {
         private String name;
     }
 
     @Data
-    static class WallId{
+    static class WallId {
         private String id;
     }
 

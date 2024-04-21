@@ -8,7 +8,7 @@ public class CloseableWrapper implements Closeable {
     private final Closeable closable;
     private boolean closed = false;
 
-    public CloseableWrapper(final Closeable closable){
+    public CloseableWrapper(final Closeable closable) {
         this.closable = closable;
     }
 
@@ -18,7 +18,7 @@ public class CloseableWrapper implements Closeable {
         this.closable.close();
     }
 
-    public boolean closed(){
+    public boolean closed() {
         return this.closed;
     }
 }

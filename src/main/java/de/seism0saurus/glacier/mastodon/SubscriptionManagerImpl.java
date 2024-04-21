@@ -122,7 +122,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * Terminates a subscription for a given principal and hashtag.
      *
      * @param principal The principal associated with the subscription.
-     * @param hashtag The hashtag of the subscription to be terminated.
+     * @param hashtag   The hashtag of the subscription to be terminated.
      * @throws IllegalArgumentException If the provided principal or hashtag is unknown.
      */
     @Override

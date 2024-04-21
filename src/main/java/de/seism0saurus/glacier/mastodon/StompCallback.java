@@ -129,9 +129,9 @@ public class StompCallback implements WebSocketCallback {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
             if (genericMessageContent.getStream().contains("hashtag")
                     && ("update".equals(genericMessageContent.getEvent())
-                        || "status.update".equals(genericMessageContent.getEvent())
-                        )
-                ) {
+                    || "status.update".equals(genericMessageContent.getEvent())
+            )
+            ) {
                 GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
 
                 HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
@@ -145,7 +145,7 @@ public class StompCallback implements WebSocketCallback {
             )
             ) {
                 LOGGER.info("Delete toot with id {} id", genericMessageContent.getPayload().textValue());
-            } else{
+            } else {
                 LOGGER.warn("Not an update event for the subscribed hashtag", genericMessageContent);
             }
         } catch (JsonProcessingException e) {
@@ -190,10 +190,10 @@ public class StompCallback implements WebSocketCallback {
             xFrameDefaultAllowed = false;
 
             xFrameExplicitlyNotAllowed = xFrameOptions.stream()
-                    .anyMatch(option -> option.toUpperCase().equals("DENY") || option.toUpperCase().equals("SAMEORIGIN"));
+                    .anyMatch(option -> option.equalsIgnoreCase("DENY") || option.equalsIgnoreCase("SAMEORIGIN"));
 
             xFrameExplicitlyAllowed = xFrameOptions.stream()
-                    .anyMatch(option -> option.toUpperCase().equals("ALLOWALL"));
+                    .anyMatch(option -> option.equalsIgnoreCase("ALLOWALL"));
         }
 
         if (frameAncestorsExists) {
@@ -269,14 +269,16 @@ public class StompCallback implements WebSocketCallback {
      */
     private void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
-            case TechnicalEvent.Open open -> LOGGER.info("Subscription {principal} got a Open event: {}", principal, open);
-            case TechnicalEvent.Closing closing -> LOGGER.info("Subscription {principal} got a Closing event: {}", principal, closing);
-            case TechnicalEvent.Closed closed -> LOGGER.info("Subscription {principal} got a Closed event: {}", principal, closed);
-            case TechnicalEvent.Failure failure ->
-            {
-                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription. The error is: {}", principal,failure.getError());
-                this.subscriptionManager.terminateSubscription(principal,hashtag);
-                this.subscriptionManager.subscribeToHashtag(principal,hashtag);
+            case TechnicalEvent.Open open ->
+                    LOGGER.info("Subscription {principal} got a Open event: {}", principal, open);
+            case TechnicalEvent.Closing closing ->
+                    LOGGER.info("Subscription {principal} got a Closing event: {}", principal, closing);
+            case TechnicalEvent.Closed closed ->
+                    LOGGER.info("Subscription {principal} got a Closed event: {}", principal, closed);
+            case TechnicalEvent.Failure failure -> {
+                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription. The error is: {}", principal, failure.getError());
+                this.subscriptionManager.terminateSubscription(principal, hashtag);
+                this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
             default -> LOGGER.info("Subscription {principal} got an unknown WebSocketEvent: {}", principal, event);
         }

@@ -11,6 +11,6 @@
     </appender>
 
     <root level="info">
-        <appender-ref ref="jsonstdout" />
+        <appender-ref ref="jsonstdout"/>
     </root>
 </configuration>

@@ -1,18 +1,14 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
-import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
-import de.seism0saurus.glacier.webservice.storage.Subscription;
-import de.seism0saurus.glacier.webservice.storage.SubscriptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.socket.messaging.*;
+import org.springframework.web.socket.messaging.SessionConnectedEvent;
+import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
-import java.io.Closeable;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -61,7 +57,7 @@ public class SubscriptionListener {
      *
      * @param subscriptionManager the SubscriptionManager to be used for managing subscriptions
      */
-    public SubscriptionListener(final SubscriptionManager subscriptionManager){
+    public SubscriptionListener(final SubscriptionManager subscriptionManager) {
         this.subscriptionManager = subscriptionManager;
     }
 
@@ -85,7 +81,7 @@ public class SubscriptionListener {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
         LOGGER.info("Client with session {} and username {} connected", headerAccessor.getSessionId(), event.getUser().getName());
         Future<?> future = this.disconnectTimer.get(event.getUser().getName());
-        if (future != null){
+        if (future != null) {
             future.cancel(true);
         }
     }
@@ -120,12 +116,12 @@ public class SubscriptionListener {
         Future<?> future = executorService.submit(() -> {
             LOGGER.info("Timer for principal {} started", event.getUser().getName());
             try {
-                Thread.sleep(300_000l);
+                Thread.sleep(300_000L);
             } catch (InterruptedException e) {
                 LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
                 return;
             }
-            LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName() );
+            LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
             this.subscriptionManager.terminateAllSubscriptions(headerAccessor.getUser().getName());
         });
         this.disconnectTimer.put(event.getUser().getName(), future);

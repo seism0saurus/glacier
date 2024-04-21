@@ -21,8 +21,7 @@ public class PrincipalHandler extends DefaultHandshakeHandler {
         String wallId;
         Optional<Cookie> wallIdOptional = Optional.empty();
 
-        if (request instanceof ServletServerHttpRequest) {
-            ServletServerHttpRequest servletRequest = (ServletServerHttpRequest) request;
+        if (request instanceof ServletServerHttpRequest servletRequest) {
             HttpSession session = servletRequest.getServletRequest().getSession();
             attributes.put(SESSION_ID, session.getId());
 
@@ -34,7 +33,7 @@ public class PrincipalHandler extends DefaultHandshakeHandler {
 
         }
 
-        if (wallIdOptional.isPresent()){
+        if (wallIdOptional.isPresent()) {
             wallId = wallIdOptional.get().getValue();
         } else {
             wallId = "";

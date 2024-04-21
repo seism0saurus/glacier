@@ -5,19 +5,12 @@ import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionAckMess
 import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
 import de.seism0saurus.glacier.webservice.messaging.messages.TerminationAckMessage;
 import de.seism0saurus.glacier.webservice.messaging.messages.TerminationMessage;
-import de.seism0saurus.glacier.webservice.storage.Subscription;
-import de.seism0saurus.glacier.webservice.storage.SubscriptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.stereotype.Controller;
-
-import java.util.Optional;
-
-import static org.springframework.util.ClassUtils.isPresent;
 
 /**
  * The SubscriptionController is responsible for the subscription management via WebSockets.
@@ -67,7 +60,7 @@ public class SubscriptionController {
     @MessageMapping("/subscription")
     @SendToUser("/topic/subscriptions")
     public SubscriptionAckMessage subscribe(SimpMessageHeaderAccessor headerAccessor, SubscriptionMessage event) {
-        if (headerAccessor.getUser() == null){
+        if (headerAccessor.getUser() == null) {
             LOGGER.error("Someone tried to subscribe without a principal. This is not supported", headerAccessor);
             return SubscriptionAckMessage.builder()
                     .hashtag(event.getHashtag())
@@ -95,7 +88,7 @@ public class SubscriptionController {
     @MessageMapping("/termination")
     @SendToUser("/topic/terminations")
     public TerminationAckMessage unsubscribe(SimpMessageHeaderAccessor headerAccessor, TerminationMessage event) {
-        if (headerAccessor.getUser() == null){
+        if (headerAccessor.getUser() == null) {
             LOGGER.error("Someone tried to unsubscribe without a principal. This is not supported", headerAccessor);
             return getMessage(null, event.getHashtag(), false, "Could not unsubscibe due to missing principal. Sending response to user...");
         }
@@ -112,9 +105,9 @@ public class SubscriptionController {
     /**
      * Constructs a TerminationAckMessage with the given parameters.
      *
-     * @param principal The subscription ID.
-     * @param isTerminated   Indicates if the subscription is terminated.
-     * @param logMessage     The log message.
+     * @param principal    The subscription ID.
+     * @param isTerminated Indicates if the subscription is terminated.
+     * @param logMessage   The log message.
      * @return The TerminationAckMessage object.
      */
     private static TerminationAckMessage getMessage(final String principal, final String hashtag, boolean isTerminated, final String logMessage) {

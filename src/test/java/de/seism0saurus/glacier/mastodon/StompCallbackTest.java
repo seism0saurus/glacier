@@ -20,11 +20,8 @@ import social.bigbone.api.entity.streaming.MastodonApiEvent;
 import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import social.bigbone.api.entity.streaming.TechnicalEvent;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.BiPredicate;
 import java.util.stream.Stream;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -247,7 +244,7 @@ public class StompCallbackTest {
         callback.onEvent(streamEvent);
 
         // Verify
-        Mockito.verify(mockTemplate, times(0)).convertAndSend(any(String.class),any(Object.class));
+        Mockito.verify(mockTemplate, times(0)).convertAndSend(any(String.class), any(Object.class));
     }
 
     /**
@@ -283,33 +280,33 @@ public class StompCallbackTest {
         callback.onEvent(streamEvent);
 
         // Verify
-        if (isLoadable){
+        if (isLoadable) {
             Mockito.verify(mockTemplate).convertAndSend(
                     eq(expectedDestination),
                     eq(expectedMessage)
             );
         } else {
-            Mockito.verify(mockTemplate, times(0)).convertAndSend(any(String.class),any(Object.class));
+            Mockito.verify(mockTemplate, times(0)).convertAndSend(any(String.class), any(Object.class));
         }
     }
 
     public static Stream<Arguments> httpHeadersForIframes() {
         return Stream.of(
-                  Arguments.of(getHeaders(null,null), true) // Default allow
-                , Arguments.of(getHeaders("ALLOWALL",null), true) // Explicit allow
-                , Arguments.of(getHeaders("DENY",null), false) // Explicitly not allowed
-                , Arguments.of(getHeaders("SAMEORIGIN",null), false) // Explicitly not allowed
-                , Arguments.of(getHeaders("SAMEORIGIN; ALLOWALL",null), false) // Multiple headers are not allowed
-                , Arguments.of(getHeaders("GNU Terry Pratchett",null), false) // Wrong headers
-                );
+                Arguments.of(getHeaders(null, null), true) // Default allow
+                , Arguments.of(getHeaders("ALLOWALL", null), true) // Explicit allow
+                , Arguments.of(getHeaders("DENY", null), false) // Explicitly not allowed
+                , Arguments.of(getHeaders("SAMEORIGIN", null), false) // Explicitly not allowed
+                , Arguments.of(getHeaders("SAMEORIGIN; ALLOWALL", null), false) // Multiple headers are not allowed
+                , Arguments.of(getHeaders("GNU Terry Pratchett", null), false) // Wrong headers
+        );
     }
 
     private static HttpHeaders getHeaders(final String xFrameOptions, final String csp) {
         HttpHeaders httpHeaders = new HttpHeaders();
-        if (xFrameOptions != null){
+        if (xFrameOptions != null) {
             httpHeaders.set("X-Frame-Options", xFrameOptions);
         }
-        if (csp != null){
+        if (csp != null) {
             httpHeaders.set("Content-Security-Policy", csp);
         }
         return httpHeaders;

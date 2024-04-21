@@ -1,7 +1,5 @@
 package de.seism0saurus.glacier.mastodon;
 
-import java.util.UUID;
-
 /**
  * The manager handles subscriptions for hashtags on Mastodon.
  * <p>
@@ -22,7 +20,6 @@ public interface SubscriptionManager {
 
     /**
      * Terminate a subscription with the given UUID.
-     *
      */
     void terminateSubscription(final String principal, final String hashtag);
 
