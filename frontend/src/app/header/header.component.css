@@ -15,13 +15,13 @@ header {
   flex-direction: row;
   justify-content: flex-start;
   align-items: center;
+}
 
-  h1 {
-    font-family: "juggerRock";
-    font-size: 3em;
-    font-weight: normal;
-    margin: 0;
-  }
+header > h1 {
+  font-family: "juggerRock";
+  font-size: 3em;
+  font-weight: normal;
+  margin: 0;
 }
 
 @keyframes shrink {
