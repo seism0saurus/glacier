@@ -4,7 +4,7 @@ COPY ${JAR_FILE} application.jar
 RUN java -Djarmode=layertools -jar application.jar extract
 
 
-FROM eclipse-temurin:21-jre
+FROM docker.io/eclipse-temurin:21-jre
 
 RUN groupadd spring && useradd -g spring spring
 USER spring:spring
