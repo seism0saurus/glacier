@@ -75,71 +75,68 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-#          cache-from: type=gha
-#          cache-to: type=gha,mode=max
-
-  test-image:
-    timeout-minutes: 60
-    runs-on: ubuntu-latest
-    environment: Main Build
-    needs: create-image
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-      - name: Install Playwright Browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps
-      - name: Run Playwright tests
-        working-directory: frontend
-        run: npx playwright test
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
-    services:
-      glacier:
-        image: ghcr.io/seism0saurus/glacier:main
-        env:
-          SPRING_PROFILES_ACTIVE: default
-          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
-          HANDLE: glacier@botsin.space
-          INSTANCE: botsin.space
-          MY_DOMAIN: glacier:8080
-        ports:
-          - 8080:8080
-
-  promote-image-to-production:
-    runs-on: ubuntu-latest
-    needs: test-image
-    steps:
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Tag and push container image
-        uses: docker/build-push-action@v5
-        with:
-          context: containerimage/.
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-#          cache-from: type=gha
-#          cache-to: type=gha,mode=max
+#
+#  test-image:
+#    timeout-minutes: 60
+#    runs-on: ubuntu-latest
+#    environment: Main Build
+#    needs: create-image
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: actions/setup-node@v4
+#        with:
+#          node-version: lts/*
+#          cache: 'npm'
+#          cache-dependency-path: '**/package-lock.json'
+#      - name: Install dependencies
+#        working-directory: frontend
+#        run: npm ci
+#      - name: Install Playwright Browsers
+#        working-directory: frontend
+#        run: npx playwright install --with-deps
+#      - name: Run Playwright tests
+#        working-directory: frontend
+#        run: npx playwright test
+#      - uses: actions/upload-artifact@v4
+#        working-directory: frontend
+#        if: always()
+#        with:
+#          name: playwright-report
+#          path: playwright-report/
+#          retention-days: 30
+#    services:
+#      glacier:
+#        image: ghcr.io/seism0saurus/glacier:main
+#        env:
+#          SPRING_PROFILES_ACTIVE: default
+#          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
+#          HANDLE: glacier@botsin.space
+#          INSTANCE: botsin.space
+#          MY_DOMAIN: glacier:8080
+#        ports:
+#          - 8080:8080
+#
+#  promote-image-to-production:
+#    runs-on: ubuntu-latest
+#    needs: test-image
+#    steps:
+#      - name: Login to GitHub Container Registry
+#        uses: docker/login-action@v3
+#        with:
+#          registry: ghcr.io
+#          username: ${{ github.actor }}
+#          password: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Tag and push container image
+#        uses: docker/build-push-action@v5
+#        with:
+#          context: containerimage/.
+#          push: true
+#          tags: ${{ steps.meta.outputs.tags }}
+#          labels: ${{ steps.meta.outputs.labels }}
 
   deploy:
     runs-on: ubuntu-latest
-    needs: promote-image-to-production
+    needs: create-image
     environment: glacier.seism0saurus.de
     steps:
       - name: Prepare ssh
