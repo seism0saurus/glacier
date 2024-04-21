@@ -3,4 +3,5 @@ export const environment = {
   production: true,
   host: 'glacier.seism0saurus.de',
   port: '443',
+  protocol: 'wss',
 };
