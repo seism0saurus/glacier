@@ -75,8 +75,8 @@ jobs:
           push: true
           tags: rc
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
 
   test-image:
     timeout-minutes: 60
@@ -131,8 +131,8 @@ jobs:
           push: true
           tags: main
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
 
   deploy:
     runs-on: ubuntu-latest
