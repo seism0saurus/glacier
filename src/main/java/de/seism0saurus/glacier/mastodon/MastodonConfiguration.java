@@ -7,6 +7,7 @@ import social.bigbone.MastodonClient;
 
 @Configuration
 public class MastodonConfiguration {
+
     @Bean
     public MastodonClient mastodonClient(@Value("${mastodon.instance}") final String instance,
                                          @Value("${mastodon.accessToken}") final String accessToken,
