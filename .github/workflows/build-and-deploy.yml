@@ -106,11 +106,11 @@ jobs:
       glacier:
         image: ghcr.io/seism0saurus/glacier:rc
         env:
-          - SPRING_PROFILES_ACTIVE=default
-          - ACCESS_KEY=${{ secrets.ACCESS_KEY }}
-          - HANDLE=glacier@botsin.space
-          - INSTANCE=botsin.space
-          - MY_DOMAIN=glacier:8080
+          SPRING_PROFILES_ACTIVE: default
+          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
+          HANDLE: glacier@botsin.space
+          INSTANCE: botsin.space
+          MY_DOMAIN: glacier:8080
         ports:
           - 8080:8080
 
