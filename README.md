@@ -48,6 +48,9 @@ cp target/glacier-0.0.1-SNAPSHOT.jar containerimage/
 cd containerimage
 ```
 
+To build the image you can use Docker
+or any compatible build tool that creates standard container images like [buildah](https://buildah.io/).
+
 #### Docker
 
 ```bash
@@ -90,6 +93,9 @@ Create a new application with read access.
 
 The domain of your personal Glacier installation.
 If run locally use your hostname or localhost.
+For non http ports add the port to the hostname for correct redirects and checks.
+For example *localhost:8080*.
+You can user Docker or any other compatible container runtime like [containerd](https://containerd.io/) with [nerdctl](https://github.com/containerd/nerdctl).
 
 #### Docker
 
@@ -97,7 +103,7 @@ If run locally use your hostname or localhost.
 docker run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 -p 8080:8080 ghcr.io/seism0saurus/glacier:main
 ```
 
-#### Container with nerdctl
+#### Containerd with nerdctl
 
 ```bash
 nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 -p 8080:8080 ghcr.io/seism0saurus/glacier:main
