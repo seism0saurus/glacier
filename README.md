@@ -17,6 +17,10 @@ and is under the [CC BY 4.0 Deed license](https://creativecommons.org/licenses/b
 
 A complete free usable test installation of **glacier** will be available soon under [glacier.seism0saurus.de](https://glacier.seism0saurus.de).
 
+The demo page always contains the last stable version from the main branch.
+
+[![Build and deploy](https://github.com/seism0saurus/glacier/actions/workflows/build-and-deploy.yml/badge.svg)](https://github.com/seism0saurus/glacier/actions/workflows/build-and-deploy.yml)
+
 ## Built it
 
 ### Requirements
