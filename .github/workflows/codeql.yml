@@ -58,7 +58,7 @@ jobs:
     - name: Install Node
       uses: actions/setup-node@v4
       with:
-        node-version: 18.13.0
+        node-version: lts/*
     - name: npm dependencies and Angular cli
       run: npm install -g @angular/cli@17
     - name: Compile and package
