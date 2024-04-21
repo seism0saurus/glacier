@@ -104,7 +104,7 @@ jobs:
           retention-days: 30
     services:
       glacier:
-        image: ghcr.io/seism0saurus/glacier:rc
+        image: ghcr.io/seism0saurus/glacier:main
         env:
           SPRING_PROFILES_ACTIVE: default
           ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
