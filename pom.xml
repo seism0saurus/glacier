@@ -243,7 +243,7 @@
                         <configuration>
                             <workingDirectory>frontend</workingDirectory>
                             <executable>ng</executable>
-                            <commandlineArgs>build --configuration "production" --optimization true --aot --output-path ../src/main/resources/static</commandlineArgs>
+                            <commandlineArgs>build --configuration "production" --optimization true --aot --output-path ${project.basedir}/src/main/resources/static</commandlineArgs>
                         </configuration>
                     </execution>
                     <execution>
