@@ -73,7 +73,7 @@ jobs:
         with:
           context: containerimage/.
           push: true
-          tags: rc
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 #          cache-from: type=gha
 #          cache-to: type=gha,mode=max
@@ -129,7 +129,7 @@ jobs:
         with:
           context: containerimage/.
           push: true
-          tags: main
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 #          cache-from: type=gha
 #          cache-to: type=gha,mode=max
