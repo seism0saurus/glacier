@@ -36,7 +36,7 @@ jobs:
       - name: npm dependencies and Angular cli
         run: npm install -g @angular/cli@17
       - name: Build the webapp
-        run:  mvn --batch-mode --update-snapshots install --file pom.xml
+        run:  mvn --batch-mode --update-snapshots clean install --file pom.xml
       - name: Copy jar
         run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
       - name: Archive glacier jar

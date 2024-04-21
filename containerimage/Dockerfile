@@ -6,6 +6,7 @@ RUN ls -lah
 
 
 FROM docker.io/eclipse-temurin:21-jre
+EXPOSE 8080
 
 RUN groupadd spring && useradd -g spring spring
 USER spring:spring
