@@ -91,10 +91,13 @@ jobs:
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - name: Install dependencies
+        working-directory: frontend
         run: npm ci
       - name: Install Playwright Browsers
+        working-directory: frontend
         run: npx playwright install --with-deps
       - name: Run Playwright tests
+        working-directory: frontend
         run: npx playwright test
       - uses: actions/upload-artifact@v4
         if: always()
