@@ -64,6 +64,14 @@
                   "with": "src/environments/environment.development.ts"
                 }
               ]
+            },
+            "watch": {
+              "buildOptimizer": false,
+              "optimization": false,
+              "vendorChunk": true,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "namedChunks": true
             }
           },
           "defaultConfiguration": "production"

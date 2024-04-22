@@ -2,6 +2,7 @@ export const environment = {
   environmentName: 'prod',
   production: true,
   host: 'glacier.seism0saurus.de',
-  port: '443',
-  protocol: 'wss',
+  backendPort: '443',
+  frontendPort: '8080',
+  secure: false,
 };
