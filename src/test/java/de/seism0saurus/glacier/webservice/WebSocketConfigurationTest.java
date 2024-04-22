@@ -6,6 +6,7 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.config.SimpleBrokerRegistration;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRegistration;
+import org.springframework.web.socket.config.annotation.WebMvcStompEndpointRegistry;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import static org.mockito.Mockito.*;
@@ -50,10 +51,10 @@ public class WebSocketConfigurationTest {
     @Test
     void testSetHandshakeHandler() {
         // Setup
-        StompEndpointRegistry registry = mock(StompEndpointRegistry.class);
+        StompEndpointRegistry registry = mock(WebMvcStompEndpointRegistry.class);
         StompWebSocketEndpointRegistration registration = mock(StompWebSocketEndpointRegistration.class);
         when(registry.addEndpoint(anyString())).thenReturn(registration);
-        when(registration.setAllowedOrigins(anyString())).thenReturn(registration);
+        when(registration.setAllowedOrigins(anyString(),anyString(),anyString())).thenReturn(registration);
         WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com");
 
         // Execute
