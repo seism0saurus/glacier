@@ -33,7 +33,7 @@ public class WebSocketConfigurationTest {
                 .thenReturn(brokerRegistration);
         when(mockRegistry.setApplicationDestinationPrefixes("/glacier"))
                 .thenReturn(simpleBrokerRegistration);
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration();
+        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com");
 
         // Execute
         webSocketConfiguration.configureMessageBroker(mockRegistry);
@@ -54,7 +54,7 @@ public class WebSocketConfigurationTest {
         StompWebSocketEndpointRegistration registration = mock(StompWebSocketEndpointRegistration.class);
         when(registry.addEndpoint(anyString())).thenReturn(registration);
         when(registration.setAllowedOrigins(anyString())).thenReturn(registration);
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration();
+        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com");
 
         // Execute
         webSocketConfiguration.registerStompEndpoints(registry);
