@@ -42,7 +42,7 @@ export class TootComponent {
       element.contentWindow.postMessage({
         type: 'setHeight',
         id: this.uuid,
-      }, 'http://localhost:4200');
+      }, element.src);
     } else {
       console.error('Could not access contentWindow of iframe ', this.uuid);
     }
