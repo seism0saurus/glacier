@@ -2,7 +2,8 @@ import {RxStompConfig} from '@stomp/rx-stomp';
 import { environment } from '../environments/environment'
 
 export const glacierRxStompConfig: RxStompConfig = {
-  brokerURL: environment.secure ? 'wss' : 'ws' + '://' + environment.host +':' + environment.backendPort + '/websocket',
+
+  brokerURL:  environment.protocolWebsocket + '://' + environment.host +':' + environment.backendPort + '/websocket',
 
   // Headers
   connectHeaders: {},

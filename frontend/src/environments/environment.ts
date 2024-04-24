@@ -4,5 +4,6 @@ export const environment = {
   host: 'localhost',
   backendPort: '8080',
   frontendPort: '8080',
-  secure: false,
+  protocolWebsocket: 'ws',
+  protocolHttp: 'http'
 };
