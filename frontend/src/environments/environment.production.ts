@@ -4,5 +4,5 @@ export const environment = {
   host: 'glacier.seism0saurus.de',
   backendPort: '443',
   frontendPort: '8080',
-  secure: false,
+  secure: true,
 };
