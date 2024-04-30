@@ -26,38 +26,16 @@ describe('FooterComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  describe('optout hint', () => {
+  describe('howto hint', () => {
     it('should exist', () => {
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.optout')).toBeTruthy();
+      expect(compiled.querySelector('.howto')).toBeTruthy();
     });
 
-    it('should exist', () => {
+    it('should contain the correct text', () => {
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.optout')?.innerHTML)
-        .toContain('You don\'t want your toots to be shown here?&nbsp;');
-      expect(compiled.querySelector('.optout')?.innerHTML)
-        .toContain('unknown@example.com in your account');
-    });
-
-    it('should have the correct url text', () => {
-      const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.optout > a')?.innerHTML)
-        .toBe('Block')
-    });
-
-    it('should have the correct url to the blocking documentation', () => {
-      const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.optout > a')?.getAttribute('href'))
-        .toBe('https://docs.joinmastodon.org/user/moderating/#block')
-    });
-
-    it('should open the url to the blocking documentation in a new tab with data protection', () => {
-      const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('.optout > a')?.getAttribute('target'))
-        .toBe('_blank')
-      expect(compiled.querySelector('.optout > a')?.getAttribute('rel'))
-        .toBe('noopener noreferrer')
+      expect(compiled.querySelector('.howto')?.innerHTML)
+        .toContain('You want your toots to be shown here?&nbsp;Mention @unknown@example.com in your toot and use one of the hashtags.');
     });
   });
 
