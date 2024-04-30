@@ -26,6 +26,8 @@ With **Glacier** you can follow hashtags to see the interaction of participants 
     - [Docker](#docker-1)
     - [Containerd with nerdctl](#containerd-with-nerdctl)
 - [Use it](#use-it)
+  - [Create a Glacier Wall](#create-a-glacier-wall)
+  - [Add toots](#add-toots)
 - [Concepts and wordings](#concepts-and-wordings)
 - [Known issues or limitations](#known-issues-or-limitations)
 
@@ -143,7 +145,19 @@ nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-h
 
 ## Use it
 
-To add a toot to your Glacier Wall follow these stepts.
+### Create a Glacier Wall
+
+To create a new Glacier Wall follow these steps.
+
+1) Go to your Glacier instance. E.g. [glacier.seism0saurus.de](https://glacier.seism0saurus.de).
+2) Click into the field *Followed hashtags*
+3) Enter a hashtag you want to follow and press *enter*. Repeat this for each hashtag you want to follow
+4) For better usage of space, enable the full screen mode with *F11* or the menu of your web browser
+
+### Add toots
+
+To add a toot to your Glacier Wall follow these steps.
+
 1) Start a new toot
 2) Mention the bot of your Glacier instance in your toot. For example @glacier@botsin.space. 
 This is important since not all toots with a hashtag reach the bot, which collects the toots.
