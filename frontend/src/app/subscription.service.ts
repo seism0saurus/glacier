@@ -14,7 +14,6 @@ import {SafeMessage} from "./message-types/safe-message";
 })
 export class SubscriptionService {
 
-  // @ts-ignore
   private subcriptionsSubscription: Subscription;
   private terminationsSubscription: Subscription;
   private receivedMessages: MessageQueue = new MessageQueue();
@@ -184,7 +183,7 @@ export class SubscriptionService {
 export class MessageQueue {
   private storage: SafeMessage[] = [];
 
-  constructor(private capacity: number = Infinity) {
+  constructor(private capacity: number = 30) {
   }
 
   restore(): void{
@@ -195,8 +194,12 @@ export class MessageQueue {
   }
 
   enqueue(item: SafeMessage): void {
-    if (this.size() === this.capacity) {
-      throw Error("MessageQueue if full. Remove items by calling 'dequeue()' before adding new ones.");
+    if (this.size() >= this.capacity) {
+      console.log('Queue is full. Removing oldest entries');
+      while (this.size() >= this.capacity){
+        this.dequeue('0');
+      }
+      console.log('Queue size is', this.size);
     }
     if (this.storage.filter( message => message.id === item.id).length){
       console.log('Message with id', item.id, 'is already known. Ignore new one');
@@ -207,7 +210,7 @@ export class MessageQueue {
   }
 
   dequeue(id: string): SafeMessage | undefined {
-    var messageToRemove;
+    let messageToRemove;
     this.storage.forEach(scm => {
       if (scm.id === id) {
         messageToRemove = scm;
