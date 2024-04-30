@@ -124,5 +124,15 @@ To add a toot to your Glacier Wall follow these stepts.
 3) Use one of the hashtags of your Glacier Wall. For example #flowers
 4) Post your toot. The toot appears on the Glacier Wall shortly after you've posted it
 
+Here is an example toot:
+```
+@glacier@botsin.space
+
+Hi,
+very cool project. Thanks for developing a social wall ;)
+
+#foss #opensource #mastodon
+```
+
 Here is a short video of adding a toot to the wall.
 ![An animated gif of the usage of Glacier. Mention the bot of your Glacier instance, write your toot, use one of the hashtags of your Glacier Wall, post. Your toot appears on the Glacier Wall](glacier.gif)
