@@ -4,7 +4,32 @@
 
 *A mastodon only social wall.*
 
-With **glacier** you can follow hashtags to see the interaction of participants of an event in realtime.
+With **Glacier** you can follow hashtags to see the interaction of participants of an event in realtime.
+
+## Content
+
+- [Licences](#licences)
+- [Try it](#try-it)
+  - [Demo](#demo)
+- [Build it](#build-it)
+  - [Requirements](#requirements)
+    - [Build Jar](#build-jar)
+    - [Build container image](#build-container-image)
+      - [Docker](#docker)
+      - [Buildah](#buildah)
+- [Run it](#run-it)
+  - [Container Image](#container-image)
+    - [INSTANCE](#instance)
+    - [HANDLE](#handle)
+    - [ACCESS_KEY](#access_key)
+    - [MY_DOMAIN](#my_domain)
+    - [Docker](#docker-1)
+    - [Containerd with nerdctl](#containerd-with-nerdctl)
+- [Use it](#use-it)
+- [Concepts and wordings](#concepts-and-wordings)
+- [Known issues or limitations](#known-issues-or-limitations)
+
+## Licences
 
 This project is Open Source under the [MIT License](LICENSE) except for the following files:
 - The font [Jugger Rock](frontend/src/assets/juggerrock.ttf), which is from Dan Zadorozny and may not be used for commercial purposes without a [license](https://www.iconian.com/commercial.html).
@@ -120,8 +145,12 @@ nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-h
 
 To add a toot to your Glacier Wall follow these stepts.
 1) Start a new toot
-2) Mention the bot of your Glacier instance in your toot. For example @glacier@botsin.space
-3) Use one of the hashtags of your Glacier Wall. For example #flowers
+2) Mention the bot of your Glacier instance in your toot. For example @glacier@botsin.space. 
+This is important since not all toots with a hashtag reach the bot, which collects the toots.
+This is due to the concept of federation in the Fediverse.
+3) Use one of the hashtags of your Glacier Wall. For example #flowers.
+This is needed, so that multiple Glacier Walls can be used with the same mastodon bot.
+Only visible toots with a hashtag are shown on a Glacier Wall.
 4) Post your toot. The toot appears on the Glacier Wall shortly after you've posted it
 
 Here is an example toot:
@@ -136,3 +165,39 @@ very cool project. Thanks for developing a social wall ;)
 
 Here is a short video of adding a toot to the wall.
 ![An animated gif of the usage of Glacier. Mention the bot of your Glacier instance, write your toot, use one of the hashtags of your Glacier Wall, post. Your toot appears on the Glacier Wall](glacier.gif)
+
+
+## Concepts and wordings
+
+- *Glacier instance*: A Glacier instance is one deployment of the Glacier web application.
+One instance can serve multiple Glacier Walls with different hashtags for different users.
+For example glacier.seism0saurus.de is an instance of Glacier.
+I deploy the current version from the main branch on that server
+- *Glacier Wall*: A Glacier Wall is a single social wall for a user and is delivered by a Glacier instance.
+The Glacier Wall is bound to your web browser and a Glacier instance.
+For example, if you open [glacier.seism0saurs.de](https://glacier.seism0saurus.de) you get your personal Glacier Wall for testing.
+If you open it in another web browser you get a second Glacier Wall with different hashtags and toots.
+But both Glacier Walls run on the same Glacier instance from me but are separate Glacier Walls
+- *Toot*: A toot is a post on mastodon. Glacier can show other types of posts from systems connected to the fediverse, too.
+But for simplicity I speak about toots, since mastodon is the main focus
+
+## Known issues or limitations
+
+- The Glacier Wall needs some seconds after a new toot is added to render everything.
+That's a problem I have with the Angular change detection. The toots are rendered as iframes,
+because I don't want to reimplement the styling of the different fediverse servers.
+But after a toot is moved to another column, the browser reloads it completely.
+This takes some time to rebuild the page
+- If server shows a cookie consent banner or other banners at the bottom of the screen,
+the banner can block the view to the content
+- Content warnings in mastodon can block the content on the Glacier Wall
+- Some mastodon instances have corrupt or wrong headers for the content security policy.
+Therefore, I am not allowed to load the toots from these servers as iframe.
+If your toots are not shown but publicly visible, mention the bot and have a hashtag,
+please open an issue. I will try to contact your instance administrator to get an exception
+- Toots without mentioning the bot of the Glacier instance are not shown.
+Following a hashtag is limited in the fediverse.
+If a toot with a hashtag is never federated to the server with my bot, the bot never sees the toot and can't show it on the Glacier Wall.
+Therefore, you have to mention the bot to make sure, the message reaches it
+- Private or other restricted messages are not shown.
+Well, this isn't really an issue, since you don't want to make the toot public, it shouldn't be on a Glacier Wall, too
