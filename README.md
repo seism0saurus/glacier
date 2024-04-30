@@ -21,7 +21,7 @@ The demo page always contains the last stable version from the main branch.
 
 [![Build and deploy](https://github.com/seism0saurus/glacier/actions/workflows/build-and-deploy.yml/badge.svg)](https://github.com/seism0saurus/glacier/actions/workflows/build-and-deploy.yml)
 
-## Built it
+## Build it
 
 ### Requirements
 
@@ -114,3 +114,15 @@ docker run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-ha
 ```bash
 nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 -p 8080:8080 ghcr.io/seism0saurus/glacier:main
 ```
+
+
+## Use it
+
+To add a toot to your Glacier Wall follow these stepts.
+1) Start a new toot
+2) Mention the bot of your Glacier instance in your toot. For example @glacier@botsin.space
+3) Use one of the hashtags of your Glacier Wall. For example #flowers
+4) Post your toot. The toot appears on the Glacier Wall shortly after you've posted it
+
+Here is a short video of adding a toot to the wall.
+![An animated gif of the usage of Glacier. Mention the bot of your Glacier instance, write your toot, use one of the hashtags of your Glacier Wall, post. Your toot appears on the Glacier Wall](glacier.gif)
