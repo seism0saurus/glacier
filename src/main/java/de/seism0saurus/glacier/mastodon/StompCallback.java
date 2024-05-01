@@ -136,7 +136,7 @@ public class StompCallback implements WebSocketCallback {
 
                 HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
                 if (isLoadable(httpHeaders, glacierDomain)) {
-                    if (payload.getMentions().stream().map(s -> s.getAcct()).anyMatch( a -> "".equals(a))) {
+                    if (payload.getMentions().stream().map(s -> s.getAcct()).anyMatch( a -> "glacier".equals(a))) {
                         StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
                         this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
                     } else {
