@@ -149,7 +149,7 @@ nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-h
 
 To create a new Glacier Wall follow these steps.
 
-1) Go to your Glacier instance. E.g. [glacier.seism0saurus.de](https://glacier.seism0saurus.de).
+1) Go to your Glacier instance. E.g. [glacier.seism0saurus.de](https://glacier.seism0saurus.de)
    ![Screenshot of the browser with the URL https://glacier.seism0saurus.de](assets/screenshot_url.png)
 2) Click into the field *Followed hashtags*
    ![Screenshot of the tag area of Glacier](assets/screenshot_tag_area.png)
