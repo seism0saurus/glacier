@@ -39,8 +39,7 @@ jobs:
       - name: Copy own GDPR if available
         run: |
           cat frontend/src/environments/gdpr.ts;
-          echo $GDPR;
-          echo $GDPR > frontend/src/environments/gdpr.ts;
+          echo ${{ secrets.GDPR }} > frontend/src/environments/gdpr.ts;
           cat frontend/src/environments/gdpr.ts
       - name: Build the webapp
         run:  ./mvnw --batch-mode --update-snapshots clean verify package
