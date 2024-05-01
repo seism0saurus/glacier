@@ -141,7 +141,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier",  "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -179,7 +179,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier",  "glacier.example.com");
         ParsedStreamEvent.StatusEdited event = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -211,7 +211,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier",  "glacier.example.com");
         ParsedStreamEvent.StatusDeleted event = new ParsedStreamEvent.StatusDeleted("12345");
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -235,7 +235,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
 
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier",  "glacier.example.com");
         Notification notification = new Notification();
         ParsedStreamEvent.NewNotification event = new ParsedStreamEvent.NewNotification(notification);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
@@ -272,7 +272,7 @@ public class StompCallbackTest {
 
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(headers);
 
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, principal, hashtag, "glacier",  "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -319,7 +319,7 @@ public class StompCallbackTest {
     public void onEvent_EventTechnicalFailure() {
         // Setup
         String errorMessage = "Error Message";
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier",  "example.com");
         TechnicalEvent.Failure mockEvent = mock(TechnicalEvent.Failure.class);
         Throwable mockException = mock(Throwable.class);
         when(mockEvent.getError()).thenReturn(mockException);

@@ -56,6 +56,7 @@ public class StompCallback implements WebSocketCallback {
      */
     private final String hashtag;
 
+    private final String handle;
     /**
      * The glacierDomain variable represents the domain used for this instance of glacier.
      */
@@ -77,12 +78,14 @@ public class StompCallback implements WebSocketCallback {
                          final RestTemplate restTemplate,
                          final String principal,
                          final String hashtag,
+                         final String handle,
                          final String glacierDomain) {
         this.subscriptionManager = subscriptionManager;
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.restTemplate = restTemplate;
         this.principal = principal;
         this.hashtag = hashtag;
+        this.handle = handle;
         this.glacierDomain = glacierDomain;
     }
 
@@ -136,7 +139,7 @@ public class StompCallback implements WebSocketCallback {
 
                 HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
                 if (isLoadable(httpHeaders, glacierDomain)) {
-                    if (payload.getMentions().stream().map(s -> s.getAcct()).anyMatch( a -> "glacier".equals(a))) {
+                    if (payload.getMentions().stream().map(s -> s.getAcct()).anyMatch( a -> handle.equals(a))) {
                         StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
                         this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
                     } else {

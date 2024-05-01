@@ -57,6 +57,11 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final String glacierDomain;
 
     /**
+     * The mastodon handle of this instance.
+     */
+    private final String handle;
+
+    /**
      * The {@link RestTemplate RestTemplate} of this class.
      * The template is passed to the {@link StompCallback StompCallback}, so that the callback can check http headers of urls for iframes.
      */
@@ -75,10 +80,12 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
             @Value(value = "${glacier.domain}") String glacierDomain,
+            @Value(value = "${mastodon.handle}") String handle,
             MastodonClient client,
             SimpMessagingTemplate simpMessagingTemplate,
             RestTemplate restTemplate) {
         this.glacierDomain = glacierDomain;
+        this.handle = handle;
         this.restTemplate = restTemplate;
         this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
@@ -105,7 +112,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
 
         var executorService = Executors.newVirtualThreadPerTaskExecutor();
         Future<?> future = executorService.submit(() -> {
-            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, glacierDomain))) {
+            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
                 LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
                 sleepForever(subscription);
             } catch (IOException e) {
