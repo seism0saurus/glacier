@@ -2,7 +2,7 @@ export const gdpr = {
   operatorName: 'Jon Doe',
   operatorStreetAndNumber: 'somewhere 1',
   operatorZipcode: '12345',
-  operatorCity: 'comecity',
+  operatorCity: 'somecity',
   operatorCountry: 'Germany',
   operatorPhone: '+123456789',
   operatorMail: 'mail@example.com',
