@@ -150,9 +150,19 @@ nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-h
 To create a new Glacier Wall follow these steps.
 
 1) Go to your Glacier instance. E.g. [glacier.seism0saurus.de](https://glacier.seism0saurus.de).
+   ![Screenshot of the browser with the URL https://glacier.seism0saurus.de](assets/screenshot_url.png)
 2) Click into the field *Followed hashtags*
+   ![Screenshot of the tag area of Glacier](assets/screenshot_tag_area.png)
 3) Enter a hashtag you want to follow and press *enter*. Repeat this for each hashtag you want to follow
-4) For better usage of space, enable the full screen mode with *F11* or the menu of your web browser
+   ![Screenshot of the tag area of Glacier](assets/screenshot_add_tag.png)
+   ![Screenshot of the tag area of Glacier](assets/screenshot_add_multiple_tags.png)
+4) You can also edit a tag, if you misspelled it. Double klick on the hashtag and you can change it. Press *enter* after that
+   ![Screenshot of the tag area of Glacier](assets/screenshot_edit_tag.png)
+5) To delete a hashtag, klick on the small symbol after its text in the chip
+   ![Screenshot of the tag area of Glacier](assets/screenshot_delete_tag.png) 
+   On the right is also a button to remove all hashtags and start from the beginning
+   ![Screenshot of the tag area of Glacier](assets/screenshot_delete_all_tags.png)
+6) For better usage of space, enable the full screen mode with *F11* or the menu of your web browser
 
 ### Add toots
 
@@ -178,7 +188,7 @@ very cool project. Thanks for developing a social wall ;)
 ```
 
 Here is a short video of adding a toot to the wall.
-![An animated gif of the usage of Glacier. Mention the bot of your Glacier instance, write your toot, use one of the hashtags of your Glacier Wall, post. Your toot appears on the Glacier Wall](glacier.gif)
+![An animated gif of the usage of Glacier. Mention the bot of your Glacier instance, write your toot, use one of the hashtags of your Glacier Wall, post. Your toot appears on the Glacier Wall](assets/glacier.gif)
 
 
 ## Concepts and wordings
