@@ -19,6 +19,7 @@ import {BrowserAnimationsModule} from "@angular/platform-browser/animations";
 import {ResourceUrlSanitizerPipe} from "./wall/resource-url-sanitizer.pipe";
 import {CookieService} from "ngx-cookie-service";
 import {MatGridList, MatGridTile} from "@angular/material/grid-list";
+import {MatDialogModule} from "@angular/material/dialog";
 
 @NgModule({
   declarations: [
@@ -46,7 +47,8 @@ import {MatGridList, MatGridTile} from "@angular/material/grid-list";
     MatChipRemove,
     ResourceUrlSanitizerPipe,
     MatGridList,
-    MatGridTile
+    MatGridTile,
+    MatDialogModule
   ],
   providers: [
     CookieService,

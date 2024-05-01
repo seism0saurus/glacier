@@ -1,0 +1,22 @@
+:host {
+  display: block;
+  background-color: #d3ecf0;
+  color: #123342;
+}
+
+h2 {
+  margin: 24px;
+}
+
+button {
+  margin-left: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  background-color: #4acad7;
+
+  height: max-content;
+  border-radius: 4px;
+}

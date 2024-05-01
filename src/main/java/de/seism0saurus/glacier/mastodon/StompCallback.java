@@ -136,8 +136,12 @@ public class StompCallback implements WebSocketCallback {
 
                 HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
                 if (isLoadable(httpHeaders, glacierDomain)) {
-                    StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
-                    this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
+                    if (payload.getMentions().stream().map(s -> s.getAcct()).anyMatch( a -> "".equals(a))) {
+                        StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
+                        this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
+                    } else {
+                        LOGGER.info("No opt in. Ignoring");
+                    }
                 }
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
@@ -229,6 +233,9 @@ public class StompCallback implements WebSocketCallback {
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        if (status.getMentions().contains(new Status.Mention())){
+
+        }
         if (isLoadable(httpHeaders, glacierDomain)) {
             StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).author(status.getAccount().getDisplayName()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);

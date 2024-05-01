@@ -16,3 +16,16 @@ footer {
 
   flex: none;
 }
+
+span#handle{
+  color: #3293a3;
+  text-decoration: underline;
+}
+
+div#legal{
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  color: #3293a3;
+  text-decoration: underline;
+}

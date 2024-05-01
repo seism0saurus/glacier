@@ -7,14 +7,12 @@
 html, body {
   a {
     color: #3293a3;
-    text-decoration: none;
   }
   a:hover {
     color: #4acad7;
   }
   a:active {
     color: #4acad7;
-    /*color: #27b0b8;*/
   }
   background-color: #d3ecf0;
   color: #123342;

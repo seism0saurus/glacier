@@ -6,16 +6,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class GenericMessageContentPayload {
+public class Mention {
 
     private String id;
-    private String url;
-    private List<Mention> mentions;
+    private String username;
+    private String acct;
 }
