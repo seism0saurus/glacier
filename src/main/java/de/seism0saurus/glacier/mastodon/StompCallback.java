@@ -85,8 +85,23 @@ public class StompCallback implements WebSocketCallback {
         this.restTemplate = restTemplate;
         this.principal = principal;
         this.hashtag = hashtag;
-        this.shortHandle = handle.substring(0,handle.indexOf('@'));
+        this.shortHandle = getShortHandle(handle);
         this.glacierDomain = glacierDomain;
+    }
+
+    private static @NotNull String getShortHandle(String handle) {
+        String tmpHandle = handle;
+        if (null == tmpHandle){
+            throw new IllegalArgumentException("A mastodon handle is needed");
+        }
+        if (tmpHandle.startsWith("@")){
+            // remove initial @
+            tmpHandle = tmpHandle.substring(1);
+        }
+        if (!tmpHandle.contains("@")){
+            throw new IllegalArgumentException("The mastodon handle does not contain an @ so either the name or the server is missing");
+        }
+        return tmpHandle.substring(0, tmpHandle.indexOf('@'));
     }
 
 
