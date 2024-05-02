@@ -130,6 +130,53 @@ For non http ports add the port to the hostname for correct redirects and checks
 For example *localhost:8080*.
 You can user Docker or any other compatible container runtime like [containerd](https://containerd.io/) with [nerdctl](https://github.com/containerd/nerdctl).
 
+#### MY_NAME
+
+The name is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your name in the appropriate entry on a website.
+
+#### MY_STREET_AND_NUMBER
+
+The street and house number is part of your address and is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your address in the appropriate entry on a website.
+
+#### MY_ZIP_CODE
+
+The zip code is part of your address and is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your address in the appropriate entry on a website.
+
+#### MY_CITY
+
+The city is part of your address and is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your address in the appropriate entry on a website.
+
+#### MY_COUNTRY
+
+The country is part of your address and is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your address in the appropriate entry on a website.
+
+#### MY_PHONE
+
+The phone number is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your phone number in the appropriate entry on a website.
+
+#### MY_MAIL
+
+The contact email address is used for the Legal Notice and the GDPR.
+You are the operator of your instance and responsible for logging and using data like IP addresses in your instance.
+Therefore, in some countries like Germany you have to provide your email address in the appropriate entry on a website.
+
+#### MY_WEBSITE
+
+The website is used for the Legal Notice and the GDPR.
+Give the users the possibility to learn more about you or your organisation.
+
 #### Docker
 
 ```bash

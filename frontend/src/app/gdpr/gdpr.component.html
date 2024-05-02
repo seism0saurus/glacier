@@ -2,30 +2,30 @@
 <mat-dialog-content>
   <h4>Legal Notice</h4>
   <p>This Glacier instance is operated by</p>
-  <p>{{ gdpr.operatorName }}</p>
-  <p>{{ gdpr.operatorStreetAndNumber }}<br/>
-    {{ gdpr.operatorZipcode }} {{ gdpr.operatorCity }}<br/>
-    {{ gdpr.operatorCountry }}</p>
-  <p>Phone: {{ gdpr.operatorPhone }}<br/>
-    Email: {{ gdpr.operatorMail }}<br/>
-    Website: {{ gdpr.operatorWebsite }}</p>
+  <p>{{ data.operatorName }}</p>
+  <p>{{ data.operatorStreetAndNumber }}<br/>
+    {{ data.operatorZipcode }} {{ data.operatorCity }}<br/>
+    {{ data.operatorCountry }}</p>
+  <p>Phone: {{ data.operatorPhone }}<br/>
+    Email: {{ data.operatorMail }}<br/>
+    Website: {{ data.operatorWebsite }}</p>
 
   <h4>Privacy Policy</h4>
 
   <p>We are very delighted that you have shown interest in our service. Data protection is of a particularly high
-    priority for {{ environment.host }}. If a data subject wants to use the Mastodon social wall Glacier at
-    {{ environment.host }}, processing of personal data could become necessary. If the processing of personal data is
+    priority for {{ data.domain }}. If a data subject wants to use the Mastodon social wall Glacier at
+    {{ data.domain }}, processing of personal data could become necessary. If the processing of personal data is
     necessary and there is no statutory basis for such processing, we generally obtain consent from the data
     subject.</p>
 
   <p>The processing of personal data, such as the username, mastodon handle, toots, or other data of a data subject
     shall always be in line with the General Data Protection Regulation (GDPR), and in accordance with the
-    country-specific data protection regulations applicable to {{ environment.host }}. By means of this data protection
+    country-specific data protection regulations applicable to {{ data.domain }}. By means of this data protection
     declaration, we would like to inform the general public of the nature, scope, and purpose of the personal data we
     collect, use and process. Furthermore, data subjects are informed, by means of this data protection declaration, of
     the rights to which they are entitled.</p>
 
-  <p>As the controller, {{ environment.host }} has implemented numerous technical and organizational measures to ensure the
+  <p>As the controller, {{ data.domain }} has implemented numerous technical and organizational measures to ensure the
     most complete protection of personal data processed through this website. However, Internet-based data transmissions
     may in principle have security gaps, so absolute protection may not be guaranteed.</p>
 
@@ -39,14 +39,14 @@
   <p>All toots shown are publicly available and have opted in by "mentioning" this Glacier instance.</p>
 
   <p>If you don't want to be shown on the social wall, don't mention &#64;glacier&#64;botsin.space in your posts and
-    don't visit https://{{ environment.host }}.</p>
+    don't visit https://{{ data.domain }}.</p>
 
-  <p>If you have questions or problems regarding your data, just write to {{ gdpr.operatorMail }}.</p>
+  <p>If you have questions or problems regarding your data, just write to {{ data.operatorMail }}.</p>
 
   <p>It's that simple.</p>
 
   <h4>1. Definitions</h4>
-  <p>The data protection declaration of {{ environment.host }} is based on the terms used by the European legislator
+  <p>The data protection declaration of {{ data.domain }} is based on the terms used by the European legislator
     for the adoption of the General Data Protection Regulation (GDPR). Our data protection declaration should be legible
     and understandable for the general public. To ensure this, we would like to first explain the terminology used.</p>
 
@@ -121,16 +121,16 @@
 
   </p>
 
-  <p>{{ gdpr.operatorName }}</p>
-  <p>{{ gdpr.operatorStreetAndNumber }}<br/>
-    {{ gdpr.operatorZipcode }} {{ gdpr.operatorCity }}<br/>
-    {{ gdpr.operatorCountry }}</p>
-  <p>Phone: {{ gdpr.operatorPhone }}<br/>
-    Email: {{ gdpr.operatorMail }}<br/>
-    Website: {{ gdpr.operatorWebsite }}</p>
+  <p>{{ data.operatorName }}</p>
+  <p>{{ data.operatorStreetAndNumber }}<br/>
+    {{ data.operatorZipcode }} {{ data.operatorCity }}<br/>
+    {{ data.operatorCountry }}</p>
+  <p>Phone: {{ data.operatorPhone }}<br/>
+    Email: {{ data.operatorMail }}<br/>
+    Website: {{ data.operatorWebsite }}</p>
 
   <h4>3. Cookies and Local Storage</h4>
-  <p>{{ environment.host }} use cookies. Cookies are text files that are stored in a computer system via an Internet
+  <p>{{ data.domain }} use cookies. Cookies are text files that are stored in a computer system via an Internet
     browser.</p>
 
   <p>Many Internet sites and servers use cookies. Many cookies contain a so-called cookie ID. A cookie ID is a unique
@@ -139,7 +139,7 @@
     differentiate the individual browser of the dats subject from other Internet browsers that contain other cookies. A
     specific Internet browser can be recognized and identified using the unique cookie ID.</p>
 
-  <p>Through the use of cookies, {{ environment.host }} can provide the users of this website the social wall service
+  <p>Through the use of cookies, {{ data.domain }} can provide the users of this website the social wall service
     that would not be possible without the cookie setting.</p>
 
   <p>Cookies allow us, as previously mentioned, to recognize our website users. The purpose of this recognition is to
@@ -155,7 +155,7 @@
     all functions of our website may be entirely usable.</p>
 
   <h4>4. Collection of general data and information</h4>
-  <p>The website of {{ environment.host }} collects a series of general data and information when a data subject or
+  <p>The website of {{ data.domain }} collects a series of general data and information when a data subject or
     automated system calls up the website. This general data and information are stored in the server log files.
     Collected may be (1) the browser types and versions used, (2) the operating system used by the accessing system, (3)
     the website from which an accessing system reaches our website (so-called referrers), (4) the sub-websites, (5) the
@@ -163,11 +163,11 @@
     service provider of the accessing system, and (8) any other similar data and information that may be used in the
     event of attacks on our information technology systems.</p>
 
-  <p>When using these general data and information, {{ environment.host }} does not draw any conclusions about the data
+  <p>When using these general data and information, {{ data.domain }} does not draw any conclusions about the data
     subject. Rather, this information is needed to (1) deliver the content of our website correctly, (2) optimize the
     content of our website as well as its advertisement, (3) ensure the long-term viability of our information
     technology systems and website technology, and (4) provide law enforcement authorities with the information
-    necessary for criminal prosecution in case of a cyber-attack. Therefore, {{ environment.host }} analyzes anonymously
+    necessary for criminal prosecution in case of a cyber-attack. Therefore, {{ data.domain }} analyzes anonymously
     collected data and information statistically, with the aim of increasing the data protection and data security of
     our enterprise, and to ensure an optimal level of protection for the personal data we process. The anonymous data of
     the server log files are stored separately from all personal data provided by a data subject.</p>
@@ -187,7 +187,7 @@
       <p>Each data subject shall have the right granted by the European legislator to obtain from the controller the
         confirmation as to whether or not personal data concerning him or her are being processed. If a data subject
         wishes to avail himself of this right of confirmation, he or she may, at any time, contact the operator of
-        {{ environment.host }}.</p>
+        {{ data.domain }}.</p>
     </li>
     <li><h4>b) Right of access</h4>
       <p>Each data subject shall have the right granted by the European legislator to obtain from the controller free
@@ -260,14 +260,14 @@
 
       </ul>
       <p>If one of the aforementioned reasons applies, and a data subject wishes to request the erasure of personal data
-        stored by {{ environment.host }}, he or she may, at any time, contact the operator of the controller. The operator of
-        {{ environment.host }} shall promptly ensure that the erasure request is complied with immediately.</p>
+        stored by {{ data.domain }}, he or she may, at any time, contact the operator of the controller. The operator of
+        {{ data.domain }} shall promptly ensure that the erasure request is complied with immediately.</p>
 
       <p>Where the controller has made personal data public and is obliged pursuant to Article 17(1) to erase the
         personal data, the controller, taking account of available technology and the cost of implementation, shall take
         reasonable steps, including technical measures, to inform other controllers processing the personal data that
         the data subject has requested erasure by such controllers of any links to, or copy or replication of, those
-        personal data, as far as processing is not required. The operator of {{ environment.host }} will arrange the necessary
+        personal data, as far as processing is not required. The operator of {{ data.domain }} will arrange the necessary
         measures in individual cases.</p>
     </li>
     <li><h4>e) Right of restriction of processing</h4>
@@ -290,8 +290,8 @@
 
       </ul>
       <p>If one of the aforementioned conditions is met, and a data subject wishes to request the restriction of the
-        processing of personal data stored by {{ environment.host }}, he or she may at any time contact the operator of the
-        controller. The operator of {{ environment.host }} will arrange the restriction of the processing. </p>
+        processing of personal data stored by {{ data.domain }}, he or she may at any time contact the operator of the
+        controller. The operator of {{ data.domain }} will arrange the restriction of the processing. </p>
     </li>
     <li><h4>f) Right to data portability</h4>
       <p>Each data subject shall have the right granted by the European legislator, to receive the personal data
@@ -308,7 +308,7 @@
         technically feasible and when doing so does not adversely affect the rights and freedoms of others.</p>
 
       <p>In order to assert the right to data portability, the data subject may at any time contact the operator of
-        {{ environment.host }}.</p>
+        {{ data.domain }}.</p>
 
     </li>
     <li>
@@ -317,22 +317,22 @@
         or her particular situation, at any time, to processing of personal data concerning him or her, which is based
         on point (e) or (f) of Article 6(1) of the GDPR. This also applies to profiling based on these provisions.</p>
 
-      <p>{{ environment.host }} shall no longer process the personal data in the event of the objection, unless we can
+      <p>{{ data.domain }} shall no longer process the personal data in the event of the objection, unless we can
         demonstrate compelling legitimate grounds for the processing which override the interests, rights and freedoms
         of the data subject, or for the establishment, exercise or defence of legal claims.</p>
 
-      <p>If {{ environment.host }} processes personal data for direct marketing purposes, the data subject shall have the right
+      <p>If {{ data.domain }} processes personal data for direct marketing purposes, the data subject shall have the right
         to object at any time to processing of personal data concerning him or her for such marketing. This applies to
         profiling to the extent that it is related to such direct marketing. If the data subject objects to
-        {{ environment.host }} to the processing for direct marketing purposes, {{ environment.host }} will no longer process the
+        {{ data.domain }} to the processing for direct marketing purposes, {{ data.domain }} will no longer process the
         personal data for these purposes.</p>
 
       <p>In addition, the data subject has the right, on grounds relating to his or her particular situation, to object
-        to processing of personal data concerning him or her by {{ environment.host }} for scientific or historical research
+        to processing of personal data concerning him or her by {{ data.domain }} for scientific or historical research
         purposes, or for statistical purposes pursuant to Article 89(1) of the GDPR, unless the processing is necessary
         for the performance of a task carried out for reasons of public interest.</p>
 
-      <p>In order to exercise the right to object, the data subject may contact the operator of {{ environment.host }}. In
+      <p>In order to exercise the right to object, the data subject may contact the operator of {{ data.domain }}. In
         addition, the data subject is free in the context of the use of information society services, and
         notwithstanding Directive 2002/58/EC, to use his or her right to object by automated means using technical
         specifications.</p>
@@ -347,13 +347,13 @@
         subject's explicit consent.</p>
 
       <p>If the decision (1) is necessary for entering into, or the performance of, a contract between the data subject
-        and a data controller, or (2) it is based on the data subject's explicit consent, {{ environment.host }} shall
+        and a data controller, or (2) it is based on the data subject's explicit consent, {{ data.domain }} shall
         implement suitable measures to safeguard the data subject's rights and freedoms and legitimate interests, at
         least the right to obtain human intervention on the part of the controller, to express his or her point of view
         and contest the decision.</p>
 
       <p>If the data subject wishes to exercise the rights concerning automated individual decision-making, he or she
-        may, at any time, contact the operator of {{ environment.host }}.</p>
+        may, at any time, contact the operator of {{ data.domain }}.</p>
 
     </li>
     <li><h4>i) Right to withdraw data protection consent </h4>
@@ -361,7 +361,7 @@
         processing of his or her personal data at any time. </p>
 
       <p>If the data subject wishes to exercise the right to withdraw the consent, he or she may, at any time, contact
-        the operator of {{ environment.host }}.</p>
+        the operator of {{ data.domain }}.</p>
 
     </li>
   </ul>

@@ -4,6 +4,7 @@ import {MatIconRegistry} from "@angular/material/icon";
 import {DomSanitizer} from "@angular/platform-browser";
 import {MatDialog} from "@angular/material/dialog";
 import {GdprComponent} from "../gdpr/gdpr.component";
+import {InstanceOperator} from "./instance-operator";
 
 @Component({
   selector: 'app-footer',
@@ -13,6 +14,18 @@ import {GdprComponent} from "../gdpr/gdpr.component";
 export class FooterComponent implements OnInit{
 
   public mastodonHandle: string = "unknown@example.com";
+  private instanceOperator: InstanceOperator = {
+    domain: 'example.com',
+    operatorName: 'Jon Doe',
+    operatorStreetAndNumber: 'somewhere 1',
+    operatorZipcode: '12345',
+    operatorCity: 'somecity',
+    operatorCountry: 'Germany',
+    operatorPhone: '+123456789',
+    operatorMail: 'mail@example.com',
+    operatorWebsite: 'example.com',
+  };
+
 
   constructor(private footerService: FooterService,
               private matIconRegistry: MatIconRegistry,
@@ -28,11 +41,15 @@ export class FooterComponent implements OnInit{
   ngOnInit() {
     this.footerService.getMastodonHandle()
       .subscribe(data => this.mastodonHandle = data.name);
+
+    this.footerService.getInstanceOperator()
+      .subscribe(data => this.instanceOperator = data);
   }
 
   openLegal() {
     this.dialog.open(GdprComponent, {
       width: '800px',
+      data: this.instanceOperator,
       panelClass: 'glacier-modalbox'
     })
   }

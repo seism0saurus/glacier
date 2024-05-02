@@ -28,14 +28,42 @@ public class InformationController {
      * It can be used to opt-out of glacier through a block.
      */
     private final String mastodonHandle;
+    private final String domain;
+    private final String operatorName;
+    private final String operatorStreetAndNumber;
+    private final String operatorZipcode;
+    private final String operatorCity;
+    private final String operatorCountry;
+    private final String operatorPhone;
+    private final String operatorMail;
+    private final String operatorWebsite;
 
     /**
      * The sole constructor for this class.
      * The needed variables are injected as {@link Value Value} by Spring.
      */
-    public InformationController(@Value("${mastodon.handle}") final String mastodonHandle) {
+    public InformationController(
+            @Value("${mastodon.handle}") final String mastodonHandle,
+            @Value("${glacier.domain}") final String domain,
+            @Value("${glacier.operatorName}") final String operatorName,
+            @Value("${glacier.operatorStreetAndNumber}") final String operatorStreetAndNumber,
+            @Value("${glacier.operatorZipcode}") final String operatorZipcode,
+            @Value("${glacier.operatorCity}") final String operatorCity,
+            @Value("${glacier.operatorCountry}") final String operatorCountry,
+            @Value("${glacier.operatorPhone}") final String operatorPhone,
+            @Value("${glacier.operatorMail}") final String operatorMail,
+            @Value("${glacier.operatorWebsite}") final String operatorWebsite
+    ) {
         this.mastodonHandle = mastodonHandle;
-        LOGGER.debug("Information Controller instantiated " + this.mastodonHandle);
+        this.domain = domain;
+        this.operatorName = operatorName;
+        this.operatorStreetAndNumber = operatorStreetAndNumber;
+        this.operatorZipcode = operatorZipcode;
+        this.operatorCity = operatorCity;
+        this.operatorCountry = operatorCountry;
+        this.operatorPhone = operatorPhone;
+        this.operatorMail = operatorMail;
+        this.operatorWebsite = operatorWebsite;
     }
 
     @GetMapping("/rest/wall-id")
@@ -64,9 +92,38 @@ public class InformationController {
         return handle;
     }
 
+    @GetMapping("/rest/operator")
+    public InstanceOperator getInstanceOperator() {
+        LOGGER.debug("Instance operator requested. Sending " + this.mastodonHandle);
+        InstanceOperator instanceOperator = new InstanceOperator();
+        instanceOperator.setDomain(this.domain);
+        instanceOperator.setOperatorName(this.operatorName);
+        instanceOperator.setOperatorStreetAndNumber(this.operatorStreetAndNumber);
+        instanceOperator.setOperatorZipcode(this.operatorZipcode);
+        instanceOperator.setOperatorCity(this.operatorCity);
+        instanceOperator.setOperatorCountry(this.operatorCountry);
+        instanceOperator.setOperatorPhone(this.operatorPhone);
+        instanceOperator.setOperatorMail(this.operatorMail);
+        instanceOperator.setOperatorWebsite(this.operatorWebsite);
+        return instanceOperator;
+    }
+
     @Data
     static class Handle {
         private String name;
+    }
+
+    @Data
+    static class InstanceOperator {
+        private String domain;
+        private String operatorName;
+        private String operatorStreetAndNumber;
+        private String operatorZipcode;
+        private String operatorCity;
+        private String operatorCountry;
+        private String operatorPhone;
+        private String operatorMail;
+        private String operatorWebsite;
     }
 
     @Data

@@ -1,8 +1,7 @@
-import {Component} from '@angular/core';
-import {MatDialogActions, MatDialogClose, MatDialogContent, MatDialogRef} from "@angular/material/dialog";
+import {Component, Inject} from '@angular/core';
+import {MAT_DIALOG_DATA, MatDialogActions, MatDialogClose, MatDialogContent} from "@angular/material/dialog";
 import {MatIcon} from "@angular/material/icon";
-import {gdpr} from "../../environments/gdpr";
-import {environment} from "../../environments/environment";
+import {InstanceOperator} from "../footer/instance-operator";
 
 @Component({
   selector: 'app-gdpr',
@@ -17,9 +16,6 @@ import {environment} from "../../environments/environment";
   styleUrl: './gdpr.component.css'
 })
 export class GdprComponent {
-  constructor() {
+  constructor(@Inject(MAT_DIALOG_DATA) public data: InstanceOperator) {
   }
-
-  protected readonly gdpr = gdpr;
-  protected readonly environment = environment;
 }
