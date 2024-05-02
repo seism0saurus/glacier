@@ -176,7 +176,7 @@ export class SubscriptionService {
 export class MessageQueue {
   private storage: SafeMessage[] = [];
 
-  constructor(private capacity: number = 30) {
+  constructor(private capacity: number = 20) {
   }
 
   restore(): void{
@@ -190,11 +190,9 @@ export class MessageQueue {
     if (this.size() >= this.capacity) {
       console.log('Queue is full. Removing oldest entries');
       while (this.size() >= this.capacity){
-        let firstId = this.storage.at(0)?.id;
-        console.debug('Deleting toot with id', firstId);
-        this.dequeue(firstId);
+        this.storage.shift();
       }
-      console.log('Queue size is now', this.size);
+      console.log('Queue size is now', this.size());
     }
     if (this.storage.filter( message => message.id === item.id).length){
       console.log('Message with id', item.id, 'is already known. Ignore new one');
