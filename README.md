@@ -193,6 +193,9 @@ Here is a short video of adding a toot to the wall.
 
 ## Concepts and wordings
 
+- *Glacier*: Mastodon is the well known microblogging service for the fediverse.
+It's name comes from an extinct mammoth, that lived during the ice age.
+Therefore, the social wall application for Mastodon was named Glacier by its creator.
 - *Glacier instance*: A Glacier instance is one deployment of the Glacier web application.
 One instance can serve multiple Glacier Walls with different hashtags for different users.
 For example glacier.seism0saurus.de is an instance of Glacier.
