@@ -100,7 +100,7 @@ buildah build --build-arg JAR_FILE=glacier-0.0.1-SNAPSHOT.jar  -f Dockerfile -t 
 
 ### Container Image
 
-A container image with latest stable version is available: [ghcr.io/seism0saurus/glacier:main](ghcr.io/seism0saurus/glacier:main)
+A container image with latest stable version is available: [ghcr.io/seism0saurus/glacier:main](https://ghcr.io/seism0saurus/glacier:main)
 Or you can build your own version with the steps from Build it.
 
 You can run the image locally with docker or other compatible container runtimes.
