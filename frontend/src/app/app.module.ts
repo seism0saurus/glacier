@@ -20,6 +20,7 @@ import {ResourceUrlSanitizerPipe} from "./wall/resource-url-sanitizer.pipe";
 import {CookieService} from "ngx-cookie-service";
 import {MatGridList, MatGridTile} from "@angular/material/grid-list";
 import {MatDialogModule} from "@angular/material/dialog";
+import {DOCUMENT} from "@angular/common";
 
 @NgModule({
   declarations: [
@@ -55,7 +56,7 @@ import {MatDialogModule} from "@angular/material/dialog";
     {
       provide: RxStompService,
       useFactory: rxStompServiceFactory,
-      deps: [HttpClient]
+      deps: [HttpClient, DOCUMENT]
     }
   ],
   bootstrap: [AppComponent]
