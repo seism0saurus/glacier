@@ -49,11 +49,6 @@ export class SubscriptionService {
   getCreatedEvents(): Observable<MessageQueue> {
     console.log('SubscriptionService:', 'New Observable created');
     this.receivedMessages.restore();
-    // this.receivedMessages.enqueue({id:"1", url: 'https://c.im/@GertrudeZane/112038131697458407/embed'});
-    // this.receivedMessages.enqueue({id:"2", url: 'https://botsin.space/@hourlyhectoc/112036125133971064/embed'});
-    // this.receivedMessages.enqueue({id:"3", url: 'https://mastodon.zergy.net/@Zergy/112038414711064112/embed'});
-    // this.receivedMessages.enqueue({id:"4", url: 'https://mstdn.social/@DemocracySpot/112039038866407099/embed'});
-    // this.receivedMessages.enqueue({id:"5", url: 'https://social.growyourown.services/@FediTips/112039041940272554/embed'});
     return this.messageObersavble$;
   }
 
@@ -118,8 +113,6 @@ export class SubscriptionService {
     {
       this.unsubscribeHashtag(tag);
     });
-    // this.hashtags = [];
-    // localStorage.setItem('hashtags', JSON.stringify(this.hashtags));
 
     // unsubscribe your main subscription
     this.subcriptionsSubscription.unsubscribe();
@@ -197,9 +190,11 @@ export class MessageQueue {
     if (this.size() >= this.capacity) {
       console.log('Queue is full. Removing oldest entries');
       while (this.size() >= this.capacity){
-        this.dequeue('0');
+        let firstId = this.storage.at(0)?.id;
+        console.debug('Deleting toot with id', firstId);
+        this.dequeue(firstId);
       }
-      console.log('Queue size is', this.size);
+      console.log('Queue size is now', this.size);
     }
     if (this.storage.filter( message => message.id === item.id).length){
       console.log('Message with id', item.id, 'is already known. Ignore new one');
@@ -209,8 +204,11 @@ export class MessageQueue {
     localStorage.setItem('messageQueue', JSON.stringify(this.storage));
   }
 
-  dequeue(id: string): SafeMessage | undefined {
+  dequeue(id: string | undefined): SafeMessage | undefined {
     let messageToRemove;
+    if (id == undefined){
+      return messageToRemove;
+    }
     this.storage.forEach(scm => {
       if (scm.id === id) {
         messageToRemove = scm;

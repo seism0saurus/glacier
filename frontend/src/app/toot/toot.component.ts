@@ -38,13 +38,13 @@ export class TootComponent {
   }
 
   private sendHeightToIframe(element: HTMLIFrameElement) {
-    if (element.contentWindow) {
+    if (element.contentWindow && element.src != '') {
       element.contentWindow.postMessage({
         type: 'setHeight',
         id: this.uuid,
       }, element.src);
     } else {
-      console.error('Could not access contentWindow of iframe ', this.uuid);
+      console.debug('Could not access contentWindow of iframe ', this.uuid);
     }
   }
 
