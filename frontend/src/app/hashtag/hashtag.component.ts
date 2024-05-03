@@ -33,6 +33,10 @@ export class HashtagComponent {
       `mastodon_icon`,
       this.domSanitizer.bypassSecurityTrustResourceUrl("../assets/mastodon.svg")
     );
+    this.matIconRegistry.addSvgIcon(
+      `trash_icon`,
+      this.domSanitizer.bypassSecurityTrustResourceUrl("../assets/trash.svg")
+    );
   }
 
   add(event: MatChipInputEvent): void {
