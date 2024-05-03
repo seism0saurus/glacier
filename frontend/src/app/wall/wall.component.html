@@ -6,7 +6,7 @@
         id="column-{{i}}"
       >
         <div class="column-of-toots">
-          <app-toot *ngFor='let toot of getTootsForColumn(i); trackBy: trackToot' [url]="toot.url | resourceUrlSanitizer"></app-toot>
+          <app-toot *ngFor='let toot of getTootsForColumn(i); trackBy: trackToot' [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id"></app-toot>
         </div>
       </mat-grid-tile>
   </mat-grid-list>

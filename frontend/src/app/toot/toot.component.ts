@@ -11,14 +11,14 @@ export class TootComponent {
 
   @Input()
   url: SafeResourceUrl = {};
-  public uuid: string = "";
+
+  @Input()
+  uuid: string = "";
 
   constructor(private http: HttpClient) {
   }
 
   configureIframe(element: HTMLIFrameElement): void {
-    this.uuid = self.crypto.randomUUID();
-
     if (element) {
       // Register global listener that handles only messages for this iframe
       window.addEventListener('message', this.getHeightListener(element));
