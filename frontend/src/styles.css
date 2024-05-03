@@ -5,17 +5,19 @@
   src: url("/assets/juggerrock.ttf");
 }
 html, body {
-  a {
-    color: #3293a3;
-  }
-  a:hover {
-    color: #4acad7;
-  }
-  a:active {
-    color: #4acad7;
-  }
+
   background-color: #d3ecf0;
   color: #123342;
   margin: 0;
   height: calc(100% - 8px);
+}
+
+a {
+  color: #3293a3;
+}
+a:hover {
+  color: #4acad7;
+}
+a:active {
+  color: #4acad7;
 }
