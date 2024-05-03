@@ -15,10 +15,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-
+  justify-content: center;
+  height: 57px;
   background-color: #4acad7;
 
-  height: max-content;
   border-radius: 4px;
 }
 
@@ -43,4 +43,11 @@ mat-label {
 mat-chip-row {
   border-radius: 4px;
   max-width: max-content;
+}
+.mdc-evolution-chip-set .mdc-evolution-chip {
+  margin: 0px;
+}
+
+.mdc-evolution-chip-set {
+  min-height: 32px;
 }
