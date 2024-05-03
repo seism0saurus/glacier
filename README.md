@@ -2,9 +2,11 @@
 
 # Glacier
 
-*A mastodon only social wall.*
+*A mastodon and fediverse social wall.*
 
 With **Glacier** you can follow hashtags to see the interaction of participants of an event in realtime.
+
+Glacier ist still **BETA**. You can use it, but there could be some issues.
 
 ## Content
 
