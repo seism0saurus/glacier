@@ -39,7 +39,7 @@ export class WallComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     console.log('Terminating subscriptions and storing messages for next session');
-    this.subscriptionService.terminateAll();
+    this.subscriptionService.terminateAllSubscriptions();
     if (this.serviceSubscription) {
       this.serviceSubscription.unsubscribe();
     }

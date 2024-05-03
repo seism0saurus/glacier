@@ -20,8 +20,12 @@
            [matChipInputAddOnBlur]="addOnBlur"
            (matChipInputTokenEnd)="add($event)"/>
   </mat-form-field>
-  <div id='cancel-all' (click)="clear()">
+  <div class="button" id='cancel-all' (click)="clearTags()">
     <mat-icon [attr.aria-label]="'remove all hashtags'" svgIcon="cancel_icon"></mat-icon>
     <span>Cancel All</span>
+  </div>
+  <div class="button" id='clear-toots' (click)="clearToots()">
+    <mat-icon [attr.aria-label]="'remove all toots'" svgIcon="cancel_icon"></mat-icon>
+    <span>Clear Toots</span>
   </div>
 </div>

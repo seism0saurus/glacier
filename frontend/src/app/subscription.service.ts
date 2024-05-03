@@ -14,22 +14,20 @@ import {SafeMessage} from "./message-types/safe-message";
 })
 export class SubscriptionService {
 
-  private subcriptionsSubscription: Subscription;
+  private subscriptionsSubscription: Subscription;
   private terminationsSubscription: Subscription;
   private receivedMessages: MessageQueue = new MessageQueue();
-  private messageObersavble$: Observable<MessageQueue> = of(this.receivedMessages);
+  private messageObservable$: Observable<MessageQueue> = of(this.receivedMessages);
   private subscriptions: { [key: string]: Subscription } = {};
   private destinations: string[] = [];
   private hashtags: string[] = [];
-  private principal: string | null = null;
 
   constructor(private rxStompService: RxStompService) {
-    this.subcriptionsSubscription = this.rxStompService
+    this.subscriptionsSubscription = this.rxStompService
       .watch('/user/topic/subscriptions')
       .subscribe((message: Message) => {
         console.log('Subscription topic', message.body);
         const data: SubscriptionAckMessage = JSON.parse(message.body);
-        this.principal = data.principal;
         this.handleSubscriptionAckMessage(data);
       });
 
@@ -43,13 +41,13 @@ export class SubscriptionService {
 
     // Restore hashtags from previous session
     const storedHashtags: string[] = JSON.parse(localStorage.getItem('hashtags') || '[]');
-    storedHashtags.forEach( tag => this.subscribeHashtag(tag));
+    storedHashtags.forEach(tag => this.subscribeHashtag(tag));
   }
 
   getCreatedEvents(): Observable<MessageQueue> {
     console.log('SubscriptionService:', 'New Observable created');
     this.receivedMessages.restore();
-    return this.messageObersavble$;
+    return this.messageObservable$;
   }
 
   private handleSubscriptionAckMessage(data: SubscriptionAckMessage) {
@@ -79,7 +77,7 @@ export class SubscriptionService {
   private handleTerminationAckMessage(data: TerminationAckMessage) {
     if (data.terminated) {
 
-      this.hashtags = this.hashtags.filter( tag => tag !== data.hashtag);
+      this.hashtags = this.hashtags.filter(tag => tag !== data.hashtag);
       localStorage.setItem('hashtags', JSON.stringify(this.hashtags));
 
       const creationDestination = this.destination(data.principal, data.hashtag, 'creation');
@@ -97,25 +95,24 @@ export class SubscriptionService {
   }
 
   private terminateSubscriptionByDestination(dest: string) {
-    console.log('Terminating subscriptions for',dest);
-    if (this.subscriptions[dest]){
+    console.log('Terminating subscriptions for', dest);
+    if (this.subscriptions[dest]) {
       this.subscriptions[dest].unsubscribe();
       delete this.subscriptions[dest];
     } else {
-      console.error('No subscription found with destination',dest);
+      console.error('No subscription found with destination', dest);
     }
   }
 
-  terminateAll() {
+  terminateAllSubscriptions() {
 
     // Tell the backend, that you terminate all subscriptions
-    this.hashtags.forEach(tag =>
-    {
+    this.hashtags.forEach(tag => {
       this.unsubscribeHashtag(tag);
     });
 
     // unsubscribe your main subscription
-    this.subcriptionsSubscription.unsubscribe();
+    this.subscriptionsSubscription.unsubscribe();
     this.terminationsSubscription.unsubscribe();
 
     // Unsubscribe each hashtag subscription
@@ -125,6 +122,11 @@ export class SubscriptionService {
         delete this.subscriptions[key];
       }
     );
+  }
+
+  clearAllToots() {
+    this.receivedMessages.clear();
+    this.messageObservable$ = of(this.receivedMessages);
   }
 
   subscribeToStatusCreatedMessages(dest: string) {
@@ -179,7 +181,7 @@ export class MessageQueue {
   constructor(private capacity: number = 20) {
   }
 
-  restore(): void{
+  restore(): void {
     let storedMessages: string | null = localStorage.getItem('messageQueue');
     if (storedMessages !== null) {
       this.storage = JSON.parse(storedMessages) as SafeMessage[];
@@ -189,12 +191,12 @@ export class MessageQueue {
   enqueue(item: SafeMessage): void {
     if (this.size() >= this.capacity) {
       console.log('Queue is full. Removing oldest entries');
-      while (this.size() >= this.capacity){
+      while (this.size() >= this.capacity) {
         this.storage.shift();
       }
       console.log('Queue size is now', this.size());
     }
-    if (this.storage.filter( message => message.id === item.id).length){
+    if (this.storage.filter(message => message.id === item.id).length) {
       console.log('Message with id', item.id, 'is already known. Ignore new one');
       return;
     }
@@ -204,7 +206,7 @@ export class MessageQueue {
 
   dequeue(id: string | undefined): SafeMessage | undefined {
     let messageToRemove;
-    if (id == undefined){
+    if (id == undefined) {
       return messageToRemove;
     }
     this.storage.forEach(scm => {
@@ -220,6 +222,11 @@ export class MessageQueue {
     }
     localStorage.setItem('messageQueue', JSON.stringify(this.storage));
     return messageToRemove;
+  }
+
+  clear(): void {
+    this.storage = [];
+    localStorage.setItem('messageQueue', JSON.stringify(this.storage));
   }
 
   size(): number {

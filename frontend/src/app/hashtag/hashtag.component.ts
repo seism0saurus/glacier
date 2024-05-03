@@ -85,9 +85,13 @@ export class HashtagComponent {
     }
   }
 
-  clear(): void {
+  clearTags(): void {
     this.hashtags.forEach( tag => this.subscriptionService.unsubscribeHashtag(tag))
     this.hashtags = [];
+  }
+
+  clearToots(): void {
+    this.subscriptionService.clearAllToots();
   }
 
   private sanitize(tag: string): string {
