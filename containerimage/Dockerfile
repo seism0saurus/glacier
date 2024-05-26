@@ -1,11 +1,11 @@
-FROM docker.io/eclipse-temurin:21-jre as builder
+FROM docker.io/eclipse-temurin:22-jre as builder
 ARG JAR_FILE=glacier.jar
 COPY ${JAR_FILE} application.jar
 RUN java -Djarmode=layertools -jar application.jar extract
 RUN ls -lah
 
 
-FROM docker.io/eclipse-temurin:21-jre
+FROM docker.io/eclipse-temurin:22-jre
 EXPOSE 8080
 
 RUN groupadd spring && useradd -g spring spring
