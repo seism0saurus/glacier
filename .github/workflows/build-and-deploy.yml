@@ -120,7 +120,7 @@ jobs:
 #        env:
 #          SPRING_PROFILES_ACTIVE: default
 #          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
-#          HANDLE: glacier@botsin.space
+#          HANDLE: glacier@mastodon.seism0saurus.de
 #          INSTANCE: botsin.space
 #          MY_DOMAIN: glacier:8080
 #        ports:

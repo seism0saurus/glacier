@@ -116,7 +116,7 @@ For example *infosec.exchange* or *botsin.space*.
 #### HANDLE
 
 The handle is the mastodon handle of your account. The handle consists of your account name and the mastodon instance.
-For example *glacier@botsin.space*.
+For example *glacier@mastodon.seism0saurus.de*.
 
 #### ACCESS_KEY
 
@@ -224,7 +224,7 @@ To create a new Glacier Wall follow these steps.
 To add a toot to your Glacier Wall follow these steps.
 
 1) Start a new toot
-2) Mention the bot of your Glacier instance in your toot. For example @glacier@botsin.space. 
+2) Mention the bot of your Glacier instance in your toot. For example @glacier@mastodon.seism0saurus.de. 
 This is important since not all toots with a hashtag reach the bot, which collects the toots.
 This is due to the concept of federation in the Fediverse.
 3) Use one of the hashtags of your Glacier Wall. For example #flowers.
@@ -234,7 +234,7 @@ Only visible toots with a hashtag are shown on a Glacier Wall.
 
 Here is an example toot:
 ```
-@glacier@botsin.space
+@glacier@mastodon.seism0saurus.de
 
 Hi,
 very cool project. Thanks for developing a social wall ;)
