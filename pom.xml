@@ -75,6 +75,12 @@
             <artifactId>kotlin-reflect</artifactId>
             <version>${kotlin.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-serialization-json</artifactId>
+            <version>1.7.3</version>
+        </dependency>
+
 
         <!--Database Libraries-->
 <!--        <dependency>-->
