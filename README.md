@@ -79,7 +79,7 @@ To create a container image for Docker or other engines,
 copy the created jar into the [containerimage](./containerimage) folder.
 Then change into the folder and run docker build.
 ```bash
-cp target/glacier-0.0.2-SNAPSHOT.jar containerimage/
+cp target/glacier-0.0.3-SNAPSHOT.jar containerimage/
 cd containerimage
 ```
 
@@ -89,13 +89,13 @@ or any compatible build tool that creates standard container images like [builda
 #### Docker
 
 ```bash
-docker build -t glacier --build-arg JAR_FILE=glacier-0.0.2-SNAPSHOT.jar .
+docker build -t glacier --build-arg JAR_FILE=glacier-0.0.3-SNAPSHOT.jar .
 ```
 
 #### Buildah
 
 ```bash
-buildah build --build-arg JAR_FILE=glacier-0.0.2-SNAPSHOT.jar  -f Dockerfile -t glacier .
+buildah build --build-arg JAR_FILE=glacier-0.0.3-SNAPSHOT.jar  -f Dockerfile -t glacier .
 ```
 
 ## Run it
