@@ -77,12 +77,6 @@ public class SubscriptionListener {
         this.subscriptionManager = subscriptionManager;
     }
 
-//    @EventListener
-//    public void onConnectEvent(SessionConnectEvent event) {
-//        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
-//        LOGGER.info("Client with session {} and username {} connecting", headerAccessor.getSessionId(), event.getUser().getName());
-//    }
-
     /**
      * Handles the event when a session is connected.
      * <p>
@@ -105,19 +99,6 @@ public class SubscriptionListener {
             future.cancel(true);
         }
     }
-
-//
-//    @EventListener
-//    public void onSubscriptionEvent(SessionSubscribeEvent event) {
-//        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
-//        LOGGER.info("Client with session {} and username {} subscrided to {}", headerAccessor.getSessionId(), event.getUser().getName(), headerAccessor.getDestination());
-//    }
-//
-//    @EventListener
-//    public void onUnsubscriptionEvent(SessionUnsubscribeEvent event) {
-//        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
-//        LOGGER.info("Client with session {} and username {} unsubscribing from {}", headerAccessor.getSessionId(), event.getUser().getName(), headerAccessor.getDestination());
-//    }
 
     /**
      * Handles the event when a session is disconnected.

@@ -315,6 +315,7 @@ public class StompCallbackTest {
     /**
      * Tests if the event handler processes a Technical Failure event correctly
      */
+    @SuppressWarnings("ThrowableNotThrown")
     @Test
     public void onEvent_EventTechnicalFailure() {
         // Setup

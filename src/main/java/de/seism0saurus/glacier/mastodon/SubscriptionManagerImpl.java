@@ -90,7 +90,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         this.restTemplate = restTemplate;
         this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
-        subscriptions = new HashMap<String, Map<String, Future<?>>>();
+        subscriptions = new HashMap<>();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
     }
 

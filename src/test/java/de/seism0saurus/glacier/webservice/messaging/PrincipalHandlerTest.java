@@ -38,6 +38,7 @@ class PrincipalHandlerTest {
         Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
 
         // Assert
+        assert result != null;
         assertEquals("testWallId", result.getName());
         assertEquals("testWallId", attributes.get("principal"));
         assertEquals("testSessionId", attributes.get("sessionId"));
@@ -64,6 +65,7 @@ class PrincipalHandlerTest {
         Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
 
         // Assert
+        assert result != null;
         assertEquals("", result.getName());
         assertEquals("", attributes.get("principal"));
         assertEquals("testSessionId", attributes.get("sessionId"));
@@ -89,6 +91,7 @@ class PrincipalHandlerTest {
         Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
 
         // Assert
+        assert result != null;
         assertEquals("", result.getName());
         assertEquals("", attributes.get("principal"));
         assertEquals("testSessionId", attributes.get("sessionId"));
