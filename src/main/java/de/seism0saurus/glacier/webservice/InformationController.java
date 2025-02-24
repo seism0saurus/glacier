@@ -95,7 +95,7 @@ public class InformationController {
     @GetMapping(value="/rest/mastodon-handle", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public Handle getMastodonHandle() {
-        LOGGER.debug("Mastodon Handle requested. Sending " + this.mastodonHandle);
+        LOGGER.debug("Mastodon Handle requested. Sending {} ", this.mastodonHandle);
         Handle handle = new Handle();
         handle.setName(this.mastodonHandle);
         return handle;
@@ -104,7 +104,7 @@ public class InformationController {
     @GetMapping(value="/rest/operator", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public InstanceOperator getInstanceOperator() {
-        LOGGER.debug("Instance operator requested. Sending " + this.mastodonHandle);
+        LOGGER.debug("Instance operator requested. Sending {}", this.mastodonHandle);
         InstanceOperator instanceOperator = new InstanceOperator();
         instanceOperator.setDomain(this.domain);
         instanceOperator.setOperatorName(this.operatorName);

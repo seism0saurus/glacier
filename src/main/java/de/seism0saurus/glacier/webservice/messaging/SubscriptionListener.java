@@ -95,6 +95,10 @@ public class SubscriptionListener {
     @EventListener
     public void onConnectedEvent(SessionConnectedEvent event) {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
+        if (event.getUser() == null) {
+            LOGGER.warn("Client with session {} connected but has no user associated with it", headerAccessor.getSessionId());
+            return;
+        }
         LOGGER.info("Client with session {} and username {} connected", headerAccessor.getSessionId(), event.getUser().getName());
         Future<?> future = this.disconnectTimer.get(event.getUser().getName());
         if (future != null) {
@@ -127,19 +131,25 @@ public class SubscriptionListener {
     @EventListener
     public void onDisconnectEvent(SessionDisconnectEvent event) {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
+        if (event.getUser() == null) {
+            LOGGER.warn("Client with session {} disconnected but has no user associated with it", headerAccessor.getSessionId());
+            return;
+        }
         LOGGER.info("Client with session {} and username {} disconnected. Starting timer to wait for reconnection", headerAccessor.getSessionId(), event.getUser().getName());
-        var executorService = Executors.newVirtualThreadPerTaskExecutor();
-        Future<?> future = executorService.submit(() -> {
-            LOGGER.info("Timer for principal {} started", event.getUser().getName());
-            try {
-                Thread.sleep(300_000L);
-            } catch (InterruptedException e) {
-                LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
-                return;
-            }
-            LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
-            this.subscriptionManager.terminateAllSubscriptions(headerAccessor.getUser().getName());
-        });
+        Future<?> future;
+        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            future = executorService.submit(() -> {
+                LOGGER.info("Timer for principal {} started", event.getUser().getName());
+                try {
+                    Thread.sleep(300_000L);
+                } catch (InterruptedException e) {
+                    LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
+                    return;
+                }
+                LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
+                this.subscriptionManager.terminateAllSubscriptions(event.getUser().getName());
+            });
+        }
         this.disconnectTimer.put(event.getUser().getName(), future);
     }
 

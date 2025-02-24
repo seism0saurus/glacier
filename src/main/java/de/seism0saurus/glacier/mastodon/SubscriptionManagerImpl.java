@@ -91,7 +91,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
         subscriptions = new HashMap<String, Map<String, Future<?>>>();
-        LOGGER.info("StatusInterfaceImpl for mastodon instance " + instance + " created");
+        LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
     }
 
     /**
@@ -108,18 +108,18 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             LOGGER.info("A subscription for principal {} with the hastag {} already exists", principal, hashtag);
             return;
         }
-
-        var executorService = Executors.newVirtualThreadPerTaskExecutor();
-        Future<?> future = executorService.submit(() -> {
-            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
-                LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
-                sleepForever(subscription);
-            } catch (IOException e) {
-                LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
-                throw new RuntimeException(e);
-            }
-        });
-
+        Future<?> future;
+        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
+            future = executorService.submit(() -> {
+                try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
+                    LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
+                    sleepForever(subscription);
+                } catch (IOException e) {
+                    LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
+                    throw new RuntimeException(e);
+                }
+            });
+        }
         previousSubscriptions.put(hashtag, future);
         subscriptions.put(principal, previousSubscriptions);
     }

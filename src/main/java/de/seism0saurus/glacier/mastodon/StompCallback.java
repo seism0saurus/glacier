@@ -124,12 +124,12 @@ public class StompCallback implements WebSocketCallback {
                     case ParsedStreamEvent.StatusDeleted statusDeletedEvent ->
                             procesStatusDeletedEvent(statusDeletedEvent.getDeletedStatusId(), baseDestination);
                     default ->
-                            LOGGER.info("Subscription " + principal + " got an unknown StreamEvent: " + streamEvent.getEvent().getClass());
+                            LOGGER.info("Subscription {} got an unknown StreamEvent: {}", principal, streamEvent.getEvent().getClass());
                 }
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
             case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
-            default -> LOGGER.info("Subscription " + principal + " got an unknown event " + event.getClass());
+            default -> LOGGER.info("Subscription {} got an unknown event {}", principal, event.getClass());
         }
     }
 
@@ -168,7 +168,7 @@ public class StompCallback implements WebSocketCallback {
             ) {
                 LOGGER.info("Delete toot with id {} id", genericMessageContent.getPayload().textValue());
             } else {
-                LOGGER.warn("Not an update event for the subscribed hashtag", genericMessageContent);
+                LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
             }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
@@ -236,7 +236,7 @@ public class StompCallback implements WebSocketCallback {
                 LOGGER.info("FRAME-ANCESTORS header does not exists. X-Frame-Options explicitly allowed");
                 return true;
             } else {
-                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value" + xFrameOptions);
+                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value: {}", xFrameOptions);
                 return false;
             }
         }
@@ -251,10 +251,8 @@ public class StompCallback implements WebSocketCallback {
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
-        if (status.getMentions().contains(new Status.Mention())){
-
-        }
         if (isLoadable(httpHeaders, glacierDomain)) {
+            assert status.getAccount() != null;
             StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).author(status.getAccount().getDisplayName()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
         }
@@ -295,17 +293,17 @@ public class StompCallback implements WebSocketCallback {
     private void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
-                    LOGGER.info("Subscription {principal} got a Open event: {}", principal, open);
+                    LOGGER.info("Subscription {} got a Open event: {}", principal, open);
             case TechnicalEvent.Closing closing ->
-                    LOGGER.info("Subscription {principal} got a Closing event: {}", principal, closing);
+                    LOGGER.info("Subscription {} got a Closing event: {}", principal, closing);
             case TechnicalEvent.Closed closed ->
-                    LOGGER.info("Subscription {principal} got a Closed event: {}", principal, closed);
+                    LOGGER.info("Subscription {} got a Closed event: {}", principal, closed);
             case TechnicalEvent.Failure failure -> {
-                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription. The error is: {}", principal, failure.getError());
+                LOGGER.error("Subscription {} got a Failure event. Restarting subscription. The error is: {}", principal, failure.getError().getMessage());
                 this.subscriptionManager.terminateSubscription(principal, hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
-            default -> LOGGER.info("Subscription {principal} got an unknown WebSocketEvent: {}", principal, event);
+            default -> LOGGER.info("Subscription {} got an unknown WebSocketEvent: {}", principal, event);
         }
     }
 
@@ -315,6 +313,6 @@ public class StompCallback implements WebSocketCallback {
      * @param msg The message to be logged.
      */
     private void logEvent(final String msg) {
-        LOGGER.info("Subscription " + principal + " " + msg);
+        LOGGER.info("Subscription {} {}", principal, msg);
     }
 }
