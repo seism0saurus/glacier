@@ -7,9 +7,10 @@ import {GdprComponent} from "../gdpr/gdpr.component";
 import {InstanceOperator} from "./instance-operator";
 
 @Component({
-  selector: 'app-footer',
-  templateUrl: './footer.component.html',
-  styleUrls: ['./footer.component.css']
+    selector: 'app-footer',
+    templateUrl: './footer.component.html',
+    styleUrls: ['./footer.component.css'],
+    standalone: false
 })
 export class FooterComponent implements OnInit{
 

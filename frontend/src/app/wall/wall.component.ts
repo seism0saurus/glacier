@@ -9,9 +9,10 @@ import {Subscription} from "rxjs";
  * It subscribes to a service to receive new messages and handles clean-up when the component is destroyed.
  */
 @Component({
-  selector: 'app-wall',
-  templateUrl: './wall.component.html',
-  styleUrls: ['./wall.component.css'],
+    selector: 'app-wall',
+    templateUrl: './wall.component.html',
+    styleUrls: ['./wall.component.css'],
+    standalone: false
 })
 export class WallComponent implements OnInit, OnDestroy {
 
