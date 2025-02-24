@@ -6,8 +6,9 @@ import {SubscriptionService} from '../subscription.service';
 import {MatInputModule} from "@angular/material/input";
 import {MatChipGrid, MatChipInput, MatChipRemove, MatChipRow} from "@angular/material/chips";
 import {MatIcon} from "@angular/material/icon";
-import {HttpClientTestingModule} from "@angular/common/http/testing";
+import { provideHttpClientTesting } from "@angular/common/http/testing";
 import {BrowserAnimationsModule} from "@angular/platform-browser/animations";
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 describe('HashtagComponent', () => {
   let component: HashtagComponent;
@@ -17,20 +18,17 @@ describe('HashtagComponent', () => {
   beforeEach(() => {
     mockSubscriptionService = jasmine.createSpyObj<SubscriptionService>(['subscribeHashtag', 'unsubscribeHashtag', 'clearAllToots']);
     TestBed.configureTestingModule({
-      declarations: [HashtagComponent],
-      imports: [
-        HttpClientTestingModule,
-        MatFormField,
+    declarations: [HashtagComponent],
+    imports: [MatFormField,
         MatInputModule,
         MatChipInput,
         MatChipGrid,
         MatChipRow,
         MatChipRemove,
         MatIcon,
-        BrowserAnimationsModule
-      ],
-      providers: [{provide: SubscriptionService, useValue: mockSubscriptionService}]
-    });
+        BrowserAnimationsModule],
+    providers: [{ provide: SubscriptionService, useValue: mockSubscriptionService }, provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+});
     fixture = TestBed.createComponent(HashtagComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();

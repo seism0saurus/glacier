@@ -1,7 +1,8 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 
 import {TootComponent} from './toot.component';
-import {HttpClientTestingModule} from "@angular/common/http/testing";
+import { provideHttpClientTesting } from "@angular/common/http/testing";
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 describe('TootComponent', () => {
   let component: TootComponent;
@@ -9,11 +10,10 @@ describe('TootComponent', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      declarations: [TootComponent],
-      imports: [
-        HttpClientTestingModule,
-      ]
-    });
+    declarations: [TootComponent],
+    imports: [],
+    providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+});
     fixture = TestBed.createComponent(TootComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
