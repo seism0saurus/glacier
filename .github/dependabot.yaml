@@ -6,6 +6,12 @@ updates:
       interval: "daily"
     reviewers:
       - "seism0saurus"
+    groups:
+      logging:
+        patterns:
+          - "ch.qos.logback*"
+          - "ch.qos.logback.contrib*"
+          - "com.fasterxml.jackson.core*"
 
   - package-ecosystem: "npm"
     directory: "/webapp/angular"
