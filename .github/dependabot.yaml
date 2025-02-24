@@ -18,6 +18,11 @@ updates:
         patterns:
           - "@angular/*"
           - "@angular-devkit/*"
+      testing:
+        patterns:
+          - "karma/*"
+          - "jasmine-core/*"
+          - "@types/jasmine/*"
 
   - package-ecosystem: "github-actions"
     directory: "/.github"
