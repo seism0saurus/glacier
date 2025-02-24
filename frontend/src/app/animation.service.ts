@@ -1,6 +1,9 @@
 import { Injectable } from '@angular/core';
 import {BehaviorSubject, Observable, of} from "rxjs";
 
+/**
+ * A service to manage header animation states and provide observable state updates.
+ */
 @Injectable({
   providedIn: 'root'
 })
