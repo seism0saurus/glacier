@@ -6,12 +6,19 @@ import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
+/**
+ * InformationController is a REST controller that provides various endpoints
+ * for retrieving wall ID cookies, mastodon handle information, and operator details.
+ * It also initializes and manages configuration data through injected values.
+ */
 @RestController
 public class InformationController {
 
@@ -66,7 +73,8 @@ public class InformationController {
         this.operatorWebsite = operatorWebsite;
     }
 
-    @GetMapping("/rest/wall-id")
+    @GetMapping(value="/rest/wall-id", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
     public WallId readCookie(@CookieValue(value = "wallId", required = false) String wallId, HttpServletResponse response) {
         LOGGER.info("Fetching cookie");
         if (wallId == null) {
@@ -84,7 +92,8 @@ public class InformationController {
         return answer;
     }
 
-    @GetMapping("/rest/mastodon-handle")
+    @GetMapping(value="/rest/mastodon-handle", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
     public Handle getMastodonHandle() {
         LOGGER.debug("Mastodon Handle requested. Sending " + this.mastodonHandle);
         Handle handle = new Handle();
@@ -92,7 +101,8 @@ public class InformationController {
         return handle;
     }
 
-    @GetMapping("/rest/operator")
+    @GetMapping(value="/rest/operator", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
     public InstanceOperator getInstanceOperator() {
         LOGGER.debug("Instance operator requested. Sending " + this.mastodonHandle);
         InstanceOperator instanceOperator = new InstanceOperator();

@@ -63,4 +63,24 @@ public class WebSocketConfigurationTest {
         // Verify
         verify(registration, times(1)).setHandshakeHandler(any(DefaultHandshakeHandler.class));
     }
+
+    /**
+     * Test that configureMessageBroker can handle different prefixes being set.
+     */
+    @Test
+    public void testConfigureMessageBrokerWithDifferentPrefixes() {
+        // Setup
+        MessageBrokerRegistry mockRegistry = mock(MessageBrokerRegistry.class);
+        SimpleBrokerRegistration brokerRegistration = mock(SimpleBrokerRegistration.class);
+        when(mockRegistry.enableSimpleBroker("/anotherTopic")).thenReturn(brokerRegistration);
+
+        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com");
+
+        // Execute
+        webSocketConfiguration.configureMessageBroker(mockRegistry);
+
+        // Verify
+        verify(mockRegistry, times(1)).enableSimpleBroker("/topic");
+        verify(mockRegistry, times(1)).setApplicationDestinationPrefixes("/glacier");
+    }
 }
