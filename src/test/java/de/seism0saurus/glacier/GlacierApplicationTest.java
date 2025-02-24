@@ -2,7 +2,7 @@ package de.seism0saurus.glacier;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import social.bigbone.MastodonClient;
 
 /**
@@ -17,7 +17,7 @@ class GlacierApplicationTests {
     /**
      * MastodonClient needs to be mocked because it directly tests the connection to an nonexistent webservice.
      */
-    @MockBean
+    @MockitoBean
     MastodonClient client;
 
     @Test

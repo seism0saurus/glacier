@@ -68,14 +68,15 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final RestTemplate restTemplate;
 
     /**
-     * The sole constructor for this class.
-     * The needed classes are provided by Spring {@link org.springframework.beans.factory.annotation.Value Values}.
+     * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
+     * client, messaging template, and REST template.
      *
-     * @param instance              The mastodon instance for this repository. Can be configured in the <code>application.properties</code>.
-     * @param accessToken           The access token for this repository.
-     *                              You get an access token on the instance of your bot at the {@link <a href="https://docs.joinmastodon.org/spec/oauth/#token">Token Endpoint</a>} of your bot's instance or in the GUI.
-     *                              Can be configured in the <code>application.properties</code>.
-     * @param simpMessagingTemplate The {@link SimpMessagingTemplate SimpMessagingTemplate} of this class. Will be stored to {@link SubscriptionManagerImpl#simpMessagingTemplate simpMessagingTemplate}.
+     * @param instance the Mastodon instance URL
+     * @param glacierDomain the domain for Glacier integration
+     * @param handle the Mastodon user handle
+     * @param client the Mastodon client used for API interactions
+     * @param simpMessagingTemplate the messaging template for WebSocket communications
+     * @param restTemplate the REST template for making HTTP requests
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
@@ -101,9 +102,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     @Override
     public void subscribeToHashtag(String principal, String hashtag) {
-        if (subscriptions.get(principal) == null) {
-            subscriptions.put(principal, new HashMap<>());
-        }
+        subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
         Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
         if (previousSubscriptions.get(hashtag) != null) {
             LOGGER.info("A subscription for principal {} with the hastag {} already exists", principal, hashtag);
@@ -164,6 +163,37 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         }
         futureMap.forEach((tag, future) -> future.cancel(true));
         this.subscriptions.remove(principal);
+    }
+
+    /**
+     * Checks if the specified principal is subscribed.
+     *
+     * @param principal the identifier of the principal to check for subscription status
+     * @return true if the principal is subscribed, otherwise false
+     */
+    public boolean hasPrincipalSubscriptions(String principal) {
+        return subscriptions.containsKey(principal);
+    }
+
+    /**
+     * Checks if a given hashtag is subscribed by the specified principal.
+     *
+     * @param principal the unique identifier of the principal (e.g., user or entity).
+     * @param hashtag the hashtag to check for subscription.
+     * @return true if the principal has subscribed to the specified hashtag, false otherwise.
+     */
+    public boolean isHashtagSubscribedByPrincipal(String principal, String hashtag) {
+        return subscriptions.containsKey(principal) && subscriptions.get(principal).containsKey(hashtag);
+    }
+
+    /**
+     * Calculates the number of subscriptions associated with the given principal.
+     *
+     * @param principal the identifier for the user or entity whose subscriptions are being queried
+     * @return the total number of subscriptions associated with the specified principal
+     */
+    public int numberOfSubscriptions(String principal) {
+        return subscriptions.getOrDefault(principal, new HashMap<>()).size();
     }
 
     /**
