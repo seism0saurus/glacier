@@ -3,8 +3,14 @@ package de.seism0saurus.glacier.webservice.messaging.messages;
 import lombok.*;
 
 /**
- * The StatusCreatedMessage class represents a status created event message.
- * It extends the abstract class StatusMessage, which serves as a base class for other types of status messages.
+ * StatusCreatedMessage represents a message indicating a new status creation event.
+ * It is a subclass of the abstract class StatusMessage and provides specific details
+ * for the newly created status.
+ *
+ * Fields:
+ * - `id`: A unique identifier for the created status.
+ * - `author`: The author of the created status.
+ * - `url`: A URL associated with the created status.
  */
 @Data
 @Builder
