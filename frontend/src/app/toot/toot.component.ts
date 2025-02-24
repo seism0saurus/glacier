@@ -3,9 +3,10 @@ import {SafeResourceUrl} from "@angular/platform-browser";
 import { HttpClient } from "@angular/common/http";
 
 @Component({
-  selector: 'app-toot',
-  templateUrl: './toot.component.html',
-  styleUrls: ['./toot.component.css']
+    selector: 'app-toot',
+    templateUrl: './toot.component.html',
+    styleUrls: ['./toot.component.css'],
+    standalone: false
 })
 export class TootComponent {
 

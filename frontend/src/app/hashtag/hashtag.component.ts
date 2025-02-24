@@ -34,9 +34,10 @@ import {DomSanitizer} from "@angular/platform-browser";
  * - Ensures hashtags are trimmed, lowercased, and stripped of the `#` character before usage.
  */
 @Component({
-  selector: 'app-hashtag',
-  templateUrl: './hashtag.component.html',
-  styleUrls: ['./hashtag.component.css']
+    selector: 'app-hashtag',
+    templateUrl: './hashtag.component.html',
+    styleUrls: ['./hashtag.component.css'],
+    standalone: false
 })
 export class HashtagComponent {
 
