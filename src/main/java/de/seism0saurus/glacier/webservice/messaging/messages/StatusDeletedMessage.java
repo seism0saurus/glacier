@@ -3,8 +3,12 @@ package de.seism0saurus.glacier.webservice.messaging.messages;
 import lombok.*;
 
 /**
- * StatusDeletedMessage is a subclass of StatusMessage that represents a status deleted event.
- * It contains the ID of the deleted status.
+ * StatusDeletedMessage represents a message indicating a status deletion event.
+ * It is a subclass of the abstract class StatusMessage and provides specific details
+ * related to the deleted status.
+ *
+ * Fields:
+ * - `id`: A unique identifier for the deleted status.
  */
 @Data
 @Builder

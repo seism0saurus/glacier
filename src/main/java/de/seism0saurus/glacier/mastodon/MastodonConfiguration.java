@@ -5,6 +5,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import social.bigbone.MastodonClient;
 
+/**
+ * Configuration class for setting up the Mastodon client.
+ * This class creates and configures a MastodonClient bean
+ * using properties defined in the application's configuration files.
+ */
 @Configuration
 public class MastodonConfiguration {
 

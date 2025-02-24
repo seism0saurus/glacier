@@ -14,6 +14,22 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+/**
+ * SubscriptionListener is responsible for handling WebSocket-related events
+ * such as connection, disconnection, and subscription changes.
+ *
+ * It utilizes the SubscriptionManager to manage subscriptions in scenarios
+ * like disconnection and reconnection, ensuring subscription integrity.
+ * Additionally, it implements a timeout mechanism to handle scenarios where
+ * a client does not reconnect within a specified time frame.
+ *
+ * This class leverages Spring's event handling framework and listens
+ * to WebSocket events such as `SessionConnectedEvent`, `SessionDisconnectEvent`.
+ *
+ * The primary responsibilities of SubscriptionListener include:
+ * - Managing subscription cleanup in disconnect scenarios.
+ * - Monitoring and logging client connection and disconnection events.
+ */
 @Service
 public class SubscriptionListener {
 
@@ -126,4 +142,6 @@ public class SubscriptionListener {
         });
         this.disconnectTimer.put(event.getUser().getName(), future);
     }
+
+
 }
