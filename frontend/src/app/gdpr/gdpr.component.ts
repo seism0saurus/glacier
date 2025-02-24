@@ -21,15 +21,15 @@ import {InstanceOperator} from "../footer/instance-operator";
  * - data: An instance of `InstanceOperator` injected from MAT_DIALOG_DATA, which provides the necessary inputs or meta-information to the component.
  */
 @Component({
-    selector: 'app-gdpr',
-    imports: [
-        MatIcon,
-        MatDialogActions,
-        MatDialogClose,
-        MatDialogContent
-    ],
-    templateUrl: './gdpr.component.html',
-    styleUrl: './gdpr.component.css'
+  selector: 'app-gdpr',
+  imports: [
+    MatDialogActions,
+    MatDialogClose,
+    MatDialogContent
+  ],
+  templateUrl: './gdpr.component.html',
+  standalone: true,
+  styleUrl: './gdpr.component.css'
 })
 export class GdprComponent {
   constructor(@Inject(MAT_DIALOG_DATA) public data: InstanceOperator) {
