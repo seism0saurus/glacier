@@ -1,16 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 
 import { FooterService } from './footer.service';
-import {HttpClientTestingModule, HttpTestingController} from "@angular/common/http/testing";
+import { HttpTestingController, provideHttpClientTesting } from "@angular/common/http/testing";
 import {Handle} from "./handle";
 import {InstanceOperator} from "./instance-operator";
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 describe('FooterService', () => {
   let service: FooterService;
   let httpMock: HttpTestingController;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({imports: [HttpClientTestingModule]});
+    TestBed.configureTestingModule({ imports: [], providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()] });
     service = TestBed.inject(FooterService);
     httpMock = TestBed.inject(HttpTestingController);
   });

@@ -5,7 +5,7 @@ import {HeaderComponent} from "./header/header.component";
 import {HashtagComponent} from "./hashtag/hashtag.component";
 import {FooterComponent} from "./footer/footer.component";
 import {TootComponent} from "./toot/toot.component";
-import {HttpClientTestingModule} from "@angular/common/http/testing";
+import { provideHttpClientTesting } from "@angular/common/http/testing";
 import {BrowserModule} from "@angular/platform-browser";
 import {FormsModule, ReactiveFormsModule} from "@angular/forms";
 import {MatFormField} from "@angular/material/form-field";
@@ -15,37 +15,36 @@ import {BrowserAnimationsModule} from "@angular/platform-browser/animations";
 import {MatInputModule} from "@angular/material/input";
 import {ResourceUrlSanitizerPipe} from "./wall/resource-url-sanitizer.pipe";
 import {MatGridList, MatGridTile} from "@angular/material/grid-list";
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 describe('AppComponent', () => {
   beforeEach(() => TestBed.configureTestingModule({
     declarations: [
-      AppComponent,
-      WallComponent,
-      HeaderComponent,
-      HashtagComponent,
-      FooterComponent,
-      TootComponent
+        AppComponent,
+        WallComponent,
+        HeaderComponent,
+        HashtagComponent,
+        FooterComponent,
+        TootComponent
     ],
-    imports: [
-      HttpClientTestingModule,
-      BrowserModule,
-      FormsModule,
-      MatFormField,
-      MatChipGrid,
-      MatChipRow,
-      MatIcon,
-      ReactiveFormsModule,
-      BrowserAnimationsModule,
-      MatInputModule,
-      MatChipInput,
-      MatChipGrid,
-      MatChipRow,
-      MatChipRemove,
-      ResourceUrlSanitizerPipe,
-      MatGridList,
-      MatGridTile
-    ]
-  }));
+    imports: [BrowserModule,
+        FormsModule,
+        MatFormField,
+        MatChipGrid,
+        MatChipRow,
+        MatIcon,
+        ReactiveFormsModule,
+        BrowserAnimationsModule,
+        MatInputModule,
+        MatChipInput,
+        MatChipGrid,
+        MatChipRow,
+        MatChipRemove,
+        ResourceUrlSanitizerPipe,
+        MatGridList,
+        MatGridTile],
+    providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+}));
 
   it('should create the app', () => {
     const fixture = TestBed.createComponent(AppComponent);

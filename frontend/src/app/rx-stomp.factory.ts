@@ -1,6 +1,6 @@
 import {RxStompService} from './rx-stomp.service';
 import {generateConfig} from './rx-stomp.config';
-import {HttpClient, HttpErrorResponse} from "@angular/common/http";
+import { HttpClient, HttpErrorResponse } from "@angular/common/http";
 import {lastValueFrom} from "rxjs";
 import {environment} from "../environments/environment";
 

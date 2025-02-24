@@ -1,11 +1,12 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {FooterComponent} from './footer.component';
-import {HttpClientTestingModule} from "@angular/common/http/testing";
+import { provideHttpClientTesting } from "@angular/common/http/testing";
 import {FooterService} from "./footer.service";
 import {of} from "rxjs";
 import {MatButtonModule} from "@angular/material/button";
 import {MatDialogModule} from "@angular/material/dialog";
 import {MatIconModule} from "@angular/material/icon";
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 describe('FooterComponent', () => {
   let component: FooterComponent;
@@ -15,12 +16,12 @@ describe('FooterComponent', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      declarations: [FooterComponent],
-      imports: [HttpClientTestingModule,
-        MatButtonModule,
+    declarations: [FooterComponent],
+    imports: [MatButtonModule,
         MatIconModule,
-        MatDialogModule]
-    });
+        MatDialogModule],
+    providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+});
     fixture = TestBed.createComponent(FooterComponent);
     component = fixture.componentInstance;
     service = TestBed.inject(FooterService);
