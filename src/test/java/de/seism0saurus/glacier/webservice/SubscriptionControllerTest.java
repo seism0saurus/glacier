@@ -70,12 +70,7 @@ public class SubscriptionControllerTest {
         SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
         subscriptionMessage.setHashtag("TestHashtag");
 
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "123456789";
-            }
-        };
+        Principal principal = () -> "123456789";
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
         when(headerAccessor.getUser()).thenReturn(principal);
 
@@ -124,12 +119,7 @@ public class SubscriptionControllerTest {
         TerminationMessage terminationMessage = new TerminationMessage();
         terminationMessage.setHashtag("TestHashtag");
 
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "123456789";
-            }
-        };
+        Principal principal = () -> "123456789";
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
         when(headerAccessor.getUser()).thenReturn(principal);
 
@@ -182,12 +172,7 @@ public class SubscriptionControllerTest {
         TerminationMessage terminationMessage = new TerminationMessage();
         terminationMessage.setHashtag("TestHashtag");
 
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "987654321";
-            }
-        };
+        Principal principal = () -> "987654321";
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
         when(headerAccessor.getUser()).thenReturn(principal);
 
@@ -220,12 +205,7 @@ public class SubscriptionControllerTest {
         TerminationMessage terminationMessage = new TerminationMessage();
         terminationMessage.setHashtag("NonexistingTestHashtag");
 
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "123456789";
-            }
-        };
+        Principal principal = () -> "123456789";
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
         when(headerAccessor.getUser()).thenReturn(principal);
 

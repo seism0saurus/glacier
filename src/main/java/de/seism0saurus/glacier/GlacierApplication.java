@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier;
 
+import org.jetbrains.annotations.NotNull;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +25,7 @@ public class GlacierApplication {
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
             @Override
-            public void addCorsMappings(CorsRegistry registry) {
+            public void addCorsMappings(@NotNull CorsRegistry registry) {
                 registry.addMapping("/rest/*").allowedOrigins("http://localhost:4200");
             }
         };
