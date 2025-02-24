@@ -6,6 +6,33 @@ import {MatIconRegistry} from "@angular/material/icon";
 import {DomSanitizer} from "@angular/platform-browser";
 
 
+/**
+ * The `HashtagComponent` manages a list of hashtags for a user interface.
+ * It supports adding, editing, removing, and clearing hashtags while ensuring proper sanitization of input.
+ * This component also interacts with the `SubscriptionService` to manage subscriptions for each hashtag.
+ *
+ * Component Decorator:
+ * - Selector: `app-hashtag`
+ * - Template URL: `./hashtag.component.html`
+ * - Style URL: `./hashtag.component.css`
+ *
+ * Key Functionalities:
+ * - Add new hashtags based on sanitized user input.
+ * - Remove existing hashtags from the list.
+ * - Edit hashtags and update subscriptions accordingly.
+ * - Clear all hashtags from the list and unsubscribe them.
+ * - Clear all associated content (such as "toots") using `SubscriptionService`.
+ *
+ * Dependencies:
+ * - `SubscriptionService`: Manages subscriptions for hashtags and clears associated content.
+ * - `MatIconRegistry` and `DomSanitizer`: Used to register and secure SVG icons used in the component.
+ *
+ * DOM Interactions:
+ * - Uses `@ViewChild` to access the hashtag input element for direct manipulation.
+ *
+ * Sanitization:
+ * - Ensures hashtags are trimmed, lowercased, and stripped of the `#` character before usage.
+ */
 @Component({
   selector: 'app-hashtag',
   templateUrl: './hashtag.component.html',

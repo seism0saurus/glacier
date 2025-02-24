@@ -2,11 +2,11 @@
 <mat-dialog-content>
   <h4>Legal Notice</h4>
   <p>This Glacier instance is operated by</p>
-  <p>{{ data.operatorName }}</p>
-  <p>{{ data.operatorStreetAndNumber }}<br/>
+  <p class="operator">{{ data.operatorName }}</p>
+  <p class="address">{{ data.operatorStreetAndNumber }}<br/>
     {{ data.operatorZipcode }} {{ data.operatorCity }}<br/>
     {{ data.operatorCountry }}</p>
-  <p>Phone: {{ data.operatorPhone }}<br/>
+  <p class="contact">Phone: {{ data.operatorPhone }}<br/>
     Email: {{ data.operatorMail }}<br/>
     Website: {{ data.operatorWebsite }}</p>
 
