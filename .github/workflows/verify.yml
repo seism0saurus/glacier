@@ -129,6 +129,18 @@ jobs:
           node-version: 22.14.0
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
+      - name: wait for service
+        run : |
+          for i in {1..30}; do
+            if curl -s http://app:8080 > /dev/null; then
+              echo "App is up and running!"
+              exit 0
+            fi
+            echo "Waiting for App to start..."
+            sleep 2
+          done
+          echo "App failed to start in time."
+          exit 1
       - name:  npx playwright install
         run:  npx playwright install
       - name:  npx playwright test
@@ -153,9 +165,4 @@ jobs:
           MY_PHONE: "+1234567890"
         ports:
           - 8080:8080
-        options: >-
-          --health-cmd="curl -f http://localhost:8080 || exit 1"
-          --health-interval=10s
-          --health-retries=10
-          --health-timeout=5s
 
