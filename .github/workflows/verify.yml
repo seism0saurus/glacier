@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test-image
     env:
-      BASE_URL: http://app:8080
+      BASE_URL: http://glacier:8080
     steps:
       - uses: actions/checkout@v4
       - name: Install Node
@@ -132,20 +132,20 @@ jobs:
       - name: Debug docker
         run: sleep 1m; docker ps
       - name: Debug Service Logs
-        run: docker logs app
+        run: docker logs glacier
       - name: Test connectivity
-        run: ping -c 4 app
+        run: ping -c 4 glacier
       - name: wait for service
         run : |
           for i in {1..30}; do
-            if curl http://app:8080; then
-              echo "App is up and running!"
+            if curl http://glacier:8080; then
+              echo "glacier is up and running!"
               exit 0
             fi
-            echo "Waiting for App to start..."
+            echo "Waiting for glacier to start..."
             sleep 2
           done
-          echo "App failed to start in time."
+          echo "glacier failed to start in time."
           exit 1
       - name:  npx playwright install
         run:  npx playwright install
@@ -153,14 +153,14 @@ jobs:
         run:  npx playwright test
     # Start the freshly build container for this branch as service
     services:
-      app:
+      glacier:
         image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
         env:
           SPRING_PROFILES_ACTIVE: "default"
           ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
           HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
           INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-          MY_DOMAIN: "app:8080"
+          MY_DOMAIN: "glacier:8080"
           MY_WEBSITE: "seism0saurus.de"
           MY_NAME: "seism0saurus"
           MY_STREET_AND_NUMBER: "sometherestreet 1"
@@ -171,4 +171,7 @@ jobs:
           MY_PHONE: "+1234567890"
         ports:
           - 8080:8080
+    options: >-
+      --name glacier
+
 
