@@ -34,7 +34,7 @@ jobs:
       - name: npm dependencies and Angular cli
         run: npm install -g @angular/cli@19
       - name: Verify the webapp
-        run: ./mvn --batch-mode --update-snapshots verify --file pom.xml
+        run: ./mvnw --batch-mode --update-snapshots verify --file pom.xml
 
   build:
     runs-on: ubuntu-latest
@@ -61,9 +61,10 @@ jobs:
       - name: npm dependencies and Angular cli
         run: npm install -g @angular/cli@19
       - name: Build the webapp
-        run:  ./mvn --batch-mode -DskipTests=true clean compile process-resources package --file pom.xml
+        run:  ./mvnw --batch-mode -DskipTests=true clean compile process-resources package --file pom.xml
       - name: Check if frontend is bundled into jar
         run: |
+          cp -r src/main/resources/static/* target/classes/static/
           if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
             echo "angular packaged to jar"
           else
