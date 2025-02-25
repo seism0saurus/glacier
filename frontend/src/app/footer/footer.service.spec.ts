@@ -63,7 +63,7 @@ describe('FooterService', () => {
     expect(req.request.method).toBe('GET');
     httpMock.verify();
 
-    // Überprüfe, ob die Daten korrekt gemapped wurden
+    // Überprüfe, ob die Daten korrekt gemappt wurden
     expect(operator).toEqual({
       domain: 'example.com',
       operatorName: 'OperatorName',

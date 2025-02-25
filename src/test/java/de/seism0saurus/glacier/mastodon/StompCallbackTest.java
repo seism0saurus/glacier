@@ -36,7 +36,7 @@ public class StompCallbackTest {
     /**
      * The SubscriptionManager interface represents a manager that handles subscriptions for hashtags on Mastodon.
      * <p>
-     * You can subscribe to a hashtag or terminate a subscription with an UUID.
+     * You can subscribe to a hashtag or terminate a subscription with a UUID.
      */
     SubscriptionManager subscriptionManager;
 

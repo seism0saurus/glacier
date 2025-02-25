@@ -92,7 +92,7 @@ export class HashtagComponent {
   edit(tag: string, event: MatChipEditedEvent) {
     const sanitizedTag = this.sanitize(event.value);
 
-    //Do nothing, if the tag hasn't changed. Otherwise change it
+    //Do nothing, if the tag hasn't changed. Otherwise, change it
     if (tag !== sanitizedTag){
       // Remove tag and unsubscribe, if it is empty
       if (!tag) {

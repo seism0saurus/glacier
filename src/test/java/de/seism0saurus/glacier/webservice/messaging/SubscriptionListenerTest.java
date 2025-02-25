@@ -4,6 +4,7 @@ import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 
 import static org.mockito.Mockito.mock;
 
+@SuppressWarnings("CommentedOutCode")
 class SubscriptionListenerTest {
 
     private final SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
