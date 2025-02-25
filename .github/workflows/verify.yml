@@ -101,7 +101,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/seism0saurus/glacier
-          tags: ${{ BRANCH_NAME }}
+          tags: ${{ env.BRANCH_NAME }}
       - name: Build and push container image
         uses: docker/build-push-action@v5
         with:
@@ -129,7 +129,7 @@ jobs:
     # Start the freshly build container for this branch as service
     services:
       app:
-        image: ghcr.io/seism0saurus/glacier:${{ BRANCH_NAME }}
+        image: ghcr.io/seism0saurus/glacier:${{ env.BRANCH_NAME }}
         ports:
           - 8080:8080
 
