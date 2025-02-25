@@ -173,5 +173,3 @@ jobs:
           - 8080:8080
     options: >-
       --name glacier
-
-
