@@ -97,7 +97,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     /**
      * Subscribes to a specified hashtag on Mastodon and starts a virtual thread for asynchronous listening.
      *
-     * @param principal
+     * @param principal The principal of the user.
      * @param hashtag   The hashtag to subscribe to.
      */
     @Override

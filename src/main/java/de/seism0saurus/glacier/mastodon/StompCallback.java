@@ -293,7 +293,7 @@ public class StompCallback implements WebSocketCallback {
     private void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
-                    LOGGER.info("Subscription {} got a Open event: {}", principal, open);
+                    LOGGER.info("Subscription {} got an Open event: {}", principal, open);
             case TechnicalEvent.Closing closing ->
                     LOGGER.info("Subscription {} got a Closing event: {}", principal, closing);
             case TechnicalEvent.Closed closed ->

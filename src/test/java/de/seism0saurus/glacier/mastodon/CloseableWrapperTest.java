@@ -1,13 +1,12 @@
 package de.seism0saurus.glacier.mastodon;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.io.Closeable;
 import java.io.IOException;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 /**

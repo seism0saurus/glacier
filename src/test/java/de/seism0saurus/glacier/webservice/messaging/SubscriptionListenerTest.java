@@ -1,26 +1,8 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
-import org.springframework.messaging.Message;
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
-import java.security.Principal;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.web.socket.messaging.SessionConnectedEvent;
-
-import java.util.concurrent.Future;
-import java.util.HashMap;
+import static org.mockito.Mockito.mock;
 
 class SubscriptionListenerTest {
 
