@@ -123,13 +123,12 @@ public class StompCallback implements WebSocketCallback {
                             processStatusEditedEvent(statusEditedEvent.getEditedStatus(), baseDestination);
                     case ParsedStreamEvent.StatusDeleted statusDeletedEvent ->
                             procesStatusDeletedEvent(statusDeletedEvent.getDeletedStatusId(), baseDestination);
-                    default ->
-                            LOGGER.info("Subscription {} got an unknown StreamEvent: {}", principal, streamEvent.getEvent().getClass());
+                    default -> logEvent("got an unknown StreamEvent: %s".formatted(streamEvent.getEvent().getClass()));
                 }
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
             case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
-            default -> LOGGER.info("Subscription {} got an unknown event {}", principal, event.getClass());
+            default -> logEvent("got an unknown event: %s".formatted(event.getClass()));
         }
     }
 
@@ -293,17 +292,17 @@ public class StompCallback implements WebSocketCallback {
     private void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
-                    LOGGER.info("Subscription {} got an Open event: {}", principal, open);
+                    logEvent("got an Open event: %s".formatted(open));
             case TechnicalEvent.Closing closing ->
-                    LOGGER.info("Subscription {} got a Closing event: {}", principal, closing);
+                    logEvent("got a Closing event: %s".formatted(closing));
             case TechnicalEvent.Closed closed ->
-                    LOGGER.info("Subscription {} got a Closed event: {}", principal, closed);
+                    logEvent("got a Closed event: %s".formatted(closed));
             case TechnicalEvent.Failure failure -> {
-                LOGGER.error("Subscription {} got a Failure event. Restarting subscription. The error is: {}", principal, failure.getError().getMessage());
+                logEvent("got a Failure event. Restarting subscription. The error is: %s".formatted(failure.getError().getMessage()));
                 this.subscriptionManager.terminateSubscription(principal, hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
-            default -> LOGGER.info("Subscription {} got an unknown WebSocketEvent: {}", principal, event);
+            default -> logEvent("got an unknown WebSocketEvent: %s".formatted(event));
         }
     }
 

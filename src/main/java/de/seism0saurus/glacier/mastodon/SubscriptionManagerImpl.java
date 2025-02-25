@@ -199,14 +199,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     /**
      * Suspends the current thread indefinitely until it is interrupted.
      * <p>
-     * This method continuously sleeps the current thread using the {@link Thread#sleep(long)} method with the maximum
-     * possible value of {@link Long#MAX_VALUE} until the thread is interrupted. If the sleep is interrupted by an
-     * {@link InterruptedException}, the method logs the exception and re-interrupts the thread.
+     * This method continuously sleeps the current thread using the {@link Thread#wait()} method
+     * until the thread is interrupted. If the sleep is interrupted by an {@link InterruptedException},
+     * the method logs the exception and re-interrupts the thread.
      */
     private static void sleepForever(Closeable subscription) {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Thread.sleep(60_000L);
+                Thread.currentThread().wait();
             }
         } catch (InterruptedException e) {
             LOGGER.info("Sleep interrupted by InterruptedException. Most likely because it was interrupted by a subscription termination", e);

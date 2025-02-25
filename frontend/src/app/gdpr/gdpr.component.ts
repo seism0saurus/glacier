@@ -6,7 +6,6 @@ import {
   MatDialogContent,
   MatDialogModule
 } from "@angular/material/dialog";
-import {MatIcon} from "@angular/material/icon";
 import {InstanceOperator} from "../footer/instance-operator";
 
 /**
