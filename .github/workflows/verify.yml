@@ -136,7 +136,7 @@ jobs:
     # Start the freshly build container for this branch as service
     services:
       app:
-        image: ghcr.io/seism0saurus/glacier:${{ github.GITHUB_REF_NAME }}
+        image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
         env:
           SPRING_PROFILES_ACTIVE: "default"
           ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
