@@ -129,10 +129,12 @@ jobs:
           node-version: 22.14.0
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
-      - name: Test connectivity
-        run: ping -c 4 app
+      - name: Debug docker
+        run: docker ps
       - name: Debug Service Logs
         run: docker logs app
+      - name: Test connectivity
+        run: ping -c 4 app
       - name: wait for service
         run : |
           for i in {1..30}; do
