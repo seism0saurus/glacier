@@ -1,20 +1,23 @@
-name: "Verify the code"
+name: "Verify the app"
 
 on:
   push:
     branches:
-      - '*'
+      - '*.*.*'
       - '!main'
+
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 21
+      - name: Set up JDK 23
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '23'
           distribution: 'temurin'
           cache: maven
       - name: Get cache for local Maven repository
@@ -25,10 +28,108 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18.13.0
+          node-version: 22.14.0
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - name: npm dependencies and Angular cli
-        run: npm install -g @angular/cli@17
+        run: npm install -g @angular/cli@19
       - name: Verify the webapp
         run: mvn --batch-mode --update-snapshots verify --file pom.xml
+
+  build-test-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 23
+        uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+          cache: maven
+      - name: Get cache for local Maven repository
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-verify
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+      - name: npm dependencies and Angular cli
+        run: npm install -g @angular/cli@19
+      - name: Build the webapp
+        run:  ./mvnw --batch-mode --update-snapshots package
+      - name: Check if frontend is bundled into jar
+        run: |
+          if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
+            echo "angular packaged to jar"
+          else
+            echo "angular not correctly packaged!"
+            ls -lah /home/runner/work/glacier/glacier/target/classes
+            exit 1
+          fi
+      - name: Copy jar
+        run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
+      - name: Archive glacier jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: glacier
+          path: glacier.jar
+          retention-days: 1
+      - name: Update dependency graph
+        uses: advanced-security/maven-dependency-submission-action@571e99aab1055c2e71a1e2309b9691de18d6b7d6
+
+  create-test-image:
+    runs-on: ubuntu-latest
+    needs: build-test-image
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: containerimage
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/seism0saurus/glacier
+          tags: ${{ BRANCH_NAME }}
+      - name: Build and push container image
+        uses: docker/build-push-action@v5
+        with:
+          context: containerimage/.
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: http://app:8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+      - name:  npx playwright install
+        run:  npx playwright install
+      - name:  npx playwright test
+        run:  npx playwright test
+    # Start the freshly build container for this branch as service
+    services:
+      app:
+        image: ghcr.io/seism0saurus/glacier:${{ BRANCH_NAME }}
+        ports:
+          - 8080:8080
+

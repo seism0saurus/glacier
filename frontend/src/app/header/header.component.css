@@ -24,14 +24,6 @@ header > h1 {
   margin: 0;
 }
 
-header > h2 {
-  font-family: "juggerRock", sans-serif;
-  font-size: 2em;
-  font-weight: normal;
-  margin: 16px;
-  transform: rotate(-20deg);
-}
-
 @keyframes shrink {
   from {
     height: 175px;
