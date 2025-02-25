@@ -142,20 +142,20 @@ jobs:
               image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
               ports:
                 - 8080:8080
-                      environment:
-                        SPRING_PROFILES_ACTIVE: "default"
-                        ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
-                        HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
-                        INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-                        MY_DOMAIN: "localhost:8080"
-                        MY_WEBSITE: "seism0saurus.de"
-                        MY_NAME: "seism0saurus"
-                        MY_STREET_AND_NUMBER: "sometherestreet 1"
-                        MY_ZIP_CODE: "123456"
-                        MY_CITY: "somecity"
-                        MY_COUNTRY: "Germany"
-                        MY_MAIL: "kontakt@seism0saurus.de"
-                        MY_PHONE: "+1234567890"
+              environment:
+                SPRING_PROFILES_ACTIVE: "default"
+                ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
+                HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
+                INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
+                MY_DOMAIN: "localhost:8080"
+                MY_WEBSITE: "seism0saurus.de"
+                MY_NAME: "seism0saurus"
+                MY_STREET_AND_NUMBER: "sometherestreet 1"
+                MY_ZIP_CODE: "123456"
+                MY_CITY: "somecity"
+                MY_COUNTRY: "Germany"
+                MY_MAIL: "kontakt@seism0saurus.de"
+                MY_PHONE: "+1234567890"
               container_name: glacier
           EOF
       - name: Start services using Docker Compose
