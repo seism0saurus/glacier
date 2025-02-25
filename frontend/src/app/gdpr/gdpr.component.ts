@@ -1,5 +1,11 @@
 import {Component, Inject} from '@angular/core';
-import {MAT_DIALOG_DATA, MatDialogActions, MatDialogClose, MatDialogContent} from "@angular/material/dialog";
+import {
+  MAT_DIALOG_DATA,
+  MatDialogActions,
+  MatDialogClose,
+  MatDialogContent,
+  MatDialogModule
+} from "@angular/material/dialog";
 import {MatIcon} from "@angular/material/icon";
 import {InstanceOperator} from "../footer/instance-operator";
 
@@ -25,7 +31,8 @@ import {InstanceOperator} from "../footer/instance-operator";
   imports: [
     MatDialogActions,
     MatDialogClose,
-    MatDialogContent
+    MatDialogContent,
+    MatDialogModule
   ],
   templateUrl: './gdpr.component.html',
   standalone: true,

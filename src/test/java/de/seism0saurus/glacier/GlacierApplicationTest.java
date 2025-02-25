@@ -15,11 +15,12 @@ import social.bigbone.MastodonClient;
 class GlacierApplicationTests {
 
     /**
-     * MastodonClient needs to be mocked because it directly tests the connection to an nonexistent webservice.
+     * MastodonClient needs to be mocked because it directly tests the connection to a nonexistent webservice.
      */
     @MockitoBean
     MastodonClient client;
 
+    @SuppressWarnings("EmptyMethod")
     @Test
     void contextLoads() {
         // This test will fail if the application context cannot start

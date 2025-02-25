@@ -60,7 +60,7 @@ A JRE is not sufficient for build. I recommend [Temurin](https://adoptium.net/de
 
 ### Build Jar
 
-To checkout the code and do a complete install including frontend and backend build and tests, run the following commands.
+To check out the code and do a complete installation including frontend and backend build and tests, run the following commands.
 ```bash
 git clone git@github.com:seism0saurus/glacier.git
 cd glacier
@@ -130,7 +130,7 @@ The domain of your personal Glacier installation.
 If run locally use your hostname or localhost.
 For non http ports add the port to the hostname for correct redirects and checks.
 For example *localhost:8080*.
-You can user Docker or any other compatible container runtime like [containerd](https://containerd.io/) with [nerdctl](https://github.com/containerd/nerdctl).
+You can use Docker or any other compatible container runtime like [containerd](https://containerd.io/) with [nerdctl](https://github.com/containerd/nerdctl).
 
 #### MY_NAME
 

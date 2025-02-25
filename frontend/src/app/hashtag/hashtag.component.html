@@ -1,6 +1,8 @@
 <div class="hashtag">
+  <!--suppress HtmlUnknownTag -->
   <mat-form-field class="chip-list">
     <mat-label>Followed hashtags</mat-label>
+    <!--suppress AngularIncorrectBlockUsage -->
     <mat-chip-grid #chipGrid aria-label="Hashtag selection">
       @for (tag of hashtags; track tag) {
         <mat-chip-row

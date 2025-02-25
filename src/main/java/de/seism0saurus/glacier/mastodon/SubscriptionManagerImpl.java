@@ -105,7 +105,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
         Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
         if (previousSubscriptions.get(hashtag) != null) {
-            LOGGER.info("A subscription for principal {} with the hastag {} already exists", principal, hashtag);
+            LOGGER.info("A subscription for principal {} with the hashtag {} already exists", principal, hashtag);
             return;
         }
         Future<?> future;
