@@ -13,7 +13,7 @@ public interface SubscriptionManager {
     /**
      * Subscribes to a hashtag and returns the UUID of the subscription.
      *
-     * @param principal
+     * @param principal The principal fo the user.
      * @param hashtag   The hashtag to subscribe to.
      */
     void subscribeToHashtag(final String principal, final String hashtag);

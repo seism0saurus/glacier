@@ -48,6 +48,7 @@ describe('ResourceUrlSanitizerPipe', () => {
   });
 
   it('should return sanitized url when input url is provided', () => {
+    // noinspection HttpUrlsUsage
     const url: string = 'http://example.com';
     expect(pipe.transform(url)).toEqual("sanitized:http://example.com");
   });

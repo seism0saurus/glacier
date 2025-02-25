@@ -70,6 +70,7 @@ describe('WallComponent', () => {
   });
 
   it('should return the toot id in trackToot', () => {
+    // noinspection HttpUrlsUsage
     const toot = {id: '1', url: 'http://example.com'} as SafeMessage;
     expect(component.trackToot(0, toot)).toEqual('1');
     expect(component.trackToot(0, null as unknown as SafeMessage)).toBeUndefined();
