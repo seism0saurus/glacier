@@ -132,7 +132,7 @@ jobs:
       - name: wait for service
         run : |
           for i in {1..30}; do
-            if curl -s http://app:8080 > /dev/null; then
+            if curl http://app:8080; then
               echo "App is up and running!"
               exit 0
             fi
