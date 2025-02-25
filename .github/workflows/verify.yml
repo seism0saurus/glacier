@@ -130,7 +130,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - name: Debug docker
-        run: docker ps
+        run: sleep 1m; docker ps
       - name: Debug Service Logs
         run: docker logs app
       - name: Test connectivity
