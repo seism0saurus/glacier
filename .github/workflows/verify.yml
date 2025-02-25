@@ -130,6 +130,33 @@ jobs:
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
       - name: Debug docker
+        run: |
+          cat <<EOF > docker-compose.yml
+          version: '3.9'
+          services:
+            glacier:
+              image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+              ports:
+                - 8080:8080
+                      environment:
+                        SPRING_PROFILES_ACTIVE: "default"
+                        ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
+                        HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
+                        INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
+                        MY_DOMAIN: "glacier:8080"
+                        MY_WEBSITE: "seism0saurus.de"
+                        MY_NAME: "seism0saurus"
+                        MY_STREET_AND_NUMBER: "sometherestreet 1"
+                        MY_ZIP_CODE: "123456"
+                        MY_CITY: "somecity"
+                        MY_COUNTRY: "Germany"
+                        MY_MAIL: "kontakt@seism0saurus.de"
+                        MY_PHONE: "+1234567890"
+              container_name: glacier
+          EOF
+      - name: Start services using Docker Compose
+        run: docker-compose up -d
+      - name: Debug docker
         run: sleep 1m; docker ps
       - name: Debug Service Logs
         run: docker logs glacier
@@ -151,25 +178,3 @@ jobs:
         run:  npx playwright install
       - name:  npx playwright test
         run:  npx playwright test
-    # Start the freshly build container for this branch as service
-    services:
-      glacier:
-        image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
-        env:
-          SPRING_PROFILES_ACTIVE: "default"
-          ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
-          HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
-          INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-          MY_DOMAIN: "glacier:8080"
-          MY_WEBSITE: "seism0saurus.de"
-          MY_NAME: "seism0saurus"
-          MY_STREET_AND_NUMBER: "sometherestreet 1"
-          MY_ZIP_CODE: "123456"
-          MY_CITY: "somecity"
-          MY_COUNTRY: "Germany"
-          MY_MAIL: "kontakt@seism0saurus.de"
-          MY_PHONE: "+1234567890"
-        ports:
-          - 8080:8080
-        options: >-
-          --name glacier
