@@ -130,8 +130,7 @@ export class HashtagComponent {
     if (tag){
       const trim = tag.trim();
       const lowercase = trim.toLowerCase();
-      const withouttag = lowercase.charAt(0) === '#' ? lowercase.slice(1) : lowercase;
-      return withouttag;
+      return lowercase.charAt(0) === '#' ? lowercase.slice(1) : lowercase;
     }
     return tag;
   }

@@ -28,4 +28,4 @@ export function generateConfig(brokerURL: string): RxStompConfig {
       console.log(new Date(), msg);
     },
   }
-};
+}

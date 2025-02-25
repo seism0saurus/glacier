@@ -1,8 +1,10 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.webservice.dto.Handle;
+import de.seism0saurus.glacier.webservice.dto.InstanceOperator;
+import de.seism0saurus.glacier.webservice.dto.WallId;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -116,29 +118,6 @@ public class InformationController {
         instanceOperator.setOperatorMail(this.operatorMail);
         instanceOperator.setOperatorWebsite(this.operatorWebsite);
         return instanceOperator;
-    }
-
-    @Data
-    static class Handle {
-        private String name;
-    }
-
-    @Data
-    static class InstanceOperator {
-        private String domain;
-        private String operatorName;
-        private String operatorStreetAndNumber;
-        private String operatorZipcode;
-        private String operatorCity;
-        private String operatorCountry;
-        private String operatorPhone;
-        private String operatorMail;
-        private String operatorWebsite;
-    }
-
-    @Data
-    static class WallId {
-        private String id;
     }
 
     private String generateRandomWallId() {
