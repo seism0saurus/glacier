@@ -129,6 +129,10 @@ jobs:
           node-version: 22.14.0
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
       - name: Debug docker
         run: |
           cat <<EOF > docker-compose.yml
