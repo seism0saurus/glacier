@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test-image
     env:
-      BASE_URL: http://glacier:8080
+      BASE_URL: http://localhost:8080
     steps:
       - uses: actions/checkout@v4
       - name: Install Node
@@ -143,7 +143,7 @@ jobs:
                         ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
                         HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
                         INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-                        MY_DOMAIN: "glacier:8080"
+                        MY_DOMAIN: "localhost:8080"
                         MY_WEBSITE: "seism0saurus.de"
                         MY_NAME: "seism0saurus"
                         MY_STREET_AND_NUMBER: "sometherestreet 1"
@@ -160,12 +160,10 @@ jobs:
         run: sleep 1m; docker ps
       - name: Debug Service Logs
         run: docker logs glacier
-      - name: Test connectivity
-        run: ping -c 4 glacier
       - name: wait for service
         run : |
           for i in {1..30}; do
-            if curl http://glacier:8080; then
+            if curl -s http://localhost:8080 > /dev/null; then
               echo "glacier is up and running!"
               exit 0
             fi
