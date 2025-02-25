@@ -129,6 +129,10 @@ jobs:
           node-version: 22.14.0
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
+      - name: npm dependencies and Angular cli
+        run: npm install -g @angular/cli@19
+      - name: Install dependencies
+        run: npm ci
       - name: Install Docker Compose
         run: |
           sudo apt-get update
@@ -160,10 +164,6 @@ jobs:
           EOF
       - name: Start services using Docker Compose
         run: docker-compose up -d
-      - name: Debug docker
-        run: sleep 1m; docker ps
-      - name: Debug Service Logs
-        run: docker logs glacier
       - name: wait for service
         run : |
           for i in {1..30}; do
@@ -175,6 +175,8 @@ jobs:
             sleep 2
           done
           echo "glacier failed to start in time."
+          docker ps
+          docker logs glacier
           exit 1
       - name:  npx playwright install
         run:  npx playwright install
