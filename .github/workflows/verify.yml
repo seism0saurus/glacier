@@ -171,5 +171,5 @@ jobs:
           MY_PHONE: "+1234567890"
         ports:
           - 8080:8080
-    options: >-
-      --name glacier
+        options: >-
+          --name glacier
