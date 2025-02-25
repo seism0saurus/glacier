@@ -64,8 +64,6 @@ jobs:
         run:  ./mvnw --batch-mode -DskipTests=true clean compile process-resources package --file pom.xml
       - name: Check if frontend is bundled into jar
         run: |
-          ls -lah /home/runner/work/glacier/glacier/target/classes
-          cp -r src/main/resources/static/* target/classes/static/
           if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
             echo "angular packaged to jar"
           else
@@ -138,7 +136,21 @@ jobs:
     # Start the freshly build container for this branch as service
     services:
       app:
-        image: ghcr.io/seism0saurus/glacier:${{ github.sha }}
+        image: ghcr.io/seism0saurus/glacier:${{ github.GITHUB_REF_NAME }}
+        env:
+          SPRING_PROFILES_ACTIVE: "default"
+          ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
+          HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
+          INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
+          MY_DOMAIN: "app:8080"
+          MY_WEBSITE: "seism0saurus.de"
+          MY_NAME: "seism0saurus"
+          MY_STREET_AND_NUMBER: "sometherestreet 1"
+          MY_ZIP_CODE: "123456"
+          MY_CITY: "somecity"
+          MY_COUNTRY: "Germany"
+          MY_MAIL: "kontakt@seism0saurus.de"
+          MY_PHONE: "+1234567890"
         ports:
           - 8080:8080
 
