@@ -54,26 +54,20 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
-          restore-keys: |
-            ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-verify-
+          key: ${{ runner.os }}-node_modules-verify
       - name: Verify the webapp
         run: ./mvnw --batch-mode test --file pom.xml
 
@@ -88,26 +82,20 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
-          restore-keys: |
-            ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-verify-
+          key: ${{ runner.os }}-node_modules-verify
       - name: Package the webapp
         run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml
       - name: Check if frontend is bundled into jar
@@ -177,26 +165,20 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
-          restore-keys: |
-            ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-verify-
+          key: ${{ runner.os }}-node_modules-verify
       - name: Use cache for ms-playwright
         uses: actions/cache@v4
         with:
@@ -250,7 +232,7 @@ jobs:
           docker logs glacier
           exit 1
       - name: Start playwright tests in maven
-        run:  ./mvnw --batch-mode verify --file pom.xml
+        run:  ./mvnw --batch-mode verify jacoco:reports --file pom.xml
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
