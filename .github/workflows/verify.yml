@@ -2,6 +2,7 @@ name: "Verify the app"
 
 on:
   push:
+    branches: ["*.*.*"]
 
 jobs:
   compile:

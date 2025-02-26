@@ -1,12 +1,8 @@
-name: "Build and deploy"
+name: "Pull Request Test"
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
-    # The branches below must be a subset of the branches above
     branches: [ "main" ]
-    types: [ "closed" ]
 
 jobs:
   compile:
@@ -22,23 +18,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          key: ${{ runner.os }}-m2-pull-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
-            ${{ runner.os }}-m2-verify-
+            ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          key: ${{ runner.os }}-node-pull-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
-            ${{ runner.os }}-node-verify-
+            ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
+          key: ${{ runner.os }}-node_modules-pull-{{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
-            ${{ runner.os }}-node_modules-verify-
+            ${{ runner.os }}-node_modules-pull-
       - name: Compile the webapp
         run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 
@@ -56,12 +52,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -84,12 +80,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -139,7 +135,6 @@ jobs:
           images: ghcr.io/seism0saurus/glacier
           tags: |
             type=sha
-            type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -167,12 +162,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -182,16 +177,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-verify-{{ hashFiles('/var/cache/apt/archives') }}
+          key: ${{ runner.os }}-apt-pull-{{ hashFiles('/var/cache/apt/archives') }}
           restore-keys: |
-            ${{ runner.os }}-apt-verify-
+            ${{ runner.os }}-apt-pull-
       - name: Use cache for ms-playwright
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
+          key: ${{ runner.os }}-playwright-pull-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
           restore-keys: |
-            ${{ runner.os }}-playwright-verify-
+            ${{ runner.os }}-playwright-pull-
       - name: Install Docker Compose
         run: |
           sudo apt-get update
@@ -202,7 +197,7 @@ jobs:
           version: '3.9'
           services:
             glacier:
-              image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+              image: ghcr.io/seism0saurus/glacier:pr-${{ github.event.number }}
               ports:
                 - 8080:8080
               environment:
@@ -278,24 +273,3 @@ jobs:
         uses: scacap/action-surefire-report@v1
         with:
           github_token: '${{ secrets.GITHUB_TOKEN }}'
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: e2e
-    environment: glacier.seism0saurus.de
-    steps:
-      - name: Prepare ssh
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
-        run: |
-          echo "${SSH_KEY}" > ssh.key
-          chmod 600 ssh.key
-          mkdir ~/.ssh
-          echo "${KNOWN_HOSTS}" > ~/.ssh/known_hosts
-      - name: Restart docker-compose
-        env:
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_HOST: ${{ vars.SSH_HOST }}
-        run: ssh -i ssh.key -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} -C "sudo /usr/local/bin/upgrade-glacier.sh"
