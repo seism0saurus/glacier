@@ -271,10 +271,21 @@
                         <goals>
                             <goal>install-node-and-npm</goal>
                         </goals>
-                        <phase>generate-resources</phase>
+                        <phase>initialize</phase>
                         <configuration>
                             <nodeVersion>v22.14.0</nodeVersion>
                             <npmVersion>10.9.2</npmVersion>
+                        </configuration>
+                    </execution>
+                    <!-- Install dependencies -->
+                    <execution>
+                        <id>npm run build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>initialize</phase>
+                        <configuration>
+                            <arguments>install</arguments>
                         </configuration>
                     </execution>
                     <!-- Angular Build -->

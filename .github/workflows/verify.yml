@@ -25,14 +25,6 @@ jobs:
         with:
           path: ~/.m2/repository
           key: maven-verify
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.14.0
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
-      - name: npm dependencies and Angular cli
-        run: npm install -g @angular/cli@19
       - name: Verify the webapp
         run: ./mvnw --batch-mode --update-snapshots verify --file pom.xml
 
