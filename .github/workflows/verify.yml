@@ -3,9 +3,6 @@ name: "Verify the app"
 on:
   push:
 
-env:
-  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-
 jobs:
   compile:
     runs-on: ubuntu-latest
