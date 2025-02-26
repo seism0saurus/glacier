@@ -2,7 +2,6 @@ name: "Verify the app"
 
 on:
   push:
-  pull_request:
 
 env:
   BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
