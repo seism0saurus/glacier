@@ -41,7 +41,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node_modules-verify-
       - name: Compile the webapp
-        run: ./mvnw --batch-mode --update-snapshots compile --file pom.xml
+        run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 
   test:
     runs-on: ubuntu-latest
