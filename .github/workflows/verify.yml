@@ -232,7 +232,7 @@ jobs:
           docker logs glacier
           exit 1
       - name: Start playwright tests in maven
-        run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml
+        run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P ci
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
