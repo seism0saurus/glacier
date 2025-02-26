@@ -177,13 +177,20 @@ jobs:
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
+      - name: Use cache for apt
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-verify-{{ hashFiles('/var/cache/apt/archives') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-verify-
       - name: Use cache for ms-playwright
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-verify-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
+          key: ${{ runner.os }}-playwright-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
           restore-keys: |
-            ${{ runner.os }}-playwright-verify-verify-
+            ${{ runner.os }}-playwright-verify-
       - name: Install Docker Compose
         run: |
           sudo apt-get update
