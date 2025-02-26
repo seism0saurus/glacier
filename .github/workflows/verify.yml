@@ -25,17 +25,23 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.m2/repository
-          key: m2-verify
+          key: ${{ runner.os }}-${{ hashFiles('~/.m2/repository') }}
+          restore-keys: |
+            m2-verify
       - name: Update cache for node
         uses: actions/cache/save@v4
         with:
           path: frontend/node
-          key: node-verify
+          key: ${{ runner.os }}-${{ hashFiles('~/.m2/frontend/node') }}
+          restore-keys: |
+            node-verify
       - name: Update cache for node_modules
         uses: actions/cache/save@v4
         with:
           path: frontend/node_modules
-          key: node_modules-verify
+          key: ${{ runner.os }}-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            node_modules-verify
 
   test:
     runs-on: ubuntu-latest
@@ -158,7 +164,6 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-          cache: maven
       - name: Load cache for local Maven repository
         uses: actions/cache/restore@v4
         with:
@@ -226,13 +231,13 @@ jobs:
           exit 1
       - name: Start playwright tests in maven
         run:  ./mvnw --batch-mode verify --file pom.xml
-      - name: search for reports
-        run:  find / -iname '*playwright-report*'
       - name: Update cache for ms-playwright
         uses: actions/cache/save@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: playwright-verify
+          key: ${{ runner.os }}-${{ hashFiles('/home/runner/.cache/ms-playwright') }}
+          restore-keys: |
+            playwright-verify
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -245,4 +250,16 @@ jobs:
         with:
           name: playwright-screenshots
           path: frontend/test-results/screenshots
+      - name: Upload Surefire results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-results
+          path: target/surefire-reports
+      - name: Upload Jacoco reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: target/site/jacoco
 
