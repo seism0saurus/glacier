@@ -9,9 +9,9 @@ updates:
     groups:
       logging:
         patterns:
-          - "ch.qos.logback*"
-          - "ch.qos.logback.contrib*"
-          - "com.fasterxml.jackson.core*"
+          - "ch.qos.logback:*"
+          - "ch.qos.logback.contrib:*"
+          - "com.fasterxml.jackson.core:*"
 
   - package-ecosystem: "npm"
     directory: "/webapp/angular"
