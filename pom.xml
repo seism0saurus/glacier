@@ -328,7 +328,7 @@
                             <arguments>
                                 <argument>-c</argument>
                                 <argument>
-                                    rm -rf ${project.basedir}/src/main/resources/static/*; cp -a ${project.basedir}/frontend/dist/glacier-frontend/browser/* ${project.basedir}/src/main/resources/static/
+                                    mkdir -p ${project.basedir}/src/main/resources/static/; rm -rf ${project.basedir}/src/main/resources/static/*; cp -a ${project.basedir}/frontend/dist/glacier-frontend/browser/* ${project.basedir}/src/main/resources/static/
                                 </argument>
                             </arguments>
                         </configuration>
