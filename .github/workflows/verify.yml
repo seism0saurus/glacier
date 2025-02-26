@@ -19,29 +19,29 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-      - name: Compile the webapp
-        run: ./mvnw --batch-mode --update-snapshots compile --file pom.xml
-      - name: Update cache for local Maven repository
-        uses: actions/cache/save@v4
+      - name: Use cache for local Maven repository
+        uses: actions/cache/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-${{ hashFiles('~/.m2/repository') }}
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
-            m2-verify
-      - name: Update cache for node
-        uses: actions/cache/save@v4
+            ${{ runner.os }}-m2-verify-
+      - name: Use cache for node
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-${{ hashFiles('~/.m2/frontend/node') }}
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
-            node-verify
-      - name: Update cache for node_modules
-        uses: actions/cache/save@v4
+            ${{ runner.os }}-node-verify-
+      - name: Use cache for node_modules
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
-            node_modules-verify
+            ${{ runner.os }}-node_modules-verify-
+      - name: Compile the webapp
+        run: ./mvnw --batch-mode --update-snapshots compile --file pom.xml
 
   test:
     runs-on: ubuntu-latest
@@ -53,21 +53,27 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-      - name: Load cache for local Maven repository
-        uses: actions/cache/restore@v4
+      - name: Use cache for local Maven repository
+        uses: actions/cache/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-verify
-      - name: Load cache for node
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-verify-
+      - name: Use cache for node
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node
-          key: node-verify
-      - name: Load cache for node_modules
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          restore-keys: |
+            ${{ runner.os }}-node-verify-
+      - name: Use cache for node_modules
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node_modules
-          key: node_modules-verify
+          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
       - name: Verify the webapp
         run: ./mvnw --batch-mode test --file pom.xml
 
@@ -81,21 +87,27 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-      - name: Load cache for local Maven repository
-        uses: actions/cache/restore@v4
+      - name: Use cache for local Maven repository
+        uses: actions/cache/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-verify
-      - name: Load cache for node
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-verify-
+      - name: Use cache for node
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node
-          key: node-verify
-      - name: Load cache for node_modules
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          restore-keys: |
+            ${{ runner.os }}-node-verify-
+      - name: Use cache for node_modules
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node_modules
-          key: node_modules-verify
+          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
       - name: Package the webapp
         run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml
       - name: Check if frontend is bundled into jar
@@ -164,26 +176,34 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-      - name: Load cache for local Maven repository
-        uses: actions/cache/restore@v4
+      - name: Use cache for local Maven repository
+        uses: actions/cache/cache@v4
         with:
           path: ~/.m2/repository
-          key: m2-verify
-      - name: Load cache for node
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-verify-
+      - name: Use cache for node
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node
-          key: node-verify
-      - name: Load cache for node_modules
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          restore-keys: |
+            ${{ runner.os }}-node-verify-
+      - name: Use cache for node_modules
+        uses: actions/cache/cache@v4
         with:
           path: frontend/node_modules
-          key: node_modules-verify
-      - name: Load cache for ms-playwright
-        uses: actions/cache/restore@v4
+          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
+      - name: Use cache for ms-playwright
+        uses: actions/cache/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: playwright-verify
+          key: ${{ runner.os }}-playwright-verify-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-verify-verify-
       - name: Install Docker Compose
         run: |
           sudo apt-get update
@@ -231,13 +251,6 @@ jobs:
           exit 1
       - name: Start playwright tests in maven
         run:  ./mvnw --batch-mode verify --file pom.xml
-      - name: Update cache for ms-playwright
-        uses: actions/cache/save@v4
-        with:
-          path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-${{ hashFiles('/home/runner/.cache/ms-playwright') }}
-          restore-keys: |
-            playwright-verify
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
