@@ -265,7 +265,7 @@
                     <workingDirectory>frontend</workingDirectory>
                 </configuration>
                 <executions>
-                    <!-- Install npm dependencies -->
+                    <!-- Install npm dependencies during initialize phase-->
                     <execution>
                         <id>install-node-and-npm</id>
                         <goals>
@@ -277,7 +277,7 @@
                             <npmVersion>10.9.2</npmVersion>
                         </configuration>
                     </execution>
-                    <!-- Install dependencies -->
+                    <!-- Install frontend dependencies during initialize phase-->
                     <execution>
                         <id>npm install</id>
                         <goals>
@@ -288,7 +288,7 @@
                             <arguments>install</arguments>
                         </configuration>
                     </execution>
-                    <!-- Angular Build -->
+                    <!-- Angular Build during generate-resources phase, so the files are in the resources folder-->
                     <execution>
                         <id>npm run build</id>
                         <goals>
@@ -299,7 +299,7 @@
                             <arguments>run build -- --optimization true --aot --configuration production --output-hashing none --delete-output-path true</arguments>
                         </configuration>
                     </execution>
-                    <!-- Angular Verify -->
+                    <!-- Angular test during test phase-->
                     <execution>
                         <id>npm run test</id>
                         <goals>
@@ -308,6 +308,27 @@
                         <phase>test</phase>
                         <configuration>
                             <arguments>run test -- --no-watch --code-coverage --browsers ChromeHeadless</arguments>
+                        </configuration>
+                    </execution>
+                    <!-- e2e during verify phase-->
+                    <execution>
+                        <id>npx playwright install</id>
+                        <goals>
+                            <goal>npx</goal>
+                        </goals>
+                        <phase>verify</phase>
+                        <configuration>
+                            <arguments>playwright install --with-deps</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npx playwright test</id>
+                        <goals>
+                            <goal>npx</goal>
+                        </goals>
+                        <phase>verify</phase>
+                        <configuration>
+                            <arguments>playwright test</arguments>
                         </configuration>
                     </execution>
                 </executions>

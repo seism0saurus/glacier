@@ -22,6 +22,6 @@ test('page - footer is visible', async ({ page }) => {
   await page.goto('http://localhost:8080/');
   await expect(page.locator('app-footer')).toBeVisible();
   await expect(page.getByRole('contentinfo')).toBeVisible();
-  await expect(page.getByRole('contentinfo')).toContainText('You want your toots to be shown here? Mention @glacier@mastodon.seism0saurus.de in your toot and use one of the hashtags.');
+  await expect(page.getByRole('contentinfo')).toContainText('You want your toots to be shown here? Mention @glacier_e2e_test@mastodon.seism0saurus.de in your toot and use one of the hashtags.');
   await expect(page.getByRole('contentinfo')).toContainText('Glacier is Open Source: https://github.com/seism0saurus/glacier');
 });
