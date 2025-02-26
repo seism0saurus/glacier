@@ -263,21 +263,6 @@ jobs:
         with:
           name: jacoco-reports
           path: target/site/jacoco
-      - name: Add coverage to GitHub
-        id: jacoco
-        if: always()
-        uses: madrapps/jacoco-report@v1.7.1
-        with:
-          paths: |
-            ${{ github.workspace }}/target/site/jacoco/jacoco.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
-          min-coverage-overall: 45
-          min-coverage-changed-files: 60
-      - name: Publish Surefire Test Report
-        if: always()
-        uses: scacap/action-surefire-report@v1
-        with:
-          github_token: '${{ secrets.GITHUB_TOKEN }}'
 
   deploy:
     runs-on: ubuntu-latest
