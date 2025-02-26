@@ -257,48 +257,74 @@
                 </executions>
             </plugin>
             <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.15.1</version>
+                <configuration>
+                    <installDirectory>frontend/node</installDirectory>
+                    <workingDirectory>frontend</workingDirectory>
+                </configuration>
+                <executions>
+                    <!-- Install npm dependencies -->
+                    <execution>
+                        <id>install-node-and-npm</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <nodeVersion>v22.14.0</nodeVersion>
+                            <npmVersion>10.9.2</npmVersion>
+                        </configuration>
+                    </execution>
+                    <!-- Angular Build -->
+                    <execution>
+                        <id>npm run build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <arguments>run build -- --optimization true --aot --configuration production --output-hashing none --delete-output-path true</arguments>
+                        </configuration>
+                    </execution>
+                    <!-- Angular Verify -->
+                    <execution>
+                        <id>npm run test</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <phase>test</phase>
+                        <configuration>
+                            <arguments>run test -- --no-watch --code-coverage --browsers ChromeHeadless</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.5.0</version>
                 <executions>
                     <execution>
-                        <id>Install npm</id>
-                        <phase>validate</phase>
+                        <id>move-browser-files</id>
+                        <phase>generate-resources</phase>
                         <goals>
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <workingDirectory>frontend</workingDirectory>
-                            <executable>npm</executable>
-                            <commandlineArgs>install</commandlineArgs>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>Compile angular</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                            <workingDirectory>frontend</workingDirectory>
-                            <executable>ng</executable>
-                            <commandlineArgs>build --configuration "production" --optimization true --aot --output-path ${project.basedir}/src/main/resources/static</commandlineArgs>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>Test angular</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                            <workingDirectory>frontend</workingDirectory>
-                            <executable>ng</executable>
-                            <commandlineArgs>test --no-watch --code-coverage --browsers ChromeHeadless</commandlineArgs>
+                            <executable>bash</executable>
+                            <arguments>
+                                <argument>-c</argument>
+                                <argument>
+                                    rm -rf ${project.basedir}/src/main/resources/static/*; cp -a ${project.basedir}/frontend/dist/glacier-frontend/browser/* ${project.basedir}/src/main/resources/static/
+                                </argument>
+                            </arguments>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
+
             <plugin>
                 <groupId>org.jetbrains.kotlin</groupId>
                 <artifactId>kotlin-maven-plugin</artifactId>
