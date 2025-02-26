@@ -10,7 +10,7 @@ env:
   BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
 
 jobs:
-  verify:
+  compile:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,18 +19,54 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-          cache: maven
-      - name: Get cache for local Maven repository
+      - name: Compile the webapp
+        run: ./mvnw --batch-mode --update-snapshots compile --file pom.xml
+      - name: Update cache for local Maven repository
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-verify
+      - name: Update cache for node
+        uses: actions/cache/save@v4
+        with:
+          path: frontend/node
+          key: node-verify
+      - name: Update cache for node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: frontend/node_modules
+          key: node_modules-verify
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 23
+        uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+      - name: Load cache for local Maven repository
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: maven-verify
+          key: m2-verify
+      - name: Load cache for node
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node
+          key: node-verify
+      - name: Load cache for node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node_modules
+          key: node_modules-verify
       - name: Verify the webapp
-        run: ./mvnw --batch-mode --update-snapshots test --file pom.xml
+        run: ./mvnw --batch-mode test --file pom.xml
 
   build:
     runs-on: ubuntu-latest
-    needs: verify
+    needs: test
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 23
@@ -38,12 +74,21 @@ jobs:
         with:
           java-version: '23'
           distribution: 'temurin'
-          cache: maven
-      - name: Get cache for local Maven repository
+      - name: Load cache for local Maven repository
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: maven-verify
+          key: m2-verify
+      - name: Load cache for node
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node
+          key: node-verify
+      - name: Load cache for node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node_modules
+          key: node_modules-verify
       - name: Build the webapp
         run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml
       - name: Check if frontend is bundled into jar
@@ -113,16 +158,31 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
           cache: maven
-      - name: Get cache for local Maven repository
+      - name: Load cache for local Maven repository
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: maven-verify
+          key: m2-verify
+      - name: Load cache for node
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node
+          key: node-verify
+      - name: Load cache for node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node_modules
+          key: node_modules-verify
+      - name: Load cache for ms-playwright
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: playwright-verify
       - name: Install Docker Compose
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose
-      - name: Debug docker
+      - name: Configure needed services in Docker Compose
         run: |
           cat <<EOF > docker-compose.yml
           version: '3.9'
@@ -149,7 +209,7 @@ jobs:
           EOF
       - name: Start services using Docker Compose
         run: docker-compose up -d
-      - name: wait for service
+      - name: Wait for service
         run : |
           for i in {1..30}; do
             if curl -s http://localhost:8080 > /dev/null; then
@@ -163,8 +223,15 @@ jobs:
           docker ps
           docker logs glacier
           exit 1
-      - name: Build the webapp
+      - name: Start playwright tests in maven
         run:  ./mvnw --batch-mode verify --file pom.xml
+      - name: search for reports
+        run:  find / -iname '*playwright-report*'
+      - name: Update cache for ms-playwright
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: playwright-verify
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
