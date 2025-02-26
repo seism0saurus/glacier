@@ -20,21 +20,21 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
             ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node
           key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
             ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
@@ -54,21 +54,21 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
             ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node
           key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
             ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
@@ -88,21 +88,21 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
             ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node
           key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
             ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
@@ -177,28 +177,28 @@ jobs:
           java-version: '23'
           distribution: 'temurin'
       - name: Use cache for local Maven repository
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
             ${{ runner.os }}-m2-verify-
       - name: Use cache for node
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node
           key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
             ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-verify-
       - name: Use cache for ms-playwright
-        uses: actions/cache/cache@v4
+        uses: actions/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-verify-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
