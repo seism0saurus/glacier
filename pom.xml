@@ -279,7 +279,7 @@
                     </execution>
                     <!-- Install dependencies -->
                     <execution>
-                        <id>npm run build</id>
+                        <id>npm install</id>
                         <goals>
                             <goal>npm</goal>
                         </goals>
