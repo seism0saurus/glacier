@@ -64,12 +64,20 @@ To check out the code and do a complete installation including frontend and back
 ```bash
 git clone git@github.com:seism0saurus/glacier.git
 cd glacier
-./mvnw clean install
+./mvnw clean package
 ```
 
 After the build you can run Glacier locally from the commandline, to test the jar before packaging it into a container image.
 ```bash
-ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.1-SNAPSHOT.jar
+ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.3-SNAPSHOT.jar
+```
+
+### Run tests
+
+When glacier is running you can execute the e2e tests. You should install dependencies by calling `npx playwright install --with-deps` in the `frontend` folder.
+After that run all tests with maven verify.
+```bash
+./mvnw verify
 ```
 
 ### Build container image
