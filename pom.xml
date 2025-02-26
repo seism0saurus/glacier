@@ -13,6 +13,24 @@
     <version>0.0.3-SNAPSHOT</version>
     <description>Glacier mastodon social wall</description>
 
+    <profiles>
+        <profile>
+            <id>ci</id>
+            <properties>
+                <additionalPlaywrightInstallParams>--with-deps</additionalPlaywrightInstallParams>
+            </properties>
+        </profile>
+        <profile>
+            <id>manual</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <additionalPlaywrightInstallParams/>
+            </properties>
+        </profile>
+    </profiles>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>23</java.version>
@@ -318,7 +336,7 @@
                         </goals>
                         <phase>verify</phase>
                         <configuration>
-                            <arguments>playwright install --with-deps</arguments>
+                            <arguments>playwright install ${additionalPlaywrightInstallParams}</arguments>
                         </configuration>
                     </execution>
                     <execution>
