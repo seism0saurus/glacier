@@ -258,6 +258,12 @@ jobs:
         with:
           name: jacoco-reports
           path: target/site/jacoco
+      - name: Upload Jasmin reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jasmin-reports
+          path: frontend/coverage/glacier-frontend
       - name: Add coverage to GitHub
         id: jacoco
         if: always()
@@ -268,3 +274,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           min-coverage-overall: 45
           min-coverage-changed-files: 60
+      - name: Report NYC coverage
+        uses: sidx1024/report-nyc-coverage-github-action@v1.2.7
+        if: always()
+        with:
+          coverage_file: "frontend/coverage/glacier-frontend/coverage.json"

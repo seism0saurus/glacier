@@ -29,7 +29,8 @@ module.exports = function (config) {
       subdir: '.',
       reporters: [
         { type: 'html' },
-        { type: 'text-summary' }
+        { type: 'text-summary' },
+        { type: 'json', file: 'coverage.json' }, // JSON-Reporter hinzufügen
       ],
       check: {
         global: {
@@ -40,7 +41,7 @@ module.exports = function (config) {
         },
       },
     },
-    reporters: ['progress', 'kjhtml'],
+    reporters: ['progress', 'kjhtml', 'coverage'],
     browsers: ['Chrome'],
     restartOnFileChange: true
   });

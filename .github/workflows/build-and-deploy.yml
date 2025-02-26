@@ -263,6 +263,12 @@ jobs:
         with:
           name: jacoco-reports
           path: target/site/jacoco
+      - name: Upload Jasmin reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jasmin-reports
+          path: frontend/coverage/glacier-frontend
 
   deploy:
     runs-on: ubuntu-latest
