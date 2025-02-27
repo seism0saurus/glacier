@@ -45,7 +45,7 @@ mat-chip-row {
   max-width: max-content;
 }
 .mdc-evolution-chip-set .mdc-evolution-chip {
-  margin: 0px;
+  margin: 0;
 }
 
 .mdc-evolution-chip-set {

@@ -9,7 +9,7 @@ import {HeaderComponent} from './header/header.component';
 import {HashtagComponent} from './hashtag/hashtag.component';
 import {FormsModule, ReactiveFormsModule} from "@angular/forms";
 import {FooterComponent} from './footer/footer.component';
-import {HttpClient, HttpClientModule} from "@angular/common/http";
+import { HttpClient, provideHttpClient, withInterceptorsFromDi } from "@angular/common/http";
 import {TootComponent} from './toot/toot.component';
 import {MatFormField} from "@angular/material/form-field";
 import {MatChipGrid, MatChipInput, MatChipRemove, MatChipRow} from "@angular/material/chips";
@@ -22,44 +22,38 @@ import {MatGridList, MatGridTile} from "@angular/material/grid-list";
 import {MatDialogModule} from "@angular/material/dialog";
 import {DOCUMENT} from "@angular/common";
 
-@NgModule({
-  declarations: [
-    AppComponent,
-    WallComponent,
-    HeaderComponent,
-    HashtagComponent,
-    FooterComponent,
-    TootComponent
-  ],
-  imports: [
-    BrowserModule,
-    FormsModule,
-    HttpClientModule,
-    MatFormField,
-    MatChipGrid,
-    MatChipRow,
-    MatIcon,
-    ReactiveFormsModule,
-    BrowserAnimationsModule,
-    MatInputModule,
-    MatChipInput,
-    MatChipGrid,
-    MatChipRow,
-    MatChipRemove,
-    ResourceUrlSanitizerPipe,
-    MatGridList,
-    MatGridTile,
-    MatDialogModule
-  ],
-  providers: [
-    CookieService,
-    {
-      provide: RxStompService,
-      useFactory: rxStompServiceFactory,
-      deps: [HttpClient, DOCUMENT]
-    }
-  ],
-  bootstrap: [AppComponent]
-})
+@NgModule({ declarations: [
+        AppComponent,
+        WallComponent,
+        HeaderComponent,
+        HashtagComponent,
+        FooterComponent,
+        TootComponent
+    ],
+    bootstrap: [AppComponent], imports: [BrowserModule,
+        FormsModule,
+        MatFormField,
+        MatChipGrid,
+        MatChipRow,
+        MatIcon,
+        ReactiveFormsModule,
+        BrowserAnimationsModule,
+        MatInputModule,
+        MatChipInput,
+        MatChipGrid,
+        MatChipRow,
+        MatChipRemove,
+        ResourceUrlSanitizerPipe,
+        MatGridList,
+        MatGridTile,
+        MatDialogModule], providers: [
+        CookieService,
+        {
+            provide: RxStompService,
+            useFactory: rxStompServiceFactory,
+            deps: [HttpClient, DOCUMENT]
+        },
+        provideHttpClient(withInterceptorsFromDi())
+    ] })
 export class AppModule {
 }

@@ -52,11 +52,6 @@ public class PrincipalHandler extends DefaultHandshakeHandler {
             wallId = "";
         }
         attributes.put(PRINCIPAL, wallId);
-        return new Principal() {
-            @Override
-            public String getName() {
-                return wallId;
-            }
-        };
+        return () -> wallId;
     }
 }

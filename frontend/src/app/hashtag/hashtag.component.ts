@@ -6,10 +6,38 @@ import {MatIconRegistry} from "@angular/material/icon";
 import {DomSanitizer} from "@angular/platform-browser";
 
 
+/**
+ * The `HashtagComponent` manages a list of hashtags for a user interface.
+ * It supports adding, editing, removing, and clearing hashtags while ensuring proper sanitization of input.
+ * This component also interacts with the `SubscriptionService` to manage subscriptions for each hashtag.
+ *
+ * Component Decorator:
+ * - Selector: `app-hashtag`
+ * - Template URL: `./hashtag.component.html`
+ * - Style URL: `./hashtag.component.css`
+ *
+ * Key Functionalities:
+ * - Add new hashtags based on sanitized user input.
+ * - Remove existing hashtags from the list.
+ * - Edit hashtags and update subscriptions accordingly.
+ * - Clear all hashtags from the list and unsubscribe them.
+ * - Clear all associated content (such as "toots") using `SubscriptionService`.
+ *
+ * Dependencies:
+ * - `SubscriptionService`: Manages subscriptions for hashtags and clears associated content.
+ * - `MatIconRegistry` and `DomSanitizer`: Used to register and secure SVG icons used in the component.
+ *
+ * DOM Interactions:
+ * - Uses `@ViewChild` to access the hashtag input element for direct manipulation.
+ *
+ * Sanitization:
+ * - Ensures hashtags are trimmed, lowercased, and stripped of the `#` character before usage.
+ */
 @Component({
-  selector: 'app-hashtag',
-  templateUrl: './hashtag.component.html',
-  styleUrls: ['./hashtag.component.css']
+    selector: 'app-hashtag',
+    templateUrl: './hashtag.component.html',
+    styleUrls: ['./hashtag.component.css'],
+    standalone: false
 })
 export class HashtagComponent {
 
@@ -64,7 +92,7 @@ export class HashtagComponent {
   edit(tag: string, event: MatChipEditedEvent) {
     const sanitizedTag = this.sanitize(event.value);
 
-    //Do nothing, if the tag hasn't changed. Otherwise change it
+    //Do nothing, if the tag hasn't changed. Otherwise, change it
     if (tag !== sanitizedTag){
       // Remove tag and unsubscribe, if it is empty
       if (!tag) {
@@ -102,8 +130,7 @@ export class HashtagComponent {
     if (tag){
       const trim = tag.trim();
       const lowercase = trim.toLowerCase();
-      const withouttag = lowercase.charAt(0) === '#' ? lowercase.slice(1) : lowercase;
-      return withouttag;
+      return lowercase.charAt(0) === '#' ? lowercase.slice(1) : lowercase;
     }
     return tag;
   }

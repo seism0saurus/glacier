@@ -4,7 +4,6 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.socket.WebSocketHandler;
 
@@ -13,7 +12,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class PrincipalHandlerTest {
 
@@ -38,6 +38,7 @@ class PrincipalHandlerTest {
         Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
 
         // Assert
+        assert result != null;
         assertEquals("testWallId", result.getName());
         assertEquals("testWallId", attributes.get("principal"));
         assertEquals("testSessionId", attributes.get("sessionId"));
@@ -64,6 +65,7 @@ class PrincipalHandlerTest {
         Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
 
         // Assert
+        assert result != null;
         assertEquals("", result.getName());
         assertEquals("", attributes.get("principal"));
         assertEquals("testSessionId", attributes.get("sessionId"));
@@ -89,6 +91,7 @@ class PrincipalHandlerTest {
         Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
 
         // Assert
+        assert result != null;
         assertEquals("", result.getName());
         assertEquals("", attributes.get("principal"));
         assertEquals("testSessionId", attributes.get("sessionId"));

@@ -123,13 +123,12 @@ public class StompCallback implements WebSocketCallback {
                             processStatusEditedEvent(statusEditedEvent.getEditedStatus(), baseDestination);
                     case ParsedStreamEvent.StatusDeleted statusDeletedEvent ->
                             procesStatusDeletedEvent(statusDeletedEvent.getDeletedStatusId(), baseDestination);
-                    default ->
-                            LOGGER.info("Subscription " + principal + " got an unknown StreamEvent: " + streamEvent.getEvent().getClass());
+                    default -> logEvent("got an unknown StreamEvent: %s".formatted(streamEvent.getEvent().getClass()));
                 }
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
             case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
-            default -> LOGGER.info("Subscription " + principal + " got an unknown event " + event.getClass());
+            default -> logEvent("got an unknown event: %s".formatted(event.getClass()));
         }
     }
 
@@ -154,7 +153,7 @@ public class StompCallback implements WebSocketCallback {
 
                 HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
                 if (isLoadable(httpHeaders, glacierDomain)) {
-                    if (payload.getMentions().stream().map(s -> s.getAcct()).anyMatch( a -> shortHandle.equals(a))) {
+                    if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
                         StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
                         this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
                     } else {
@@ -168,7 +167,7 @@ public class StompCallback implements WebSocketCallback {
             ) {
                 LOGGER.info("Delete toot with id {} id", genericMessageContent.getPayload().textValue());
             } else {
-                LOGGER.warn("Not an update event for the subscribed hashtag", genericMessageContent);
+                LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
             }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
@@ -236,7 +235,7 @@ public class StompCallback implements WebSocketCallback {
                 LOGGER.info("FRAME-ANCESTORS header does not exists. X-Frame-Options explicitly allowed");
                 return true;
             } else {
-                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value" + xFrameOptions);
+                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value: {}", xFrameOptions);
                 return false;
             }
         }
@@ -251,10 +250,8 @@ public class StompCallback implements WebSocketCallback {
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
-        if (status.getMentions().contains(new Status.Mention())){
-
-        }
         if (isLoadable(httpHeaders, glacierDomain)) {
+            assert status.getAccount() != null;
             StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).author(status.getAccount().getDisplayName()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
         }
@@ -295,17 +292,17 @@ public class StompCallback implements WebSocketCallback {
     private void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
-                    LOGGER.info("Subscription {principal} got a Open event: {}", principal, open);
+                    logEvent("got an Open event: %s".formatted(open));
             case TechnicalEvent.Closing closing ->
-                    LOGGER.info("Subscription {principal} got a Closing event: {}", principal, closing);
+                    logEvent("got a Closing event: %s".formatted(closing));
             case TechnicalEvent.Closed closed ->
-                    LOGGER.info("Subscription {principal} got a Closed event: {}", principal, closed);
+                    logEvent("got a Closed event: %s".formatted(closed));
             case TechnicalEvent.Failure failure -> {
-                LOGGER.error("Subscription {principal} got a Failure event. Restarting subscription. The error is: {}", principal, failure.getError());
+                logEvent("got a Failure event. Restarting subscription. The error is: %s".formatted(failure.getError().getMessage()));
                 this.subscriptionManager.terminateSubscription(principal, hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
-            default -> LOGGER.info("Subscription {principal} got an unknown WebSocketEvent: {}", principal, event);
+            default -> logEvent("got an unknown WebSocketEvent: %s".formatted(event));
         }
     }
 
@@ -315,6 +312,6 @@ public class StompCallback implements WebSocketCallback {
      * @param msg The message to be logged.
      */
     private void logEvent(final String msg) {
-        LOGGER.info("Subscription " + principal + " " + msg);
+        LOGGER.info("Subscription {} {}", principal, msg);
     }
 }

@@ -9,6 +9,12 @@ import {StatusUpdatedMessage} from "./message-types/status-updated-message";
 import {StatusDeletedMessage} from "./message-types/status-deleted-message";
 import {SafeMessage} from "./message-types/safe-message";
 
+/**
+ * Service for managing subscriptions to topics, handling received messages,
+ * and subscribing/unsubscribing to specific hashtags. This service interacts
+ * with an RxStompService to subscribe to message topics or publish subscription
+ * and termination requests.
+ */
 @Injectable({
   providedIn: 'root'
 })

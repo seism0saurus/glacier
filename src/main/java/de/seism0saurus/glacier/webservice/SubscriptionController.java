@@ -61,7 +61,7 @@ public class SubscriptionController {
     @SendToUser("/topic/subscriptions")
     public SubscriptionAckMessage subscribe(SimpMessageHeaderAccessor headerAccessor, SubscriptionMessage event) {
         if (headerAccessor.getUser() == null) {
-            LOGGER.error("Someone tried to subscribe without a principal. This is not supported", headerAccessor);
+            LOGGER.error("Someone tried to subscribe without a principal. This is not supported. HeaderAccessor: {}", headerAccessor);
             return SubscriptionAckMessage.builder()
                     .hashtag(event.getHashtag())
                     .principal(null)
@@ -89,7 +89,7 @@ public class SubscriptionController {
     @SendToUser("/topic/terminations")
     public TerminationAckMessage unsubscribe(SimpMessageHeaderAccessor headerAccessor, TerminationMessage event) {
         if (headerAccessor.getUser() == null) {
-            LOGGER.error("Someone tried to unsubscribe without a principal. This is not supported", headerAccessor);
+            LOGGER.error("Someone tried to unsubscribe without a principal. This is not supported. HeaderAccessor: {}", headerAccessor);
             return getMessage(null, event.getHashtag(), false, "Could not unsubscibe due to missing principal. Sending response to user...");
         }
         String principal = headerAccessor.getUser().getName();

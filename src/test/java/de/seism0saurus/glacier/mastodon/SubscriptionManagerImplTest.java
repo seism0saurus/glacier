@@ -8,12 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
-import social.bigbone.api.method.StreamingMethods;
-
-import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class SubscriptionManagerImplTest {
 
@@ -80,7 +76,7 @@ class SubscriptionManagerImplTest {
     }
 
     @Test
-    void testSubscribeToHashtag_MultiplePrincipals () {
+    void testSubscribeToHashtag_MultiplePrincipals() {
         String principal1 = "user123";
         String principal2 = "user456";
         String hashtag1 = "Hashtag123";
@@ -105,7 +101,7 @@ class SubscriptionManagerImplTest {
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag));
 
         subscriptionManager.terminateSubscription(principal, hashtag);
-        assertEquals(0,subscriptionManager.numberOfSubscriptions(principal));
+        assertEquals(0, subscriptionManager.numberOfSubscriptions(principal));
         assertFalse(subscriptionManager.hasPrincipalSubscriptions(principal));
     }
 

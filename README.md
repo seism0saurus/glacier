@@ -60,16 +60,24 @@ A JRE is not sufficient for build. I recommend [Temurin](https://adoptium.net/de
 
 ### Build Jar
 
-To checkout the code and do a complete install including frontend and backend build and tests, run the following commands.
+To check out the code and do a complete installation including frontend and backend build and tests, run the following commands.
 ```bash
 git clone git@github.com:seism0saurus/glacier.git
 cd glacier
-./mvnw clean install
+./mvnw clean package
 ```
 
 After the build you can run Glacier locally from the commandline, to test the jar before packaging it into a container image.
 ```bash
-ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.1-SNAPSHOT.jar
+ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.3.jar
+```
+
+### Run tests
+
+When glacier is running you can execute the e2e tests. You should install dependencies by calling `npx playwright install --with-deps` in the `frontend` folder.
+After that run all tests with maven verify.
+```bash
+./mvnw verify
 ```
 
 ### Build container image
@@ -79,7 +87,7 @@ To create a container image for Docker or other engines,
 copy the created jar into the [containerimage](./containerimage) folder.
 Then change into the folder and run docker build.
 ```bash
-cp target/glacier-0.0.2-SNAPSHOT.jar containerimage/
+cp target/glacier-0.0.3.jar containerimage/
 cd containerimage
 ```
 
@@ -89,13 +97,13 @@ or any compatible build tool that creates standard container images like [builda
 #### Docker
 
 ```bash
-docker build -t glacier --build-arg JAR_FILE=glacier-0.0.2-SNAPSHOT.jar .
+docker build -t glacier --build-arg JAR_FILE=glacier-0.0.3.jar .
 ```
 
 #### Buildah
 
 ```bash
-buildah build --build-arg JAR_FILE=glacier-0.0.2-SNAPSHOT.jar  -f Dockerfile -t glacier .
+buildah build --build-arg JAR_FILE=glacier-0.0.3.jar  -f Dockerfile -t glacier .
 ```
 
 ## Run it
@@ -130,7 +138,7 @@ The domain of your personal Glacier installation.
 If run locally use your hostname or localhost.
 For non http ports add the port to the hostname for correct redirects and checks.
 For example *localhost:8080*.
-You can user Docker or any other compatible container runtime like [containerd](https://containerd.io/) with [nerdctl](https://github.com/containerd/nerdctl).
+You can use Docker or any other compatible container runtime like [containerd](https://containerd.io/) with [nerdctl](https://github.com/containerd/nerdctl).
 
 #### MY_NAME
 

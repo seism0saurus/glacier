@@ -13,11 +13,8 @@ html, body {
 }
 
 a {
-  color: #3293a3;
+  color: #000000;
 }
 a:hover {
-  color: #4acad7;
-}
-a:active {
-  color: #4acad7;
+  color: #123342;
 }

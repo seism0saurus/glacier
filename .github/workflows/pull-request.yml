@@ -1,8 +1,8 @@
-name: "Push Test"
+name: "Pull Request Test"
 
 on:
-  push:
-    branches: ["*.*.*"]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   compile:
@@ -18,23 +18,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          key: ${{ runner.os }}-m2-pull-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
-            ${{ runner.os }}-m2-verify-
+            ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          key: ${{ runner.os }}-node-pull-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
-            ${{ runner.os }}-node-verify-
+            ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
+          key: ${{ runner.os }}-node_modules-pull-{{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
-            ${{ runner.os }}-node_modules-verify-
+            ${{ runner.os }}-node_modules-pull-
       - name: Compile the webapp
         run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 
@@ -52,12 +52,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -80,12 +80,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -135,7 +135,6 @@ jobs:
           images: ghcr.io/seism0saurus/glacier
           tags: |
             type=sha
-            type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -163,12 +162,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-pull-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-pull-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -178,9 +177,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
+          key: ${{ runner.os }}-playwright-pull-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
           restore-keys: |
-            ${{ runner.os }}-playwright-verify-
+            ${{ runner.os }}-playwright-pull-
       - name: Install Docker Compose
         run: |
           sudo apt-get update
@@ -191,7 +190,7 @@ jobs:
           version: '3.9'
           services:
             glacier:
-              image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+              image: ghcr.io/seism0saurus/glacier:pr-${{ github.event.number }}
               ports:
                 - 8080:8080
               environment:
@@ -258,3 +257,41 @@ jobs:
         with:
           name: jasmin-reports
           path: frontend/coverage/glacier-frontend
+
+  coverage-aggregation:
+    runs-on: ubuntu-latest
+    needs: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: jacoco-reports
+      - uses: actions/download-artifact@v4
+        with:
+          name: jasmin-reports
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+          dotnet-quality: 'ga'
+      - name: ReportGenerator
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.4.4
+        with:
+          reports: lcov.info;jacoco.xml
+          sourcedirs: 'frontend/src;src/main/java;src/test/java'
+          targetdir: coveragereport
+          reporttypes: 'HtmlInline;MarkdownSummaryGithub'
+          title: 'Aggregated Coverage Report'
+      - name: Upload coverage report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CoverageReport
+          path: coveragereport
+      - name: Add comment to PR
+        run: gh pr comment $PR_NUMBER --body-file coveragereport/SummaryGithub.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+      - name: Publish coverage in build summary
+        run: cat coveragereport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+        shell: bash

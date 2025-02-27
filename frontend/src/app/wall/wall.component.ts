@@ -3,10 +3,16 @@ import {MessageQueue, SubscriptionService} from "../subscription.service";
 import {SafeMessage} from "../message-types/safe-message";
 import {Subscription} from "rxjs";
 
+/**
+ * WallComponent is responsible for rendering a dynamic grid layout for displaying messages ("toots").
+ * The layout adjusts based on the window size and organizes messages efficiently into columns.
+ * It subscribes to a service to receive new messages and handles clean-up when the component is destroyed.
+ */
 @Component({
-  selector: 'app-wall',
-  templateUrl: './wall.component.html',
-  styleUrls: ['./wall.component.css'],
+    selector: 'app-wall',
+    templateUrl: './wall.component.html',
+    styleUrls: ['./wall.component.css'],
+    standalone: false
 })
 export class WallComponent implements OnInit, OnDestroy {
 

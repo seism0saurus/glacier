@@ -1,8 +1,10 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.webservice.dto.Handle;
+import de.seism0saurus.glacier.webservice.dto.InstanceOperator;
+import de.seism0saurus.glacier.webservice.dto.WallId;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -95,7 +97,7 @@ public class InformationController {
     @GetMapping(value="/rest/mastodon-handle", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public Handle getMastodonHandle() {
-        LOGGER.debug("Mastodon Handle requested. Sending " + this.mastodonHandle);
+        LOGGER.debug("Mastodon Handle requested. Sending {} ", this.mastodonHandle);
         Handle handle = new Handle();
         handle.setName(this.mastodonHandle);
         return handle;
@@ -104,7 +106,7 @@ public class InformationController {
     @GetMapping(value="/rest/operator", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public InstanceOperator getInstanceOperator() {
-        LOGGER.debug("Instance operator requested. Sending " + this.mastodonHandle);
+        LOGGER.debug("Instance operator requested. Sending {}", this.mastodonHandle);
         InstanceOperator instanceOperator = new InstanceOperator();
         instanceOperator.setDomain(this.domain);
         instanceOperator.setOperatorName(this.operatorName);
@@ -116,29 +118,6 @@ public class InformationController {
         instanceOperator.setOperatorMail(this.operatorMail);
         instanceOperator.setOperatorWebsite(this.operatorWebsite);
         return instanceOperator;
-    }
-
-    @Data
-    static class Handle {
-        private String name;
-    }
-
-    @Data
-    static class InstanceOperator {
-        private String domain;
-        private String operatorName;
-        private String operatorStreetAndNumber;
-        private String operatorZipcode;
-        private String operatorCity;
-        private String operatorCountry;
-        private String operatorPhone;
-        private String operatorMail;
-        private String operatorWebsite;
-    }
-
-    @Data
-    static class WallId {
-        private String id;
     }
 
     private String generateRandomWallId() {

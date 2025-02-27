@@ -1,5 +1,11 @@
 import {RxStompConfig} from '@stomp/rx-stomp';
 
+/**
+ * Generates a configuration object for RxStomp with specified broker URL and default settings.
+ *
+ * @param {string} brokerURL - The WebSocket URL of the message broker to connect to.
+ * @return {RxStompConfig} An object containing configuration settings for RxStomp.
+ */
 export function generateConfig(brokerURL: string): RxStompConfig {
   return {
 
@@ -22,4 +28,4 @@ export function generateConfig(brokerURL: string): RxStompConfig {
       console.log(new Date(), msg);
     },
   }
-};
+}
