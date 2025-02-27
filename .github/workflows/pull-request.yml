@@ -285,9 +285,9 @@ jobs:
         uses: danielpalme/ReportGenerator-GitHub-Action@5.4.4
         with:
           reports: lcov.info;jacoco.xml
-          sourcedirs: 'frontend/src;src'
+          sourcedirs: 'frontend/src;src/main/java;src/test/java'
           targetdir: coveragereport
-          reporttypes: HtmlInline
+          reporttypes: 'HtmlInline;MarkdownSummaryGithub'
           title: 'Aggregated Coverage Report'
       - name: Upload coverage report artifact
         uses: actions/upload-artifact@v4
