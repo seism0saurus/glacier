@@ -145,7 +145,7 @@ jobs:
         env:
           SOURCE_DATE_EPOCH: ${{ env.TIMESTAMP }}
       - name: Export container image as tar
-        run: docker save -o ${{ runner.temp }}/glacier.tar glacier:${{ github.ref_name }}
+        run: docker save -o ${{ runner.temp }}/glacier.tar ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
       - name: Upload containerimage
         uses: actions/upload-artifact@v4
         with:
