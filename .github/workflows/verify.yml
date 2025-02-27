@@ -174,13 +174,6 @@ jobs:
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
-      - name: Use cache for apt
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/apt/archives
-          key: ${{ runner.os }}-apt-verify-{{ hashFiles('/var/cache/apt/archives') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-verify-
       - name: Use cache for ms-playwright
         uses: actions/cache@v4
         with:
