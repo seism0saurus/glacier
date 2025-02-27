@@ -1,4 +1,4 @@
-name: "Verify glacier"
+name: "Push Test"
 
 on:
   push:

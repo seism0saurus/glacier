@@ -298,4 +298,5 @@ jobs:
         if: always()
         with:
           coverage_file: coverage.json
+          base_coverage_file: base-coverage.json
           sources_base_path: frontend
