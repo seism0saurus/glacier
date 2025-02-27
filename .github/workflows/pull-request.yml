@@ -287,16 +287,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: e2e
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: jasmin-reports
-      - name: Report NYC coverage
-        uses: sidx1024/report-nyc-coverage-github-action@v1.2.7
-        if: always()
+      - name: Comment Test Coverage
+        uses: AthleticNet/comment-test-coverage@1.1
         with:
-          coverage_file: coverage.json
-          base_coverage_file: frontend/base-coverage.json
-          sources_base_path: frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: coverage.json
+          title: Karma Test Coverage
