@@ -25,23 +25,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          key: ${{ runner.os }}-m2-main-${{ hashFiles('~/.m2/repository') }}
           restore-keys: |
-            ${{ runner.os }}-m2-verify-
+            ${{ runner.os }}-m2-main-
       - name: Use cache for node
         uses: actions/cache@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          key: ${{ runner.os }}-node-main-${{ hashFiles('~/.m2/frontend/node') }}
           restore-keys: |
-            ${{ runner.os }}-node-verify-
+            ${{ runner.os }}-node-main-
       - name: Use cache for node_modules
         uses: actions/cache@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-{{ hashFiles('~/.m2/frontend/node_modules') }}
+          key: ${{ runner.os }}-node_modules-main-{{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
-            ${{ runner.os }}-node_modules-verify-
+            ${{ runner.os }}-node_modules-main-
       - name: Compile the webapp
         run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 
@@ -59,12 +59,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-main-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-main-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -87,12 +87,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-main-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-main-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -129,12 +129,6 @@ jobs:
         with:
           name: glacier
           path: containerimage
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -146,13 +140,24 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - name: Build and push container image
-        uses: docker/build-push-action@v5
+      - name: Get Git commit timestamps
+        run: echo "TIMESTAMP=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+      - name: Build and container image
+        uses: docker/build-push-action@v6
         with:
           context: containerimage/.
-          push: true
+          push: 'false'
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+        env:
+          SOURCE_DATE_EPOCH: ${{ env.TIMESTAMP }}
+      - name: Export container image as tar
+        run: docker save -o ${{ runner.temp }}/glacier.tar ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+      - name: Upload containerimage
+        uses: actions/upload-artifact@v4
+        with:
+          name: containerimage
+          path: ${{ runner.temp }}/glacier.tar
 
   e2e:
     runs-on: ubuntu-latest
@@ -170,12 +175,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-main-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-main-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
@@ -185,9 +190,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
+          key: ${{ runner.os }}-playwright-main-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
           restore-keys: |
-            ${{ runner.os }}-playwright-verify-
+            ${{ runner.os }}-playwright-main-
+      - name: Download containerimage
+        uses: actions/download-artifact@v4
+        with:
+          name: containerimage
+          path: ${{ runner.temp }}
+      - name: Load containerimage
+        run: |
+          docker load --input ${{ runner.temp }}/glacier.tar
+          docker image ls -a
       - name: Install Docker Compose
         run: |
           sudo apt-get update
