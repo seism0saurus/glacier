@@ -102,15 +102,16 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     @Override
     public void subscribeToHashtag(String principal, String hashtag) {
+        assert principal != null;
+        assert hashtag != null;
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
         Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
         if (previousSubscriptions.get(hashtag) != null) {
             LOGGER.info("A subscription for principal {} with the hashtag {} already exists", principal, hashtag);
             return;
         }
-        Future<?> future;
         var executorService = Executors.newVirtualThreadPerTaskExecutor();
-        future = executorService.submit(() -> {
+        Future<?> future = executorService.submit(() -> {
             try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
                 LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
                 sleepForever(subscription);

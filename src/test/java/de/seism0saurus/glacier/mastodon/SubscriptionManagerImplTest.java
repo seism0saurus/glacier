@@ -1,6 +1,7 @@
 package de.seism0saurus.glacier.mastodon;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -8,8 +9,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
+import social.bigbone.api.method.StreamingMethods;
+
+import java.io.Closeable;
+import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.*;
 
 class SubscriptionManagerImplTest {
 
@@ -22,14 +30,11 @@ class SubscriptionManagerImplTest {
     @Mock
     private RestTemplate restTemplate;
 
-    @Value("${mastodon.instance}")
     private final String instance = "test-instance";
 
-    @Value("${glacier.domain}")
     private final String glacierDomain = "test-domain";
 
-    @Value("${mastodon.handle}")
-    private final String handle = "test-handle";
+    private final String handle = "test-handle@test-instance";
 
     @InjectMocks
     private SubscriptionManagerImpl subscriptionManager;
@@ -48,6 +53,66 @@ class SubscriptionManagerImplTest {
 
         assertTrue(subscriptionManager.hasPrincipalSubscriptions(principal));
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag));
+    }
+
+    @Test
+    void testSubscribeToHashtag_WithStreaming() throws InterruptedException, IOException {
+        String principal = "user123";
+        String hashtag = "TestHashtag";
+        Closeable subscription = mock(Closeable.class);
+        StreamingMethods methods = mock(StreamingMethods.class);
+        when(methods.hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class))).thenReturn(subscription);
+        when(mastodonClient.streaming()).thenReturn(methods);
+
+        subscriptionManager.subscribeToHashtag(principal, hashtag);
+
+        Thread.sleep(3000L);
+
+        assertTrue(subscriptionManager.hasPrincipalSubscriptions(principal));
+        assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag));
+        verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
+        verify(subscription).close();
+    }
+
+//    @Test
+//    void testSubscribeToHashtag_WithExceptionDuringStreaming() throws InterruptedException, IOException {
+//        String principal = "user123";
+//        String hashtag = "TestHashtag";
+//        Closeable subscription = mock(Closeable.class);
+//        doThrow(new IOException("Test IOException")).when(subscription).close();
+//        StreamingMethods methods = mock(StreamingMethods.class);
+//        when(methods.hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class))).thenReturn(subscription);
+//        when(mastodonClient.streaming()).thenReturn(methods);
+//
+//        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+//            subscriptionManager.subscribeToHashtag(principal, hashtag);
+//            Thread.sleep(3000L);
+//            subscriptionManager.terminateSubscription(principal, hashtag);
+//            Thread.sleep(30000L);
+//        });
+//
+//        assertEquals("java.io.IOException: Test IOException", exception.getMessage());
+//        verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
+//    }
+
+    @Test
+    void testSubscribeToHashtag_NullPrincipal() {
+        String principal = null;
+        String hashtag = "TestHashtag";
+
+        assertThrows(AssertionError.class, () ->
+                subscriptionManager.subscribeToHashtag(principal, hashtag)
+        );
+    }
+
+    @Test
+    void testSubscribeToHashtag_NullHashtag() {
+        String principal = "user123";
+        String hashtag = null;
+
+        assertThrows(AssertionError.class, () ->
+                subscriptionManager.subscribeToHashtag(principal, hashtag)
+        );
     }
 
     @Test
@@ -103,6 +168,23 @@ class SubscriptionManagerImplTest {
         subscriptionManager.terminateSubscription(principal, hashtag);
         assertEquals(0, subscriptionManager.numberOfSubscriptions(principal));
         assertFalse(subscriptionManager.hasPrincipalSubscriptions(principal));
+    }
+
+    @Test
+    void testTerminateSubscription_MultipleSubscriptions() {
+        String principal = "user123";
+        String hashtag1 = "TestHashtag1";
+        String hashtag2 = "TestHashtag2";
+
+        subscriptionManager.subscribeToHashtag(principal, hashtag1);
+        subscriptionManager.subscribeToHashtag(principal, hashtag2);
+        assertTrue(subscriptionManager.hasPrincipalSubscriptions(principal));
+        assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag1));
+        assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag2));
+
+        subscriptionManager.terminateSubscription(principal, hashtag1);
+        assertEquals(1, subscriptionManager.numberOfSubscriptions(principal));
+        assertTrue(subscriptionManager.hasPrincipalSubscriptions(principal));
     }
 
     @Test
