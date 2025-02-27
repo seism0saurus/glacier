@@ -275,7 +275,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: jasmin-reports
-      - name: Setup .NET Core # Required to execute ReportGenerator
+      - name: Setup .NET Core
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.x
