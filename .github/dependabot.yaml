@@ -14,7 +14,7 @@ updates:
           - "com.fasterxml.jackson.core:*"
 
   - package-ecosystem: "npm"
-    directory: "/webapp/angular"
+    directory: "/frontend/"
     schedule:
       interval: "daily"
     reviewers:
