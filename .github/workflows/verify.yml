@@ -141,6 +141,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
       - name: Get Git commit timestamps
         run: echo "TIMESTAMP=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+      - name: Enable BuildKit with containerd
+        run: |
+          echo '{"experimental":true,"features":{"containerd":true}}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          export DOCKER_BUILDKIT=1
       - name: Build and push container image
         uses: docker/build-push-action@v6
         with:
