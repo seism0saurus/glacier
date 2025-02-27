@@ -109,17 +109,16 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             return;
         }
         Future<?> future;
-        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-            future = executorService.submit(() -> {
-                try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
-                    LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
-                    sleepForever(subscription);
-                } catch (IOException e) {
-                    LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
-                    throw new RuntimeException(e);
-                }
-            });
-        }
+        var executorService = Executors.newVirtualThreadPerTaskExecutor();
+        future = executorService.submit(() -> {
+            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
+                LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
+                sleepForever(subscription);
+            } catch (IOException e) {
+                LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
+                throw new RuntimeException(e);
+            }
+        });
         previousSubscriptions.put(hashtag, future);
         subscriptions.put(principal, previousSubscriptions);
     }

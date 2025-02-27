@@ -3,6 +3,7 @@ package de.seism0saurus.glacier.webservice.messaging;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,7 @@ public class SubscriptionListener {
      * @see "src/main/ressources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(SubscriptionListener.class);
+    private final long timeout;
 
     /**
      * The private final variable subscriptionManager is an instance of the SubscriptionManager interface.
@@ -73,8 +75,28 @@ public class SubscriptionListener {
      *
      * @param subscriptionManager the SubscriptionManager to be used for managing subscriptions
      */
-    public SubscriptionListener(final SubscriptionManager subscriptionManager) {
+    public SubscriptionListener(final SubscriptionManager subscriptionManager, @Value("${glacier.timeouts.client_reconnect}") final long timeout) {
         this.subscriptionManager = subscriptionManager;
+        this.timeout = timeout;
+    }
+
+    /**
+     * Checks if there is an active disconnect timer associated with the specified principal.
+     *
+     * @param principal the identifier of the principal to check for a running disconnect timer
+     * @return true if a disconnect timer is currently running for the specified principal, false otherwise
+     */
+    protected boolean hasRunningDisconnectTimer(String principal) {
+        return this.disconnectTimer.containsKey(principal);
+    }
+
+    /**
+     * Checks if there are any currently running disconnect timers.
+     *
+     * @return {@code true} if there are active disconnect timers, {@code false} otherwise.
+     */
+    protected boolean hasRunningDisconnectTimers() {
+        return !this.disconnectTimer.isEmpty();
     }
 
     /**
@@ -98,6 +120,7 @@ public class SubscriptionListener {
         if (future != null) {
             future.cancel(true);
         }
+        this.disconnectTimer.remove(event.getUser().getName());
     }
 
     /**
@@ -117,22 +140,19 @@ public class SubscriptionListener {
             return;
         }
         LOGGER.info("Client with session {} and username {} disconnected. Starting timer to wait for reconnection", headerAccessor.getSessionId(), event.getUser().getName());
-        Future<?> future;
-        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-            future = executorService.submit(() -> {
-                LOGGER.info("Timer for principal {} started", event.getUser().getName());
-                try {
-                    Thread.sleep(300_000L);
-                } catch (InterruptedException e) {
-                    LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
-                    return;
-                }
-                LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
-                this.subscriptionManager.terminateAllSubscriptions(event.getUser().getName());
-            });
-        }
+        var executorService = Executors.newVirtualThreadPerTaskExecutor();
+        Future<?> future = executorService.submit(() -> {
+            LOGGER.info("Timer for principal {} started", event.getUser().getName());
+            try {
+                Thread.sleep(timeout);
+            } catch (InterruptedException e) {
+                LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
+                return;
+            }
+            LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
+            this.subscriptionManager.terminateAllSubscriptions(event.getUser().getName());
+            this.disconnectTimer.remove(event.getUser().getName());
+        });
         this.disconnectTimer.put(event.getUser().getName(), future);
     }
-
-
 }
