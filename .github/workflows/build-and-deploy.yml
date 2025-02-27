@@ -10,6 +10,9 @@ on:
 
 jobs:
   compile:
+    if: >
+      github.event_name != 'push' || !contains(github.event.head_commit.message, 'Merge pull request') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
