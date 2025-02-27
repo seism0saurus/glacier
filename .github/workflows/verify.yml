@@ -143,9 +143,15 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: containerimage/.
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=docker,dest=${{ runner.temp }}/glacier.tar
+      - name: Upload containerimage
+        uses: actions/upload-artifact@v4
+        with:
+          name: containerimage
+          path: ${{ runner.temp }}/glacier.tar
 
   e2e:
     runs-on: ubuntu-latest
@@ -181,6 +187,11 @@ jobs:
           key: ${{ runner.os }}-playwright-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
           restore-keys: |
             ${{ runner.os }}-playwright-verify-
+      - name: Download containerimage
+        uses: actions/download-artifact@v4
+        with:
+          name: containerimage
+          path: ${{ runner.temp }}
       - name: Install Docker Compose
         run: |
           sudo apt-get update
@@ -210,6 +221,10 @@ jobs:
                 MY_PHONE: "+1234567890"
               container_name: glacier
           EOF
+      - name: Load image
+        run: |
+          docker load --input ${{ runner.temp }}/glacier.tar
+          docker image ls -a
       - name: Start services using Docker Compose
         run: docker-compose up -d
       - name: Wait for service
