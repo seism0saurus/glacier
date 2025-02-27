@@ -139,14 +139,17 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+      - name: Get Git commit timestamps
+        run: echo "TIMESTAMP=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
       - name: Build and push container image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: containerimage/.
-          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=oci,dest=${{ runner.temp }}/glacier.tar
+        env:
+          SOURCE_DATE_EPOCH: ${{ env.TIMESTAMP }}
       - name: Upload containerimage
         uses: actions/upload-artifact@v4
         with:
