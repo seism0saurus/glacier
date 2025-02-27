@@ -30,8 +30,11 @@ module.exports = function (config) {
       reporters: [
         { type: 'html' },
         { type: 'text-summary' },
-        { type: 'json', file: 'coverage.json' }, // JSON-Reporter hinzufügen
+        { type: 'lcovonly', subdir: '.', file: 'lcov.info' }
       ],
+      instrumenterOptions: {
+        istanbul: { noCompact: true },
+      },
       check: {
         global: {
           statements: 35,
