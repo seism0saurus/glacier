@@ -10,9 +10,11 @@
           (removed)="remove(tag)"
           [editable]="true"
           (edited)="edit(tag, $event)"
-          [aria-description]="'press enter to edit hashtag ' + tag">
+          [aria-description]="'press enter to edit hashtag ' + tag"
+          [id]="'hashtag-' + tag"
+        >
           {{tag}}
-          <mat-icon matChipRemove [attr.aria-label]="'remove hashtag' + tag" svgIcon="cancel_icon"></mat-icon>
+          <mat-icon matChipRemove [attr.aria-label]="'remove hashtag ' + tag" svgIcon="cancel_icon"></mat-icon>
         </mat-chip-row>
       }
       <input placeholder="New hashtag" #hashtagInput
