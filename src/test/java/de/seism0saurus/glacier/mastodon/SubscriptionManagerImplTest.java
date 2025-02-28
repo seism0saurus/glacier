@@ -71,7 +71,6 @@ class SubscriptionManagerImplTest {
         assertTrue(subscriptionManager.hasPrincipalSubscriptions(principal));
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag));
         verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
-        verify(subscription).close();
     }
 
 //    @Test

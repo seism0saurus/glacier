@@ -11,45 +11,51 @@ test.describe('Hashtag Tests', () => {
   test('add one element', async ({ page }) => {
     await page.getByPlaceholder('New hashtag').fill('bloomscrolling');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-bloomscrolling']");
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
+  });
+
+  test('add one element and ignore uppercase letters', async ({ page }) => {
+    await page.getByPlaceholder('New hashtag').fill('BloomScrolling');
+    await page.getByPlaceholder('New hashtag').press('Enter');
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
   });
 
   test('add two elements', async ({ page }) => {
     await page.getByPlaceholder('New hashtag').fill('bloomscrolling');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-bloomscrolling']");
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
 
     await page.getByPlaceholder('New hashtag').fill('pizza');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-pizza']");
+    await expect(page.locator("[id='hashtag-pizza']")).toBeVisible();
   });
 
   test('add two elements and remove one', async ({ page }) => {
     await page.getByPlaceholder('New hashtag').fill('bloomscrolling');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-bloomscrolling']");
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
 
     await page.getByPlaceholder('New hashtag').fill('pizza');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-pizza']");
+    await expect(page.locator("[id='hashtag-pizza']")).toBeVisible();
 
     await page.getByLabel('remove hashtag bloomscrolling').click();
     await expect(page.locator("[id='hashtag-bloomscrolling']")).toHaveCount(0);
-    await page.isVisible("[id='hashtag-pizza']");
+    await expect(page.locator("[id='hashtag-pizza']")).toBeVisible();
   });
 
   test('add two elements and remove one by one', async ({ page }) => {
     await page.getByPlaceholder('New hashtag').fill('bloomscrolling');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-bloomscrolling']");
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
 
     await page.getByPlaceholder('New hashtag').fill('pizza');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-pizza']");
+    await expect(page.locator("[id='hashtag-pizza']")).toBeVisible();
 
     await page.getByLabel('remove hashtag bloomscrolling').click();
     await expect(page.locator("[id='hashtag-bloomscrolling']")).toHaveCount(0);
-    await page.isVisible("[id='hashtag-pizza']");
+    await expect(page.locator("[id='hashtag-pizza']")).toBeVisible();
 
     await page.getByLabel('remove hashtag pizza').click();
     await expect(page.locator("[id='hashtag-bloomscrolling']")).toHaveCount(0);
@@ -64,7 +70,7 @@ test.describe('Hashtag Tests', () => {
   test('add one elements and remove all', async ({ page }) => {
     await page.getByPlaceholder('New hashtag').fill('bloomscrolling');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-bloomscrolling']");
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
 
     await page.getByLabel('remove all hashtags').click();
     await expect(page.locator("[id='hashtag-bloomscrolling']")).toHaveCount(0);
@@ -73,11 +79,11 @@ test.describe('Hashtag Tests', () => {
   test('add two elements and remove all', async ({ page }) => {
     await page.getByPlaceholder('New hashtag').fill('bloomscrolling');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-bloomscrolling']");
+    await expect(page.locator("[id='hashtag-bloomscrolling']")).toBeVisible();
 
     await page.getByPlaceholder('New hashtag').fill('pizza');
     await page.getByPlaceholder('New hashtag').press('Enter');
-    await page.isVisible("[id='hashtag-pizza']");
+    await expect(page.locator("[id='hashtag-pizza']")).toBeVisible();
 
     await page.getByLabel('remove all hashtags').click();
     await expect(page.locator("[id='hashtag-bloomscrolling']")).toHaveCount(0);

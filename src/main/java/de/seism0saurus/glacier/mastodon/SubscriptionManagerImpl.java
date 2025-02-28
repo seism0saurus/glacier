@@ -206,7 +206,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private static void sleepForever(Closeable subscription) {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Thread.currentThread().wait();
+                // DANGER. The Stream is only kept open if we have this sleep.
+                // It closes directly after openening, if this is a wait or other construct. Dont't know why :(
+                Thread.sleep(60_000L);
             }
         } catch (InterruptedException e) {
             LOGGER.info("Sleep interrupted by InterruptedException. Most likely because it was interrupted by a subscription termination", e);

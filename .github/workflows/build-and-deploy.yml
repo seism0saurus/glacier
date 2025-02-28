@@ -164,6 +164,8 @@ jobs:
     needs: create-test-image
     env:
       BASE_URL: http://localhost:8080
+      MASTODON_USER_ACCESS_TOKEN: "${{ secrets.MASTODON_USER_ACCESS_TOKEN }}"
+      MASTODON_USER_API_URL: "${{ secrets.MASTODON_USER_API_URL }}"
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 23
