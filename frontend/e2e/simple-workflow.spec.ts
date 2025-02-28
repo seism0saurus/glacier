@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createTextToot } from './helper/mastodon-client';
 
 test.describe('Simple Workflow Tests', () => {
 
@@ -8,8 +9,6 @@ test.describe('Simple Workflow Tests', () => {
   });
 
   test('text toot with mention and hashtag is visible', async ({ page }) => {
-    const { createTextToot } = await import('./helper/mastodon-client');
-
     await page.locator('div').filter({ hasText: 'Followed hashtags' }).nth(3).click();
     await page.getByPlaceholder('New hashtag').fill('glacierE2Etest');
     await page.getByPlaceholder('New hashtag').press('Enter');
