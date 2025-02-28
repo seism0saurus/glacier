@@ -320,16 +320,16 @@
                             <arguments>playwright install ${additionalPlaywrightInstallParams}</arguments>
                         </configuration>
                     </execution>
-<!--                    <execution>-->
-<!--                        <id>npx playwright test</id>-->
-<!--                        <goals>-->
-<!--                            <goal>npx</goal>-->
-<!--                        </goals>-->
-<!--                        <phase>verify</phase>-->
-<!--                        <configuration>-->
-<!--                            <arguments>playwright test</arguments>-->
-<!--                        </configuration>-->
-<!--                    </execution>-->
+                    <execution>
+                        <id>npx playwright test</id>
+                        <goals>
+                            <goal>npx</goal>
+                        </goals>
+                        <phase>verify</phase>
+                        <configuration>
+                            <arguments>playwright test</arguments>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>
