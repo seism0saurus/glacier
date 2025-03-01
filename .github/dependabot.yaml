@@ -2,6 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "maven"
     directory: "/"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
     reviewers:
@@ -13,6 +14,7 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/frontend/"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
     reviewers:
@@ -24,6 +26,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/.github"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
     reviewers:
@@ -31,6 +34,7 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/containerimage"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
     reviewers:
