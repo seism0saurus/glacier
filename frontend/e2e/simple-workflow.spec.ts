@@ -18,6 +18,8 @@ test.describe('Simple Workflow Tests', () => {
 
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
 
+    await page.screenshot({ path: 'toot.png' });
+
     await expect(page.locator('app-toot')).toHaveCount(1, { timeout: 30000 } );
     await expect(page.locator('app-toot')).toBeVisible();
   });
