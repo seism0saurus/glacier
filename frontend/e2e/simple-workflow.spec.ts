@@ -14,6 +14,8 @@ test.describe('Simple Workflow Tests', () => {
     await page.getByPlaceholder('New hashtag').press('Enter');
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toBeVisible();
 
+    await page.screenshot({ path: 'subscríbed_hashstag.png' });
+
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
 
     await expect(page.locator('app-toot')).toHaveCount(1, { timeout: 30000 } );
