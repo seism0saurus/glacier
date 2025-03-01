@@ -10,12 +10,37 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.3</version>
+    <version>0.0.4</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
         <profile>
-            <id>ci</id>
+            <id>RunE2ETest</id>
+            <properties>
+                <skipE2ETest>false</skipE2ETest>
+            </properties>
+        </profile>
+        <profile>
+            <id>RunE2ETestWithoutDeps</id>
+            <properties>
+                <skipE2ETest>false</skipE2ETest>
+                <additionalPlaywrightInstallParams/>
+            </properties>
+        </profile>
+        <profile>
+            <id>SkipUnitTest</id>
+            <properties>
+                <skipUnitTests>true</skipUnitTests>
+            </properties>
+        </profile>
+        <profile>
+            <id>SkipIntegrationTest</id>
+            <properties>
+                <skipIntegrationTests>true</skipIntegrationTests>
+            </properties>
+        </profile>
+        <profile>
+            <id>WithPlaywrightDeps</id>
             <properties>
                 <additionalPlaywrightInstallParams>--with-deps</additionalPlaywrightInstallParams>
             </properties>
@@ -27,6 +52,9 @@
             </activation>
             <properties>
                 <additionalPlaywrightInstallParams/>
+                <skipUnitTests>false</skipUnitTests>
+                <skipIntegrationTests>false</skipIntegrationTests>
+                <skipE2ETest>true</skipE2ETest>
             </properties>
         </profile>
     </profiles>
@@ -233,6 +261,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
                 <configuration>
+                    <skip>${skipUnitTests}</skip>
                     <forkCount>1</forkCount>
                     <reuseForks>true</reuseForks>
                 </configuration>
@@ -249,6 +278,7 @@
                             <goal>verify</goal>
                         </goals>
                         <configuration>
+                            <skip>${skipIntegrationTests}</skip>
                             <forkCount>1</forkCount>
                             <reuseForks>true</reuseForks>
                         </configuration>
@@ -306,6 +336,7 @@
                         </goals>
                         <phase>test</phase>
                         <configuration>
+                            <skip>${skipUnitTests}</skip>
                             <arguments>run test -- --no-watch --code-coverage --browsers ChromeHeadless</arguments>
                         </configuration>
                     </execution>
@@ -317,19 +348,21 @@
                         </goals>
                         <phase>verify</phase>
                         <configuration>
+                            <skip>${skipE2ETest}</skip>
                             <arguments>playwright install ${additionalPlaywrightInstallParams}</arguments>
                         </configuration>
                     </execution>
-<!--                    <execution>-->
-<!--                        <id>npx playwright test</id>-->
-<!--                        <goals>-->
-<!--                            <goal>npx</goal>-->
-<!--                        </goals>-->
-<!--                        <phase>verify</phase>-->
-<!--                        <configuration>-->
-<!--                            <arguments>playwright test</arguments>-->
-<!--                        </configuration>-->
-<!--                    </execution>-->
+                    <execution>
+                        <id>npx playwright test</id>
+                        <goals>
+                            <goal>npx</goal>
+                        </goals>
+                        <phase>verify</phase>
+                        <configuration>
+                            <skip>${skipE2ETest}</skip>
+                            <arguments>playwright test</arguments>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>

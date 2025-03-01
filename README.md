@@ -69,7 +69,7 @@ cd glacier
 
 After the build you can run Glacier locally from the commandline, to test the jar before packaging it into a container image.
 ```bash
-ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.3.jar
+ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.4.jar
 ```
 
 ### Run tests
@@ -87,7 +87,7 @@ To create a container image for Docker or other engines,
 copy the created jar into the [containerimage](./containerimage) folder.
 Then change into the folder and run docker build.
 ```bash
-cp target/glacier-0.0.3.jar containerimage/
+cp target/glacier-0.0.4.jar containerimage/
 cd containerimage
 ```
 
@@ -97,13 +97,13 @@ or any compatible build tool that creates standard container images like [builda
 #### Docker
 
 ```bash
-docker build -t glacier --build-arg JAR_FILE=glacier-0.0.3.jar .
+docker build -t glacier --build-arg JAR_FILE=glacier-0.0.4.jar .
 ```
 
 #### Buildah
 
 ```bash
-buildah build --build-arg JAR_FILE=glacier-0.0.3.jar  -f Dockerfile -t glacier .
+buildah build --build-arg JAR_FILE=glacier-0.0.4.jar  -f Dockerfile -t glacier .
 ```
 
 ## Run it

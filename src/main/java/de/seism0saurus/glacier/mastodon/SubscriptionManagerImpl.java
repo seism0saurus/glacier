@@ -102,24 +102,24 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     @Override
     public void subscribeToHashtag(String principal, String hashtag) {
+        assert principal != null;
+        assert hashtag != null;
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
         Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
         if (previousSubscriptions.get(hashtag) != null) {
             LOGGER.info("A subscription for principal {} with the hashtag {} already exists", principal, hashtag);
             return;
         }
-        Future<?> future;
-        try (var executorService = Executors.newVirtualThreadPerTaskExecutor()) {
-            future = executorService.submit(() -> {
-                try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
-                    LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
-                    sleepForever(subscription);
-                } catch (IOException e) {
-                    LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
-                    throw new RuntimeException(e);
-                }
-            });
-        }
+        var executorService = Executors.newVirtualThreadPerTaskExecutor();
+        Future<?> future = executorService.submit(() -> {
+            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
+                LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
+                sleepForever(subscription);
+            } catch (IOException e) {
+                LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
+                throw new RuntimeException(e);
+            }
+        });
         previousSubscriptions.put(hashtag, future);
         subscriptions.put(principal, previousSubscriptions);
     }
@@ -206,7 +206,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private static void sleepForever(Closeable subscription) {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Thread.currentThread().wait();
+                // DANGER. The Stream is only kept open if we have this sleep.
+                // It closes directly after openening, if this is a wait or other construct. Dont't know why :(
+                Thread.sleep(60_000L);
             }
         } catch (InterruptedException e) {
             LOGGER.info("Sleep interrupted by InterruptedException. Most likely because it was interrupted by a subscription termination", e);

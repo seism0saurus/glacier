@@ -64,7 +64,25 @@ jobs:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
       - name: Verify the webapp
-        run: ./mvnw --batch-mode test --file pom.xml
+        run: ./mvnw --batch-mode verify --file pom.xml
+      - name: Upload Surefire results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-results
+          path: target/surefire-reports
+      - name: Upload Jacoco reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: target/site/jacoco
+      - name: Upload Jasmin reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jasmin-reports
+          path: frontend/coverage/glacier-frontend
 
   package:
     runs-on: ubuntu-latest
@@ -92,7 +110,7 @@ jobs:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
       - name: Package the webapp
-        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml
+        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
       - name: Check if frontend is bundled into jar
         run: |
           if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
@@ -122,12 +140,6 @@ jobs:
         with:
           name: glacier
           path: containerimage
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -139,19 +151,33 @@ jobs:
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - name: Build and push container image
-        uses: docker/build-push-action@v5
+      - name: Get Git commit timestamps
+        run: echo "TIMESTAMP=$(git log -1 --pretty=%ct)" >> $GITHUB_ENV
+      - name: Build and container image
+        uses: docker/build-push-action@v6
         with:
           context: containerimage/.
-          push: true
+          push: 'false'
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+        env:
+          SOURCE_DATE_EPOCH: ${{ env.TIMESTAMP }}
+      - name: Export container image as tar
+        run: docker save -o ${{ runner.temp }}/glacier.tar ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+      - name: Upload containerimage
+        uses: actions/upload-artifact@v4
+        with:
+          name: containerimage
+          path: ${{ runner.temp }}/glacier.tar
 
   e2e:
     runs-on: ubuntu-latest
     needs: create-test-image
     env:
-      BASE_URL: http://localhost:8080
+      BASE_URL: http://localhost:443
+      WAIT_FOR: 15000
+      MASTODON_USER_ACCESS_TOKEN: "${{ secrets.MASTODON_USER_ACCESS_TOKEN }}"
+      MASTODON_USER_API_URL: "${{ secrets.MASTODON_USER_API_URL }}"
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 23
@@ -181,6 +207,15 @@ jobs:
           key: ${{ runner.os }}-playwright-verify-{{ hashFiles('/home/runner/.cache/ms-playwright') }}
           restore-keys: |
             ${{ runner.os }}-playwright-verify-
+      - name: Download containerimage
+        uses: actions/download-artifact@v4
+        with:
+          name: containerimage
+          path: ${{ runner.temp }}
+      - name: Load containerimage
+        run: |
+          docker load --input ${{ runner.temp }}/glacier.tar
+          docker image ls -a
       - name: Install Docker Compose
         run: |
           sudo apt-get update
@@ -193,13 +228,13 @@ jobs:
             glacier:
               image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
               ports:
-                - 8080:8080
+                - 443:8080
               environment:
                 SPRING_PROFILES_ACTIVE: "default"
                 ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
                 HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
                 INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-                MY_DOMAIN: "localhost:8080"
+                MY_DOMAIN: "localhost:443"
                 MY_WEBSITE: "seism0saurus.de"
                 MY_NAME: "seism0saurus"
                 MY_STREET_AND_NUMBER: "sometherestreet 1"
@@ -215,7 +250,7 @@ jobs:
       - name: Wait for service
         run : |
           for i in {1..30}; do
-            if curl -s http://localhost:8080 > /dev/null; then
+            if curl -s http://localhost:443 > /dev/null; then
               echo "glacier is up and running!"
               exit 0
             fi
@@ -227,34 +262,19 @@ jobs:
           docker logs glacier
           exit 1
       - name: Start playwright tests in maven
-        run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P ci
+        run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P "WithPlaywrightDeps,RunE2ETest,SkipUnitTest,SkipIntegrationTest"
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: frontend/playwright-report
-      - name: Upload Playwright screenshots
-        if: always()
+      - name: Upload Playwright Error screenshots
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-screenshots
-          path: frontend/test-results/screenshots
-      - name: Upload Surefire results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: surefire-results
-          path: target/surefire-reports
-      - name: Upload Jacoco reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-reports
-          path: target/site/jacoco
-      - name: Upload Jasmin reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jasmin-reports
-          path: frontend/coverage/glacier-frontend
+          name: playwright-error-screenshots
+          path: frontend/test-results
+      - name: Show logs of service
+        if: failure()
+        run: docker-compose logs

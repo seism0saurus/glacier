@@ -7,11 +7,9 @@ updates:
     reviewers:
       - "seism0saurus"
     groups:
-      logging:
+      backend:
         patterns:
-          - "ch.qos.logback:*"
-          - "ch.qos.logback.contrib:*"
-          - "com.fasterxml.jackson.core:*"
+          - "*"
 
   - package-ecosystem: "npm"
     directory: "/frontend/"
@@ -20,15 +18,9 @@ updates:
     reviewers:
       - "seism0saurus"
     groups:
-      angular:
+      frontend:
         patterns:
-          - "@angular/*"
-          - "@angular-devkit/*"
-      testing:
-        patterns:
-          - "karma/*"
-          - "jasmine-core/*"
-          - "@types/jasmine/*"
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/.github"
