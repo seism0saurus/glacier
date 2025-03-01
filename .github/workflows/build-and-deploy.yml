@@ -182,6 +182,7 @@ jobs:
     needs: create-test-image
     env:
       BASE_URL: http://localhost:443
+      WAIT_FOR: 15000
       MASTODON_USER_ACCESS_TOKEN: "${{ secrets.MASTODON_USER_ACCESS_TOKEN }}"
       MASTODON_USER_API_URL: "${{ secrets.MASTODON_USER_API_URL }}"
     steps:
@@ -275,9 +276,16 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots
+          path: frontend/test-results
       - name: Show logs of service
         if: failure()
         run: docker-compose logs
+
 
   publish-image:
     runs-on: ubuntu-latest
