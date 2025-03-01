@@ -274,3 +274,6 @@ jobs:
         with:
           name: jasmin-reports
           path: frontend/coverage/glacier-frontend
+      - name: Show logs of service
+        if: always()
+        run: docker-compose logs
