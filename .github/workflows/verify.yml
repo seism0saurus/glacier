@@ -209,7 +209,7 @@ jobs:
             glacier:
               image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
               ports:
-                - 8080:8080
+                - 8080:443
               environment:
                 SPRING_PROFILES_ACTIVE: "default"
                 ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
