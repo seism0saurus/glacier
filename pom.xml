@@ -21,6 +21,13 @@
             </properties>
         </profile>
         <profile>
+            <id>RunE2ETestWithoutDeps</id>
+            <properties>
+                <skipE2ETest>false</skipE2ETest>
+                <additionalPlaywrightInstallParams/>
+            </properties>
+        </profile>
+        <profile>
             <id>SkipUnitTest</id>
             <properties>
                 <skipUnitTests>true</skipUnitTests>

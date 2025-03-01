@@ -32,7 +32,7 @@ test.describe('Toot Tests', () => {
   test('text toot with mention but without hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot without hashtag.');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
@@ -41,7 +41,7 @@ test.describe('Toot Tests', () => {
   test('text toot without mention but with a hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi everyone\nThis is a test toot without mention.\n#glacierE2Etest');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
@@ -50,7 +50,7 @@ test.describe('Toot Tests', () => {
   test('text toot without mention and without hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi everyone\nThis is a plain toot without mention and hashtag.');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
@@ -59,7 +59,7 @@ test.describe('Toot Tests', () => {
   test('private toot with mention and hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest', 'private');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
@@ -68,7 +68,7 @@ test.describe('Toot Tests', () => {
   test('direct toot with mention and hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest', 'direct');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
@@ -77,7 +77,7 @@ test.describe('Toot Tests', () => {
   test('unlisted toot with mention and hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest', 'unlisted');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();

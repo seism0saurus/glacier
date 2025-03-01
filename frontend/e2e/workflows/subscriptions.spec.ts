@@ -11,7 +11,7 @@ test.describe('Subscription Tests', () => {
   test('Toot without subscription for the used hashtag is not visible', async ({ page }) => {
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
@@ -47,7 +47,7 @@ test.describe('Subscription Tests', () => {
 
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(1);
   });
@@ -91,7 +91,7 @@ test.describe('Subscription Tests', () => {
 
     await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest');
 
-    await page.waitForTimeout(3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
+    await page.waitForTimeout(process.env['WAIT_FOR'] || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
     await expect(page.locator('app-toot')).toHaveCount(1);
   });

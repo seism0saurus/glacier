@@ -175,6 +175,7 @@ jobs:
     needs: create-test-image
     env:
       BASE_URL: http://localhost:443
+      WAIT_FOR: 15000
       MASTODON_USER_ACCESS_TOKEN: "${{ secrets.MASTODON_USER_ACCESS_TOKEN }}"
       MASTODON_USER_API_URL: "${{ secrets.MASTODON_USER_API_URL }}"
     steps:
