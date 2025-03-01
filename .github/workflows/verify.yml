@@ -268,6 +268,12 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots
+          path: frontend/test-results
       - name: Show logs of service
         if: failure()
         run: docker-compose logs
