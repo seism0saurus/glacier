@@ -17,7 +17,12 @@ export function rxStompServiceFactory(http: HttpClient, document: Document) {
   if (document.location.protocol == "https:") {
     protocolWebsocket = "wss";
   }
-  const brokerURL: string = protocolWebsocket + '://' + document.location.hostname + ':' + environment.backendPort + '/websocket';
+  var port = environment.backendPort;
+  if (port == 'auto') {
+    port = document.location.port;
+  }
+  var host = document.location.hostname
+  const brokerURL: string = protocolWebsocket + '://' + host + ':' + port + '/websocket';
   const rxStompConfig = generateConfig(brokerURL);
 
   rxStompConfig.beforeConnect = (): Promise<void> =>
