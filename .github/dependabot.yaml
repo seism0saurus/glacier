@@ -5,6 +5,7 @@ updates:
     target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "08:00"
     reviewers:
       - "seism0saurus"
     groups:
@@ -17,6 +18,7 @@ updates:
     target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "10:00"
     reviewers:
       - "seism0saurus"
     groups:
@@ -29,6 +31,7 @@ updates:
     target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "12:00"
     reviewers:
       - "seism0saurus"
 
@@ -37,5 +40,6 @@ updates:
     target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "14:00"
     reviewers:
       - "seism0saurus"
