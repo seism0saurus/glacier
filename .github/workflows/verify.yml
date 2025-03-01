@@ -65,6 +65,24 @@ jobs:
           key: ${{ runner.os }}-node_modules-verify
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
+      - name: Upload Surefire results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-results
+          path: target/surefire-reports
+      - name: Upload Jacoco reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: target/site/jacoco
+      - name: Upload Jasmin reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jasmin-reports
+          path: frontend/coverage/glacier-frontend
 
   package:
     runs-on: ubuntu-latest
@@ -250,24 +268,6 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report
-      - name: Upload Surefire results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: surefire-results
-          path: target/surefire-reports
-      - name: Upload Jacoco reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-reports
-          path: target/site/jacoco
-      - name: Upload Jasmin reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jasmin-reports
-          path: frontend/coverage/glacier-frontend
       - name: Show logs of service
-        if: always()
+        if: failure()
         run: docker-compose logs

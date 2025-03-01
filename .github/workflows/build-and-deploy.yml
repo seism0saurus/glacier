@@ -71,7 +71,25 @@ jobs:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
       - name: Verify the webapp
-        run: ./mvnw --batch-mode test --file pom.xml
+        run: ./mvnw --batch-mode verify --file pom.xml
+      - name: Upload Surefire results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-results
+          path: target/surefire-reports
+      - name: Upload Jacoco reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: target/site/jacoco
+      - name: Upload Jasmin reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jasmin-reports
+          path: frontend/coverage/glacier-frontend
 
   package:
     runs-on: ubuntu-latest
@@ -99,7 +117,7 @@ jobs:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
       - name: Package the webapp
-        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml
+        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
       - name: Check if frontend is bundled into jar
         run: |
           if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
@@ -163,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: create-test-image
     env:
-      BASE_URL: http://localhost:8080
+      BASE_URL: http://localhost:443
       MASTODON_USER_ACCESS_TOKEN: "${{ secrets.MASTODON_USER_ACCESS_TOKEN }}"
       MASTODON_USER_API_URL: "${{ secrets.MASTODON_USER_API_URL }}"
     steps:
@@ -216,13 +234,13 @@ jobs:
             glacier:
               image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
               ports:
-                - 8080:8080
+                - 443:8080
               environment:
                 SPRING_PROFILES_ACTIVE: "default"
                 ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
                 HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
                 INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-                MY_DOMAIN: "localhost:8080"
+                MY_DOMAIN: "localhost:443"
                 MY_WEBSITE: "seism0saurus.de"
                 MY_NAME: "seism0saurus"
                 MY_STREET_AND_NUMBER: "sometherestreet 1"
@@ -238,7 +256,7 @@ jobs:
       - name: Wait for service
         run : |
           for i in {1..30}; do
-            if curl -s http://localhost:8080 > /dev/null; then
+            if curl -s http://localhost:443 > /dev/null; then
               echo "glacier is up and running!"
               exit 0
             fi
@@ -250,37 +268,16 @@ jobs:
           docker logs glacier
           exit 1
       - name: Start playwright tests in maven
-        run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P ci
+        run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P "WithPlaywrightDeps,RunE2ETest,SkipUnitTest,SkipIntegrationTest"
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: frontend/playwright-report
-      - name: Upload Playwright screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-screenshots
-          path: frontend/test-results/screenshots
-      - name: Upload Surefire results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: surefire-results
-          path: target/surefire-reports
-      - name: Upload Jacoco reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jacoco-reports
-          path: target/site/jacoco
-      - name: Upload Jasmin reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jasmin-reports
-          path: frontend/coverage/glacier-frontend
+      - name: Show logs of service
+        if: failure()
+        run: docker-compose logs
 
   publish-image:
     runs-on: ubuntu-latest
