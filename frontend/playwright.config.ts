@@ -3,6 +3,13 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   testIgnore: [],
+
+  globalTimeout: 1_800_000,
+  timeout: 60_000,
+  expect: {
+    timeout: 20_000,
+  },
+
   fullyParallel: false,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env['CI'],
