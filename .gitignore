@@ -12,3 +12,6 @@
 /e2e-infrastructure/localhost.key
 /e2e-infrastructure/mastodon.env
 /e2e-infrastructure/nginx.conf
+/e2e-infrastructure/nginx.crt
+/e2e-infrastructure/nginx.csr
+/e2e-infrastructure/nginx.key
