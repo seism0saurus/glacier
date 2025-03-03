@@ -229,9 +229,22 @@ jobs:
           ls -lah
           docker-compose up -d
           cd ../
+      - name: Wait for mastodon
+        run : |
+          for i in {1..30}; do
+            if curl -sk https://localhost > /dev/null; then
+              echo "mastodon is up and running!"
+              exit 0
+            fi
+            echo "Waiting for mastodon to start..."
+            sleep 2
+          done
+          echo "mastodon failed to start in time."
+          curl -vk https://localhost
+          exit 1
       - name: Wait for glacier
         run : |
-          for i in {1..60}; do
+          for i in {1..30}; do
             if curl -s http://localhost:8080 > /dev/null; then
               echo "glacier is up and running!"
               exit 0
@@ -240,8 +253,7 @@ jobs:
             sleep 2
           done
           echo "glacier failed to start in time."
-          docker ps
-          docker logs glacier
+          curl -vk http://localhost:8080
           exit 1
       - name: Start playwright tests in maven
         run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P "WithPlaywrightDeps,RunE2ETest,SkipUnitTest,SkipIntegrationTest"
@@ -259,4 +271,4 @@ jobs:
           path: frontend/test-results
       - name: Show logs of service
         if: failure()
-        run: cd e2e-infrastructure; docker-compose logs
+        run: cd e2e-infrastructure; docker ps; docker-compose logs
