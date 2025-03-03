@@ -18,13 +18,25 @@ public class MastodonConfiguration {
                                          @Value("${mastodon.accessToken}") final String accessToken,
                                          @Value("${mastodon.readTimeout}") final int readTimeout,
                                          @Value("${mastodon.writeTimeout}") final int writeTimeout,
-                                         @Value("${mastodon.connectTimeout}") final int connectTimeout
+                                         @Value("${mastodon.connectTimeout}") final int connectTimeout,
+                                         @Value("${glacier.trustAllCerts}") final boolean trusAllCerts
+
     ) {
-        return new MastodonClient.Builder(instance)
-                .accessToken(accessToken)
-                .setReadTimeoutSeconds(readTimeout)
-                .setWriteTimeoutSeconds(writeTimeout)
-                .setConnectTimeoutSeconds(connectTimeout)
-                .build();
+        if (trusAllCerts) {
+            return new MastodonClient.Builder(instance)
+                    .accessToken(accessToken)
+                    .setReadTimeoutSeconds(readTimeout)
+                    .setWriteTimeoutSeconds(writeTimeout)
+                    .setConnectTimeoutSeconds(connectTimeout)
+                    .withTrustAllCerts()
+                    .build();
+        } else {
+            return new MastodonClient.Builder(instance)
+                    .accessToken(accessToken)
+                    .setReadTimeoutSeconds(readTimeout)
+                    .setWriteTimeoutSeconds(writeTimeout)
+                    .setConnectTimeoutSeconds(connectTimeout)
+                    .build();
+        }
     }
 }

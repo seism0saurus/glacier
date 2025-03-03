@@ -1,8 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 
-const url = process.env['MASTODON_USER_API_URL'] || '';
-const accessToken = process.env['MASTODON_USER_ACCESS_TOKEN'] || '';
+const url = process.env['MASTODON_USER_API_URL'] || 'https://localhost';
+const accessToken = process.env['MASTODON_USER_ACCESS_TOKEN'] || 'cof_WTPuTdmkWHq-u0r0Q8AzfOJyX0nq5nvyoMQqanE';
 
 export async function createTextToot(
   text: string = 'Hi Glacier.\nThis is a test toot.',

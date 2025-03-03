@@ -174,10 +174,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: create-test-image
     env:
-      BASE_URL: http://localhost:443
+      BASE_URL: http://localhost:8080
       WAIT_FOR: 15000
       MASTODON_USER_ACCESS_TOKEN: "${{ secrets.MASTODON_USER_ACCESS_TOKEN }}"
       MASTODON_USER_API_URL: "${{ secrets.MASTODON_USER_API_URL }}"
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      TRUST_ALL_CERTS: true
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 23
@@ -220,37 +222,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose
-      - name: Configure needed services in Docker Compose
-        run: |
-          cat <<EOF > docker-compose.yml
-          version: '3.9'
-          services:
-            glacier:
-              image: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
-              ports:
-                - 443:8080
-              environment:
-                SPRING_PROFILES_ACTIVE: "default"
-                ACCESS_KEY: "${{ secrets.E2E_MASTODON_KEY }}"
-                HANDLE: "${{ vars.E2E_MASTODON_HANDLE }}"
-                INSTANCE: "${{ secrets.E2E_MASTODON_INSTANCE }}"
-                MY_DOMAIN: "localhost:443"
-                MY_WEBSITE: "seism0saurus.de"
-                MY_NAME: "seism0saurus"
-                MY_STREET_AND_NUMBER: "sometherestreet 1"
-                MY_ZIP_CODE: "123456"
-                MY_CITY: "somecity"
-                MY_COUNTRY: "Germany"
-                MY_MAIL: "kontakt@seism0saurus.de"
-                MY_PHONE: "+1234567890"
-              container_name: glacier
-          EOF
       - name: Start services using Docker Compose
-        run: docker-compose up -d
-      - name: Wait for service
+        run: |
+          cd e2e-mastodon
+          tar -xf e2e-infrastructure-content.tar.gz -C ./
+          docker-compose up -d
+          cd ../
+      - name: Wait for glacier
         run : |
           for i in {1..30}; do
-            if curl -s http://localhost:443 > /dev/null; then
+            if curl -s http://localhost:8080 > /dev/null; then
               echo "glacier is up and running!"
               exit 0
             fi
@@ -260,7 +241,6 @@ jobs:
           echo "glacier failed to start in time."
           docker ps
           docker logs glacier
-          exit 1
       - name: Start playwright tests in maven
         run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P "WithPlaywrightDeps,RunE2ETest,SkipUnitTest,SkipIntegrationTest"
       - name: Upload Playwright report

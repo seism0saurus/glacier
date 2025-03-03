@@ -4,3 +4,11 @@
 /frontend/node_modules/
 /.idea/
 /target/
+/e2e-infrastructure/mastodon/
+/e2e-infrastructure/postgres/
+/e2e-infrastructure/redis/
+/e2e-infrastructure/localhost.crt
+/e2e-infrastructure/localhost.csr
+/e2e-infrastructure/localhost.key
+/e2e-infrastructure/mastodon.env
+/e2e-infrastructure/nginx.conf

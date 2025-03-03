@@ -24,16 +24,32 @@ public class MastodonConfigurationTest {
     void shouldReturnMastodonClientWithCorrectInstance() {
         // Mock MastodonClient
         MastodonClient mockClient = mock(MastodonClient.class);
-        when(mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout))
+        when(mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, false))
                 .thenReturn(mockClient);
         when(mockClient.getInstanceName()).thenReturn(instance);
 
         // Act
-        MastodonClient client = mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout);
+        MastodonClient client = mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, false);
 
         // Assert
         assertThat(client.getInstanceName()).isEqualTo(instance);
-        verify(mastodonConfiguration, times(1)).mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout);
+        verify(mastodonConfiguration, times(1)).mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, false);
+    }
+
+    @Test
+    void shouldReturnMastodonClientWithCorrectInstanceWithCertifcateCheck() {
+        // Mock MastodonClient
+        MastodonClient mockClient = mock(MastodonClient.class);
+        when(mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, true))
+                .thenReturn(mockClient);
+        when(mockClient.getInstanceName()).thenReturn(instance);
+
+        // Act
+        MastodonClient client = mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, true);
+
+        // Assert
+        assertThat(client.getInstanceName()).isEqualTo(instance);
+        verify(mastodonConfiguration, times(1)).mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, true);
     }
 
 }
