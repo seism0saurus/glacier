@@ -45,10 +45,8 @@ services:
     volumes:
       - ./mastodon:/mastodon/public/system
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
 
   streaming:
     image: ghcr.io/mastodon/mastodon-streaming:v4.3.3
@@ -61,10 +59,8 @@ services:
     healthcheck:
       test: ['CMD-SHELL', "curl -s --noproxy localhost localhost:4000/api/v1/streaming/health | grep -q 'OK' || exit 1"]
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
 
   sidekiq:
     image: ghcr.io/mastodon/mastodon:v4.3.3
@@ -79,10 +75,8 @@ services:
     healthcheck:
       test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 6' || false"]
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
 
   nginx:
     image: nginx:stable-alpine
@@ -99,10 +93,8 @@ services:
       - web
       - mastodon
     depends_on:
-      web:
-        condition: service_healthy
-      streaming:
-        condition: service_healthy
+      - web
+      - streaming
     healthcheck:
       test: ['CMD-SHELL', "curl -s localhost:80 | grep -q '301' || exit 1"]
 
@@ -139,11 +131,7 @@ services:
     healthcheck:
       test: ['CMD-SHELL', "curl -s localhost:8080 | grep -q 'OK' || exit 1"]
     depends_on:
-      nginx:
-        condition: service_healthy
-      sidekiq:
-        condition: service_healthy
-      streaming:
-        condition: service_healthy
-      web:
-        condition: service_healthy
+      - nginx
+      - sidekiq
+      - streaming
+      - web

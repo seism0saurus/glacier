@@ -234,6 +234,7 @@ jobs:
           for i in {1..30}; do
             if curl -sk https://localhost > /dev/null; then
               echo "mastodon is up and running!"
+              curl -vk https://localhost
               exit 0
             fi
             echo "Waiting for mastodon to start..."
