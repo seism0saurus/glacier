@@ -231,7 +231,7 @@ jobs:
           cd ../
       - name: Wait for glacier
         run : |
-          for i in {1..30}; do
+          for i in {1..60}; do
             if curl -s http://localhost:8080 > /dev/null; then
               echo "glacier is up and running!"
               exit 0
@@ -242,6 +242,7 @@ jobs:
           echo "glacier failed to start in time."
           docker ps
           docker logs glacier
+          exit 1
       - name: Start playwright tests in maven
         run:  ./mvnw --batch-mode verify jacoco:report --file pom.xml -P "WithPlaywrightDeps,RunE2ETest,SkipUnitTest,SkipIntegrationTest"
       - name: Upload Playwright report
