@@ -257,4 +257,4 @@ jobs:
           path: frontend/test-results
       - name: Show logs of service
         if: failure()
-        run: docker-compose logs
+        run: cd e2e-infrastructure; docker-compose logs
