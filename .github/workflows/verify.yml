@@ -226,6 +226,7 @@ jobs:
         run: |
           cd e2e-infrastructure
           tar -xf e2e-infrastructure-content.tar.gz -C ./
+          ls -lah
           docker-compose up -d
           cd ../
       - name: Wait for glacier
