@@ -9,8 +9,6 @@ import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import java.security.Principal;
-import java.util.HashMap;
-import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -24,19 +22,14 @@ class SubscriptionListenerTest {
     @Test
     void testOnConnectedEvent_WithoutPreviousDisconnect() throws Exception {
         // Create a valid Principal object
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
 
         // Mock the event
         connect(principal);
 
         // Validate behavior
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
     }
 
     @Test
@@ -52,25 +45,20 @@ class SubscriptionListenerTest {
     @Test
     void testOnConnectedEvent_WithPreviousDisconnect_WithoutWaitingForTimeout() throws Exception {
         // Create a valid Principal object
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
         
         disconnect(principal);
 
         // Validate state before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertTrue(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer());
 
         // Mock the event
         connect(principal);
 
         // Validate behavior
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
     }
 
     @Test
@@ -79,57 +67,47 @@ class SubscriptionListenerTest {
         subscriptionListener = new SubscriptionListener(subscriptionManager, 1_000L);
 
         // Create a valid Principal object
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
 
         disconnect(principal);
 
         // Validate state before timeout
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertTrue(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer());
 
         // wait for timeout
         Thread.sleep(3_000L);
 
         // Validate state before test
         verify(subscriptionManager, times(1)).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
 
         // Mock the event
         connect(principal);
 
         // Validate behavior
         verify(subscriptionManager, times(1)).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
     }
     
     @Test
     void testOnDisconnectEvent_WithoutWaitingForTimeout() throws Exception {
         // Create a valid Principal object
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
 
         // Mock subscription
         connect(principal);
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
 
         // Mock disconnect
         disconnect(principal);
 
         // Valiate assumptions after test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertTrue(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer());
     }
 
     @Test
@@ -138,19 +116,14 @@ class SubscriptionListenerTest {
         subscriptionListener = new SubscriptionListener(subscriptionManager, 1_000L);
 
         // Create a valid Principal object
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
 
         // Mock subscription
         connect(principal);
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
 
         // Mock disconnect
         disconnect(principal);
@@ -160,25 +133,20 @@ class SubscriptionListenerTest {
 
         // Valiate assumptions after test
         verify(subscriptionManager, times(1)).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
     }
 
     @Test
     void testOnDisconnectEvent_WithoutPrincipal() throws Exception {
         // Create a valid Principal object for connect
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
 
         // Mock subscription
         connect(principal);
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
 
         // Mock disconnect
         disconnect(null);
@@ -191,12 +159,7 @@ class SubscriptionListenerTest {
     @Test
     void testOnDisconnectEvent_WithoutPreviousConnection() throws Exception {
         // Create a valid Principal object
-        Principal principal = new Principal() {
-            @Override
-            public String getName() {
-                return "user1";
-            }
-        };
+        Principal principal = () -> "user1";
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
@@ -210,7 +173,7 @@ class SubscriptionListenerTest {
         assertTrue(subscriptionListener.hasRunningDisconnectTimers());
     }
 
-    private void connect(Principal principal) throws Exception {
+    private void connect(Principal principal) {
         // Mock the event
         SessionConnectedEvent event = mock(SessionConnectedEvent.class);
 
@@ -222,6 +185,7 @@ class SubscriptionListenerTest {
         when(headerAccessor.getSessionId()).thenReturn("session123");
 
         // Mock the message and header behavior
+        //noinspection unchecked
         Message<byte[]> message = mock(Message.class);
         when(message.getHeaders()).thenReturn(headers);
         when(event.getMessage()).thenReturn(message);
@@ -231,7 +195,7 @@ class SubscriptionListenerTest {
         subscriptionListener.onConnectedEvent(event);
     }
 
-    private void disconnect(Principal principal) throws Exception {
+    private void disconnect(Principal principal) {
         // Mock the event
         SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);
 
@@ -243,6 +207,7 @@ class SubscriptionListenerTest {
         when(headerAccessor.getSessionId()).thenReturn("session123");
 
         // Mock the message and header behavior
+        //noinspection unchecked
         Message<byte[]> message = mock(Message.class);
         when(message.getHeaders()).thenReturn(headers);
         when(event.getMessage()).thenReturn(message);

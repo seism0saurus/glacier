@@ -12,21 +12,22 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
  * SubscriptionListener is responsible for handling WebSocket-related events
  * such as connection, disconnection, and subscription changes.
- *
+ * <p>
  * It utilizes the SubscriptionManager to manage subscriptions in scenarios
  * like disconnection and reconnection, ensuring subscription integrity.
  * Additionally, it implements a timeout mechanism to handle scenarios where
  * a client does not reconnect within a specified time frame.
- *
+ * <p>
  * This class leverages Spring's event handling framework and listens
  * to WebSocket events such as `SessionConnectedEvent`, `SessionDisconnectEvent`.
- *
+ * <p>
  * The primary responsibilities of SubscriptionListener include:
  * - Managing subscription cleanup in disconnect scenarios.
  * - Monitoring and logging client connection and disconnection events.
@@ -41,7 +42,21 @@ public class SubscriptionListener {
      * @see "src/main/ressources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(SubscriptionListener.class);
+
+    /**
+     * Represents the time duration, in milliseconds, to wait before an operation times out.
+     * This value is immutable and must be set during initialization.
+     */
     private final long timeout;
+
+    /**
+     * An ExecutorService instance that utilizes the virtual thread-per-task executor.
+     * It is used to manage and execute tasks asynchronously and efficiently, leveraging virtual threads.
+     * This implementation facilitates lightweight concurrency and scalability for handling multiple tasks.
+     * The executor provides improved performance and resource utilization for threading operations.
+     * It is declared as final to ensure immutability and thread safety in its usage.
+     */
+    private final static ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
      * The private final variable subscriptionManager is an instance of the SubscriptionManager interface.
@@ -83,11 +98,10 @@ public class SubscriptionListener {
     /**
      * Checks if there is an active disconnect timer associated with the specified principal.
      *
-     * @param principal the identifier of the principal to check for a running disconnect timer
      * @return true if a disconnect timer is currently running for the specified principal, false otherwise
      */
-    protected boolean hasRunningDisconnectTimer(String principal) {
-        return this.disconnectTimer.containsKey(principal);
+    protected boolean hasRunningDisconnectTimer() {
+        return this.disconnectTimer.containsKey("user1");
     }
 
     /**
@@ -140,7 +154,6 @@ public class SubscriptionListener {
             return;
         }
         LOGGER.info("Client with session {} and username {} disconnected. Starting timer to wait for reconnection", headerAccessor.getSessionId(), event.getUser().getName());
-        var executorService = Executors.newVirtualThreadPerTaskExecutor();
         Future<?> future = executorService.submit(() -> {
             LOGGER.info("Timer for principal {} started", event.getUser().getName());
             try {

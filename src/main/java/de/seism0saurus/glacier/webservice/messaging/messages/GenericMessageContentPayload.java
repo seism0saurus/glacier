@@ -12,12 +12,12 @@ import java.util.List;
  * GenericMessageContentPayload represents the payload structure for a generic message content.
  * This class encapsulates the core attributes of the payload, including an identifier, a URL,
  * and a list of mentions.
- *
+ * <p>
  * Fields:
  * - `id`: A string representing the unique identifier of the content payload.
  * - `url`: A string containing the URL associated with the payload.
  * - `mentions`: A list of {@link Mention} objects representing the mentions included in the payload.
- *
+ * <p>
  * This class is typically used to parse and process the payload section of a generic message event.
  */
 @Data
