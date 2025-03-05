@@ -1,12 +1,15 @@
 ![wide version of the glacier logo. A mamooth in front of a glacier.](assets/glacier_logo_wide.png)
-
+<!--                            sudo bash -c 'GLACIER_IMAGE_TAG=0.0.5 nerdctl compose down; GLACIER_IMAGE_TAG=0.0.5 nerdctl compose rm --force'-->
+<!--                            cp ../target/glacier-0.0.5.jar ./glacier/glacier.jar; sudo bash -c 'GLACIER_IMAGE_TAG=0.0.5 TRUST_ALL_CERTS=true nerdctl compose up -d --build'-->
+<!--                            sudo bash -c 'GLACIER_IMAGE_TAG=0.0.5 nerdctl compose logs'-->
+<!--                            sudo tar -czf e2e-infrastructure-content.tar.gz mastodon mastodon.env postgres redis proxy.* v3.ext dynamic.yml traefik.yml-->
 # Glacier
 
 *A mastodon and fediverse social wall.*
 
 With **Glacier** you can follow hashtags to see the interaction of participants of an event in realtime.
 
-Glacier ist still **BETA**. You can use it, but there could be some issues.
+Glacier ist still **BETA**. You can use it, but there could be some minor errors. Feel free to open an issue here on GitHub, to report any problems.
 
 ## Content
 
@@ -31,6 +34,7 @@ Glacier ist still **BETA**. You can use it, but there could be some issues.
   - [Create a Glacier Wall](#create-a-glacier-wall)
   - [Add toots](#add-toots)
 - [Concepts and wordings](#concepts-and-wordings)
+- [Thank you](#thank-you)
 - [Known issues or limitations](#known-issues-or-limitations)
 
 ## Licences
@@ -271,6 +275,16 @@ If you open it in another web browser you get a second Glacier Wall with differe
 But both Glacier Walls run on the same Glacier instance from me but are separate Glacier Walls
 - *Toot*: A toot is a post on mastodon. Glacier can show other types of posts from systems connected to the fediverse, too.
 But for simplicity I speak about toots, since mastodon is the main focus
+
+## Thank you
+
+### mastodon
+Many thanks go to Gargron (Eugen Rochko) for maintaining [Mastodon](https://github.com/mastodon/mastodon) and of course all the contributors to Mastodon and the Fediverse.
+It's great to have a decentralized social media platform.
+
+### bigbone
+I want to thank André Gasser for his [bigbone Mastodon client for Java](https://github.com/andregasser/bigbone).
+His work and the work from the other contributors made it easy to write a client with streaming capabilities for Mastodon.
 
 ## Known issues or limitations
 
