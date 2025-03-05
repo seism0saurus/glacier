@@ -36,11 +36,15 @@ class SubscriptionManagerImplTest {
 
     private final String handle = "test-handle@test-instance";
 
+    private final StreamingMethods methods;
+
     @InjectMocks
     private SubscriptionManagerImpl subscriptionManager;
 
     public SubscriptionManagerImplTest() {
         MockitoAnnotations.openMocks(this);
+        methods = mock(StreamingMethods.class);
+        when(mastodonClient.streaming()).thenReturn(methods);
         subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, simpMessagingTemplate, restTemplate);
     }
 
@@ -60,9 +64,7 @@ class SubscriptionManagerImplTest {
         String principal = "user123";
         String hashtag = "TestHashtag";
         Closeable subscription = mock(Closeable.class);
-        StreamingMethods methods = mock(StreamingMethods.class);
         when(methods.hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class))).thenReturn(subscription);
-        when(mastodonClient.streaming()).thenReturn(methods);
 
         subscriptionManager.subscribeToHashtag(principal, hashtag);
 

@@ -98,8 +98,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         this.restTemplate = restTemplate;
         this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
-        subscriptions = new HashMap<>();
-        streaming = client.streaming();
+        this.subscriptions = new HashMap<>();
+        this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
     }
 
@@ -139,7 +139,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
                 try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
                     LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
                     sleepForever(subscription);
-                } catch (IOException e) {
+                } catch (NullPointerException | IOException e) {
                     LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
                     throw new RuntimeException(e);
                 }
