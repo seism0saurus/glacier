@@ -142,7 +142,8 @@ services:
       # Start spring with the default profile
       SPRING_PROFILES_ACTIVE: "default"
 
-      # Access the e2e mastodon instance. Key is only usable in this local instance, so it is not a problem to publish it.
+      # Access the e2e mastodon instance.
+      # Key is only usable in this local instance, so it is not a problem to publish it.
       INSTANCE: "proxy"
       HANDLE: "glacier_e2e_test@proxy"
       ACCESS_KEY: "hMfsEYl9Hgk2Pt-iTyZyvKvfbXh9tjXV41-tsr3vRak"
@@ -176,6 +177,8 @@ services:
       - mastodon
     volumes:
       - ${REPOSITORY}/:/repo
+      - ${HOME}/.m2/frontend/node_modules:/repo/frontend/node_modules
+      - ${HOME}/.cache/ms-playwright:/root/.cache/ms-playwright
     working_dir: /repo/frontend
     command:
       - /bin/bash
@@ -185,6 +188,7 @@ services:
         npm install
         npx playwright install --with-deps
         
+        # Wait for Mastodon behind the proxy to be ready
         count=0
         max_retries=60
         while ! curl -ksf https://proxy:443/.well-known/nodeinfo &> /dev/null; do
@@ -198,6 +202,7 @@ services:
         done
         echo "proxy is ready!"
 
+        # Wait for Glacier to become ready before starting tests against it
         count=0
         max_retries=60
         while ! curl -ksf http://glacier:8080/ &> /dev/null; do
@@ -210,11 +215,20 @@ services:
           sleep 2
         done
         
+        # Run the tests
         npx playwright test
     environment:
+      # Mastodon is reachable behind the proxy
+      # Key is only usable in this local instance, so it is not a problem to publish it.
       MASTODON_USER_API_URL: "https://proxy"
+      MASTODON_USER_ACCESS_TOKEN: "pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34"
+
+      # Glacier runs on port 8080
       GLACIER_HANDLE: "@glacier_e2e_test@proxy"
       BASE_URL: "http://glacier:8080"
+
+      # Since the runner is not very fast, we wait a little bit longer,
+      # if we want to test that something does not show up.
       WAIT_FOR: "15000"
     depends_on:
       - proxy

@@ -6,10 +6,7 @@ import * as fs from 'fs';
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
 const url = process.env['MASTODON_USER_API_URL'] || 'https://proxy';
-const host = process.env['MASTODON_USER_API_HOSTNAME'] || 'proxy';
 const accessToken = process.env['MASTODON_USER_ACCESS_TOKEN'] || 'pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34';
-
-console.info(`Target for mastodon test user is url: ${url}, host: ${host}`);
 
 export async function createTextToot(
   text: string = 'Hi Glacier.\nThis is a test toot.',
@@ -23,7 +20,6 @@ export async function createTextToot(
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        'Host': host
       },
       body: JSON.stringify({
         status: text,
@@ -64,7 +60,6 @@ export async function createMediaToot(
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
-        'Host': host
       },
       body: JSON.stringify({
         status: text,
@@ -98,7 +93,6 @@ async function uploadMedia(filePath: string, description: string): Promise<strin
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Host': host
       },
       body: formData
     });
@@ -107,7 +101,6 @@ async function uploadMedia(filePath: string, description: string): Promise<strin
       console.error(`Couldn't upload media: ${response.status} ${response.statusText}`);
     }
 
-    console.log('Media uploaded response:', response);
     const data = await response.json();
     return data.id;
   } catch (error) {
