@@ -107,6 +107,7 @@ async function uploadMedia(filePath: string, description: string): Promise<strin
       console.error(`Couldn't upload media: ${response.status} ${response.statusText}`);
     }
 
+    console.log('Media uploaded response:', response);
     const data = await response.json();
     return data.id;
   } catch (error) {

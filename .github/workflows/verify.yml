@@ -172,4 +172,4 @@ jobs:
         if: failure()
         run: |
           docker ps
-          docker-compose logs
+          docker compose logs
