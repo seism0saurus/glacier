@@ -168,5 +168,8 @@ jobs:
           name: playwright-error-screenshots
           path: frontend/test-results
       - name: Show logs of service
+        working-directory: e2e-infrastructure
         if: failure()
-        run: cd e2e-infrastructure; docker ps; docker-compose logs
+        run: |
+          docker ps
+          docker-compose logs
