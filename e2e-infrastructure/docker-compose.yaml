@@ -205,7 +205,9 @@ services:
           echo "Attempt $$count/$${max_retries}: Waiting for glacier to be ready..."
           sleep 2
         done
-
+        
+        npx install --with-deps
+        
         npx playwright test
     environment:
       MASTODON_USER_API_URL: "https://proxy"
