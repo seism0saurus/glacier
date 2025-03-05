@@ -152,8 +152,7 @@ jobs:
         run: |
           echo "to update data in e2e-infrastructure-content.tar.gz run 'sudo tar -czf e2e-infrastructure-content.tar.gz mastodon mastodon.env postgres redis proxy.* v3.ext dynamic.yml traefik.yml'"
           tar -xf e2e-infrastructure-content.tar.gz -C ./
-          ls -lah
-          ls -lah glacier
+          chmod -R a+rwx mastodon
           docker compose up --build --abort-on-container-exit playwright --exit-code-from playwright
       - name: Upload Playwright report
         if: always()
