@@ -49,7 +49,7 @@ export async function createMediaToot(
 ): Promise<void> {
 
   const filePath = path.resolve(__dirname, mediaPath);
-
+  console.log('Media file path:', filePath);
   if (!fs.existsSync(filePath)) {
     console.error('Media file does not exists:', filePath);
   }
