@@ -181,10 +181,8 @@ services:
       - /bin/bash
       - -c
       - |
-        pwd
-        ls -lah
-        
         # Install the dependencies first. We have to wait for the other containers either way
+        npm install
         npx playwright install --with-deps
         
         count=0
