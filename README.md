@@ -18,6 +18,7 @@ Glacier ist still **BETA**. You can use it, but there could be some minor errors
     - [Build container image](#build-container-image)
       - [Docker](#docker)
       - [Buildah](#buildah)
+- [Test it](#test-it)
 - [Run it](#run-it)
   - [Container Image](#container-image)
     - [INSTANCE](#instance)
@@ -105,6 +106,12 @@ docker build -t glacier --build-arg JAR_FILE=glacier-0.0.5.jar .
 ```bash
 buildah build --build-arg JAR_FILE=glacier-0.0.5.jar  -f Dockerfile -t glacier .
 ```
+
+## Test it
+
+You can run unit tests by executing the maven goal `test`.
+
+For e2e tests see [E2E_TESTING.md](infrastructure/E2E_TESTING.md)
 
 ## Run it
 
