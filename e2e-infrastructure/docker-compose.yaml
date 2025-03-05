@@ -175,12 +175,18 @@ services:
     networks:
       - mastodon
     volumes:
-      - ../:/repo
+      - ${REPOSITORY}/:/repo
     working_dir: /repo/frontend
     command:
       - /bin/bash
       - -c
       - |
+        pwd
+        ls -lah
+        
+        # Install the dependencies first. We have to wait for the other containers either way
+        npx install --with-deps
+        
         count=0
         max_retries=60
         while ! curl -ksf https://proxy:443/.well-known/nodeinfo &> /dev/null; do
@@ -205,8 +211,6 @@ services:
           echo "Attempt $$count/$${max_retries}: Waiting for glacier to be ready..."
           sleep 2
         done
-        
-        npx install --with-deps
         
         npx playwright test
     environment:

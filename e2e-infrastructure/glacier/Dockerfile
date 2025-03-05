@@ -2,8 +2,6 @@ FROM docker.io/eclipse-temurin:23-jre as builder
 ARG JAR_FILE=glacier.jar
 COPY ${JAR_FILE} application.jar
 RUN java -Djarmode=layertools -jar application.jar extract
-RUN ls -lah
-
 
 FROM docker.io/eclipse-temurin:23-jre
 EXPOSE 8080
