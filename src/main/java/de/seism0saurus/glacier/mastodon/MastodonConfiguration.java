@@ -29,10 +29,10 @@ public class MastodonConfiguration {
                                          @Value("${mastodon.readTimeout}") final int readTimeout,
                                          @Value("${mastodon.writeTimeout}") final int writeTimeout,
                                          @Value("${mastodon.connectTimeout}") final int connectTimeout,
-                                         @Value("${glacier.trustAllCerts}") final boolean trusAllCerts
+                                         @Value("${glacier.devmode}") final boolean developmentModeMastodonClient
 
     ) {
-        if (trusAllCerts) {
+        if (developmentModeMastodonClient) {
             LOGGER.info("Starting Mastodon configuration in development mode trusting all certificates");
             return new MastodonClient.Builder(instance)
                     .accessToken(accessToken)
@@ -40,6 +40,7 @@ public class MastodonConfiguration {
                     .setWriteTimeoutSeconds(writeTimeout)
                     .setConnectTimeoutSeconds(connectTimeout)
                     .withTrustAllCerts()
+                    .debug()
                     .build();
         } else {
             LOGGER.info("Starting Mastodon configuration in production mode verifying certificates with the java keystore");

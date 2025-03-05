@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import {createMediaToot, createTextToot} from '../helper/mastodon-client';
 
+const glacier_handle = process.env['GLACIER_HANDLE'] || '@glacier_e2e_test@proxy';
+
 test.describe('Toot Tests', () => {
 
   // Goto application page before each test and subscribe to glacierE2Etest
@@ -13,14 +15,14 @@ test.describe('Toot Tests', () => {
   });
 
   test('text toot with mention and hashtag is visible', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
   });
 
   test('media toot with mention and hashtag is visible', async ({ page }) => {
-    await createMediaToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot with a cute mastodon image.\n#glacierE2Etest',
+    await createMediaToot(`Hi ${glacier_handle}.\nThis is a test toot with a cute mastodon image.\n#glacierE2Etest`,
       'mastodon.jpeg',
       'A cute mastodon in front of a glacier. There are mountains in the background. The sky is blue and clouds fly between the mountains.'
     );
@@ -30,7 +32,7 @@ test.describe('Toot Tests', () => {
   });
 
   test('text toot with mention but without hashtag is not visible', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot without hashtag.');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot without hashtag.`);
 
     await page.waitForTimeout(Number(Number(process.env['WAIT_FOR'])) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
@@ -57,7 +59,7 @@ test.describe('Toot Tests', () => {
   });
 
   test('private toot with mention and hashtag is not visible', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest', 'private');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a private test toot.\n#glacierE2Etest`, 'private');
 
     await page.waitForTimeout(Number(process.env['WAIT_FOR']) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
@@ -66,7 +68,7 @@ test.describe('Toot Tests', () => {
   });
 
   test('direct toot with mention and hashtag is not visible', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest', 'direct');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a private test toot.\n#glacierE2Etest`, 'direct');
 
     await page.waitForTimeout(Number(process.env['WAIT_FOR']) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
@@ -75,7 +77,7 @@ test.describe('Toot Tests', () => {
   });
 
   test('unlisted toot with mention and hashtag is not visible', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest', 'unlisted');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a private test toot.\n#glacierE2Etest`, 'unlisted');
 
     await page.waitForTimeout(Number(process.env['WAIT_FOR']) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 

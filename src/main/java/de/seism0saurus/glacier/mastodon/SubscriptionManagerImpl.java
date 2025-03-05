@@ -9,11 +9,15 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
+import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
@@ -34,6 +38,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * @see "src/main/ressources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(SubscriptionManagerImpl.class);
+
+    private final static ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
      * The list of subscriptions as list of Futures.
@@ -67,6 +73,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     private final RestTemplate restTemplate;
 
+    private final StreamingMethods streaming;
+
     /**
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
      * client, messaging template, and REST template.
@@ -91,6 +99,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
         subscriptions = new HashMap<>();
+        streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
     }
 
@@ -102,6 +111,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     @Override
     public void subscribeToHashtag(String principal, String hashtag) {
+        LOGGER.info("subscribeToHashtag");
         assert principal != null;
         assert hashtag != null;
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
@@ -110,16 +120,37 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             LOGGER.info("A subscription for principal {} with the hashtag {} already exists", principal, hashtag);
             return;
         }
-        var executorService = Executors.newVirtualThreadPerTaskExecutor();
-        Future<?> future = executorService.submit(() -> {
-            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
-                LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
-                sleepForever(subscription);
-            } catch (IOException e) {
-                LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
-                throw new RuntimeException(e);
+        Field field = null;
+        try {
+            field = client.getClass().getDeclaredField("streamingUrl");
+            field.setAccessible(true);
+            String streamingUrlValue = (String) field.get(client);
+            LOGGER.info("Trying to get a streaming connection for instance {} (version {}) on port {} via {}. Streaming URL is {}", client.getInstanceName(), client.getInstanceVersion(), client.getPort(), client.getScheme(), streamingUrlValue);
+        } catch (NoSuchFieldException e) {
+            LOGGER.error("Could not get streaming URL for client {}", client.getInstanceName(), e);
+        } catch (IllegalAccessException e) {
+            LOGGER.error("Could not get streaming URL for client {}", client.getInstanceName(), e);
+        }
+        Future<?> future = null;
+        try {
+            LOGGER.info("Submitting asynchronous future task...");
+            future = executorService.submit(() -> {
+                StompCallback stompCallback = new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain);
+                try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
+                    LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
+                    sleepForever(subscription);
+                } catch (IOException e) {
+                    LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
+                    throw new RuntimeException(e);
+                }
+            });
+        } catch (Throwable t) {
+            if (future != null){
+                LOGGER.info("State of future {}", future.state());
             }
-        });
+            LOGGER.error("Unexpected error in asynchronous subscription", t);
+            throw new RuntimeException(t);
+        }
         previousSubscriptions.put(hashtag, future);
         subscriptions.put(principal, previousSubscriptions);
     }

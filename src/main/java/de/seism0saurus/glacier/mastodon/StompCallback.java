@@ -87,6 +87,7 @@ public class StompCallback implements WebSocketCallback {
         this.hashtag = hashtag;
         this.shortHandle = getShortHandle(handle);
         this.glacierDomain = glacierDomain;
+        LOGGER.info("StompCallback for {} with hashtag {} created", principal, hashtag);
     }
 
     private static @NotNull String getShortHandle(String handle) {
