@@ -1,8 +1,4 @@
 ![wide version of the glacier logo. A mamooth in front of a glacier.](assets/glacier_logo_wide.png)
-<!--                            sudo bash -c 'GLACIER_IMAGE_TAG=0.0.5 nerdctl compose down; GLACIER_IMAGE_TAG=0.0.5 nerdctl compose rm --force'-->
-<!--                            cp ../target/glacier-0.0.5.jar ./glacier/glacier.jar; sudo bash -c 'GLACIER_IMAGE_TAG=0.0.5 TRUST_ALL_CERTS=true nerdctl compose up -d --build'-->
-<!--                            sudo bash -c 'GLACIER_IMAGE_TAG=0.0.5 nerdctl compose logs'-->
-<!--                            sudo tar -czf e2e-infrastructure-content.tar.gz mastodon mastodon.env postgres redis proxy.* v3.ext dynamic.yml traefik.yml-->
 # Glacier
 
 *A mastodon and fediverse social wall.*
