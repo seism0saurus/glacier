@@ -2,7 +2,7 @@ version: 2
 updates:
   - package-ecosystem: "maven"
     directory: "/"
-    target-branch: 0.0.5
+    target-branch: 0.0.6
     schedule:
       interval: "daily"
       time: "08:00"
@@ -15,7 +15,7 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/frontend/"
-    target-branch: 0.0.5
+    target-branch: 0.0.6
     schedule:
       interval: "daily"
       time: "10:00"
@@ -28,7 +28,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/.github"
-    target-branch: 0.0.5
+    target-branch: 0.0.6
     schedule:
       interval: "daily"
       time: "12:00"
@@ -37,7 +37,7 @@ updates:
 
   - package-ecosystem: "docker"
     directory: "/containerimage"
-    target-branch: 0.0.5
+    target-branch: 0.0.6
     schedule:
       interval: "daily"
       time: "14:00"
