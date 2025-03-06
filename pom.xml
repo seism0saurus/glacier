@@ -10,7 +10,7 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.5</version>
+    <version>0.0.6</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
