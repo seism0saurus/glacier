@@ -219,9 +219,8 @@ jobs:
           docker load -i glacier-image.tar
       - name: Tag Docker Image for Pushing
         run: |
-          docker tag glacier-image:latest ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
-          docker tag glacier-image:latest ghcr.io/seism0saurus/glacier:main
-          docker tag glacier-image:latest ghcr.io/seism0saurus/glacier:latest
+          docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} ghcr.io/seism0saurus/glacier:main
+          docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} ghcr.io/seism0saurus/glacier:latest
       - name: Push Docker Image to GitHub Container Registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
