@@ -12,10 +12,10 @@ import java.util.List;
  * The GenericMessageContent class represents the core structure of a generic message.
  * It is used to encapsulate the data included in a message event, such as the event type,
  * the associated stream(s), and the event-specific payload.
- *
+ * <p>
  * This class is commonly used for processing messages within a messaging or event-driven system,
  * where different event types and their associated data are handled.
- *
+ * <p>
  * Fields:
  * - `stream`: A list of strings representing the streams associated with the event.
  *   Streams can be used to categorize or contextualize the event.

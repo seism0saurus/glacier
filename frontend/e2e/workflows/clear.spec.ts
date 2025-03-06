@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import {createTextToot} from '../helper/mastodon-client';
 
+const glacier_handle = process.env['GLACIER_HANDLE'] || '@glacier_e2e_test@proxy';
+
 test.describe('Clear Tests', () => {
 
   // Goto application page before each test and subscribe to glacierE2Etest
@@ -13,7 +15,7 @@ test.describe('Clear Tests', () => {
   });
 
   test('Clear Toots works with one toot', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
@@ -25,8 +27,8 @@ test.describe('Clear Tests', () => {
   });
 
   test('Clear Toots works with two toots', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(2);
 
@@ -37,8 +39,8 @@ test.describe('Clear Tests', () => {
   });
 
   test('New toots after a clearance of old is shown', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(2);
 
@@ -47,7 +49,7 @@ test.describe('Clear Tests', () => {
     await expect(page.locator('app-toot')).toHaveCount(0);
     await expect(page.locator('app-toot')).not.toBeVisible();
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
   });

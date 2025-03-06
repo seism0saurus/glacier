@@ -16,11 +16,11 @@ import java.util.Optional;
 /**
  * PrincipalHandler is a custom handshake handler that extends the DefaultHandshakeHandler
  * to determine the user principal for WebSocket connections.
- *
+ * <p>
  * During the WebSocket handshake process, this class extracts a specific user identifier
  * (wallId) from HTTP cookies and assigns it as the principal name. Additionally, the HTTP
  * session ID is stored in the attributes for further use.
- *
+ * <p>
  * The principal defines the identity of the user for the duration of the session, allowing
  * secure communication and message routing in WebSocket-based applications.
  */

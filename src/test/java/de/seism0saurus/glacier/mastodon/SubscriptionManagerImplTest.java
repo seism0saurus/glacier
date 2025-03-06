@@ -1,11 +1,9 @@
 package de.seism0saurus.glacier.mastodon;
 
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
@@ -30,17 +28,18 @@ class SubscriptionManagerImplTest {
     @Mock
     private RestTemplate restTemplate;
 
-    private final String instance = "test-instance";
-
-    private final String glacierDomain = "test-domain";
-
-    private final String handle = "test-handle@test-instance";
+    private final StreamingMethods methods;
 
     @InjectMocks
     private SubscriptionManagerImpl subscriptionManager;
 
     public SubscriptionManagerImplTest() {
         MockitoAnnotations.openMocks(this);
+        methods = mock(StreamingMethods.class);
+        when(mastodonClient.streaming()).thenReturn(methods);
+        String instance = "test-instance";
+        String glacierDomain = "test-domain";
+        String handle = "test-handle@test-instance";
         subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, simpMessagingTemplate, restTemplate);
     }
 
@@ -56,13 +55,11 @@ class SubscriptionManagerImplTest {
     }
 
     @Test
-    void testSubscribeToHashtag_WithStreaming() throws InterruptedException, IOException {
+    void testSubscribeToHashtag_WithStreaming() throws InterruptedException {
         String principal = "user123";
         String hashtag = "TestHashtag";
         Closeable subscription = mock(Closeable.class);
-        StreamingMethods methods = mock(StreamingMethods.class);
         when(methods.hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class))).thenReturn(subscription);
-        when(mastodonClient.streaming()).thenReturn(methods);
 
         subscriptionManager.subscribeToHashtag(principal, hashtag);
 

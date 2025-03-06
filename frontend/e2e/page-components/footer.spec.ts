@@ -17,7 +17,7 @@ test.describe('Footer Tests', () => {
   test('Howto contains correct explanation', async ({page}) => {
     await expect(page.locator('app-footer')).toBeVisible();
     await expect(page.locator('.howto')).toBeVisible();
-    await expect(page.locator('.howto')).toContainText('You want your toots to be shown here? Mention @glacier_e2e_test@mastodon.seism0saurus.de in your toot and use one of the hashtags.');
+    await expect(page.locator('.howto')).toContainText('You want your toots to be shown here? Mention @glacier_e2e_test@proxy in your toot and use one of the hashtags.');
   });
 
   test('Copyright contains correct text', async ({page}) => {

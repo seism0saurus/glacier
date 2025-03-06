@@ -6,7 +6,7 @@ import lombok.*;
  * StatusCreatedMessage represents a message indicating a new status creation event.
  * It is a subclass of the abstract class StatusMessage and provides specific details
  * for the newly created status.
- *
+ * <p>
  * Fields:
  * - `id`: A unique identifier for the created status.
  * - `author`: The author of the created status.
