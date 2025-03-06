@@ -36,7 +36,7 @@ updates:
       - "seism0saurus"
 
   - package-ecosystem: "docker"
-    directory: "/containerimage"
+    directory: "/infrastructure/glacier"
     target-branch: 0.0.6
     schedule:
       interval: "daily"
