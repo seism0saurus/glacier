@@ -213,7 +213,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: glacier-image
-          path: glacier-image.tar
+          path: ./
       - name: Load image into Docker
         run: |
           docker load -i glacier-image.tar
