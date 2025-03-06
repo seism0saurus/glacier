@@ -10,7 +10,7 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.4</version>
+    <version>0.0.5</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
@@ -182,7 +182,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.18.2</version>
+            <version>2.18.3</version>
         </dependency>
         <dependency>
             <groupId>org.springframework</groupId>

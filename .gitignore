@@ -4,3 +4,15 @@
 /frontend/node_modules/
 /.idea/
 /target/
+/infrastructure/mastodon/
+/infrastructure/postgres/
+/infrastructure/redis/
+/infrastructure/glacier/glacier.jar
+/infrastructure/v3.ext
+/infrastructure/proxy.crt
+/infrastructure/proxy.csr
+/infrastructure/proxy.key
+/infrastructure/traefik.yml
+/infrastructure/mastodon.env
+/infrastructure/dynamic.yml
+/test-results

@@ -9,11 +9,13 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
+import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
@@ -36,14 +38,18 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final static Logger LOGGER = LoggerFactory.getLogger(SubscriptionManagerImpl.class);
 
     /**
+     * An ExecutorService instance that utilizes the virtual thread-per-task executor.
+     * It is used to manage and execute tasks asynchronously and efficiently, leveraging virtual threads.
+     * This implementation facilitates lightweight concurrency and scalability for handling multiple tasks.
+     * The executor provides improved performance and resource utilization for threading operations.
+     * It is declared as final to ensure immutability and thread safety in its usage.
+     */
+    private final static ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+
+    /**
      * The list of subscriptions as list of Futures.
      */
     private final Map<String, Map<String, Future<?>>> subscriptions;
-
-    /**
-     * The mastodon client is required to communicate with the configured mastodon instance.
-     */
-    private final MastodonClient client;
 
     /**
      * The {@link SimpMessagingTemplate SimpMessagingTemplate} of this class.
@@ -67,6 +73,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     private final RestTemplate restTemplate;
 
+    private final StreamingMethods streaming;
+
     /**
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
      * client, messaging template, and REST template.
@@ -88,9 +96,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         this.glacierDomain = glacierDomain;
         this.handle = handle;
         this.restTemplate = restTemplate;
-        this.client = client;
         this.simpMessagingTemplate = simpMessagingTemplate;
-        subscriptions = new HashMap<>();
+        this.subscriptions = new HashMap<>();
+        this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
     }
 
@@ -102,6 +110,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     @Override
     public void subscribeToHashtag(String principal, String hashtag) {
+        LOGGER.info("subscribeToHashtag");
         assert principal != null;
         assert hashtag != null;
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
@@ -110,12 +119,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             LOGGER.info("A subscription for principal {} with the hashtag {} already exists", principal, hashtag);
             return;
         }
-        var executorService = Executors.newVirtualThreadPerTaskExecutor();
-        Future<?> future = executorService.submit(() -> {
-            try (Closeable subscription = client.streaming().hashtag(hashtag, false, new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain))) {
+        Future<?> future;
+        LOGGER.debug("Submitting asynchronous future task...");
+        future = executorService.submit(() -> {
+            StompCallback stompCallback = new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain);
+            try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
                 LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
                 sleepForever(subscription);
-            } catch (IOException e) {
+            } catch (NullPointerException | IOException e) {
                 LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
                 throw new RuntimeException(e);
             }

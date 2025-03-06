@@ -1,0 +1,237 @@
+networks:
+  mastodon:
+
+services:
+  db:
+    image: postgres:14-alpine
+    container_name: db
+    restart: always
+    shm_size: 256mb
+    expose:
+      - "5432"
+    networks:
+      - mastodon
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'mastodon', '-d', 'mastodon']
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: "mastodon"
+      POSTGRES_PASSWORD: "password"
+      POSTGRES_DB: "mastodon"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    expose:
+      - "6379"
+    networks:
+      - mastodon
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+    volumes:
+      - ./redis:/data
+
+  web:
+    image: ghcr.io/mastodon/mastodon:v4.3.3
+    container_name: web
+    restart: always
+    env_file: mastodon.env
+    command: bundle exec puma -C config/puma.rb
+    expose:
+      - "3000"
+    networks:
+      - mastodon
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mastodon.rule=Host(`proxy`) && !PathPrefix(`/api/v1/streaming`)"
+      - "traefik.http.routers.mastodon.entrypoints=websecure"
+      - "traefik.http.routers.mastodon.tls=true"
+    healthcheck:
+      test: ['CMD-SHELL',"curl --noproxy localhost localhost:3000/health | grep -q 'OK' || exit 1"]
+    volumes:
+      - ./mastodon:/mastodon/public/system
+    depends_on:
+      - db
+      - redis
+
+  streaming:
+    image: ghcr.io/mastodon/mastodon-streaming:v4.3.3
+    container_name: streaming
+    restart: always
+    env_file: mastodon.env
+    command: node ./streaming/index.js
+    expose:
+      - "4000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.streaming.rule=Host(`proxy`) && PathPrefix(`/api/v1/streaming`)"
+      - "traefik.http.routers.streaming.entrypoints=websecure"
+      - "traefik.http.routers.streaming.tls=true"
+    networks:
+      - mastodon
+    healthcheck:
+      test: ['CMD-SHELL', "curl --noproxy localhost localhost:4000/api/v1/streaming/health | grep -q 'OK' || exit 1"]
+    depends_on:
+      - db
+      - redis
+
+  sidekiq:
+    image: ghcr.io/mastodon/mastodon:v4.3.3
+    container_name: sidekiq
+    restart: always
+    env_file: mastodon.env
+    command: bundle exec sidekiq
+    networks:
+      - mastodon
+    volumes:
+      - ./mastodon:/mastodon/public/system
+    healthcheck:
+      test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 6' || false"]
+    depends_on:
+      - db
+      - redis
+
+  proxy:
+    image: traefik:3
+    container_name: proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:8080"
+    volumes:
+      - ./traefik.yml:/traefik.yml
+      - ./dynamic.yml:/dynamic.yml
+      - ./proxy.crt:/etc/ssl/proxy.crt
+      - ./proxy.key:/etc/ssl/proxy.key
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mastodon
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.localhost`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.service=api@internal"
+    healthcheck:
+      test: ['CMD-SHELL', "traefik healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      - web
+      - streaming
+
+  glacier:
+    container_name: glacier
+    image: ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}
+    build:
+      context: ./glacier
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - mastodon
+    volumes:
+      # Mount the certificate of the proxy service so no TLS errors are thrown
+      - ./proxy.crt:/certificates/proxy.crt
+    environment:
+      # Start spring with the default profile
+      SPRING_PROFILES_ACTIVE: "default"
+
+      # Access the e2e mastodon instance.
+      # Key is only usable in this local instance, so it is not a problem to publish it.
+      INSTANCE: "proxy"
+      HANDLE: "glacier_e2e_test@proxy"
+      ACCESS_KEY: "hMfsEYl9Hgk2Pt-iTyZyvKvfbXh9tjXV41-tsr3vRak"
+
+      # informational settings for gdpr page and others
+      MY_DOMAIN: "localhost:443"
+      MY_WEBSITE: "seism0saurus.de"
+      MY_NAME: "seism0saurus"
+      MY_STREET_AND_NUMBER: "sometherestreet 1"
+      MY_ZIP_CODE: "123456"
+      MY_CITY: "somecity"
+      MY_COUNTRY: "Germany"
+      MY_MAIL: "kontakt@seism0saurus.de"
+      MY_PHONE: "+1234567890"
+
+      # Use the system certificates which got mounted with the volume
+      USE_SYSTEM_CA_CERTS: true
+      DEVMODE: true
+    healthcheck:
+      test: [ 'CMD-SHELL', "wget -q --spider localhost:8080 || exit 1" ]
+    depends_on:
+      - proxy
+      - sidekiq
+      - streaming
+      - web
+
+  playwright:
+    container_name: playwright
+    image: mcr.microsoft.com/playwright:v1.50.1
+    networks:
+      - mastodon
+    volumes:
+      - ${REPOSITORY}/:/repo
+      - ${HOME}/.m2/frontend/node_modules:/repo/frontend/node_modules
+      - ${HOME}/.cache/ms-playwright:/root/.cache/ms-playwright
+    working_dir: /repo/frontend
+    command:
+      - /bin/bash
+      - -c
+      - |
+        # Install the dependencies first. We have to wait for the other containers either way
+        npm install
+        npx playwright install --with-deps
+        
+        # Wait for Mastodon behind the proxy to be ready
+        count=0
+        max_retries=60
+        while ! curl -ksf https://proxy:443/.well-known/nodeinfo &> /dev/null; do
+          count=$((count + 1))
+          if [ "$${count}" -ge "$${max_retries}" ]; then
+            echo "Max retries reached ($${max_retries}). Aborting."
+            exit 1
+          fi
+          echo "Attempt $$count/$${max_retries}: Waiting for proxy to be ready..."
+          sleep 2
+        done
+        echo "proxy is ready!"
+
+        # Wait for Glacier to become ready before starting tests against it
+        count=0
+        max_retries=60
+        while ! curl -ksf http://glacier:8080/ &> /dev/null; do
+          count=$((count + 1))
+          if [ "$${count}" -ge "$${max_retries}" ]; then
+            echo "Max retries reached ($${max_retries}). Aborting."
+            exit 1
+          fi
+          echo "Attempt $$count/$${max_retries}: Waiting for glacier to be ready..."
+          sleep 2
+        done
+        
+        # Run the tests
+        npx playwright test
+    environment:
+      # Mastodon is reachable behind the proxy
+      # Key is only usable in this local instance, so it is not a problem to publish it.
+      MASTODON_USER_API_URL: "https://proxy"
+      MASTODON_USER_ACCESS_TOKEN: "pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34"
+
+      # Glacier runs on port 8080
+      GLACIER_HANDLE: "@glacier_e2e_test@proxy"
+      BASE_URL: "http://glacier:8080"
+
+      # Since the runner is not very fast, we wait a little bit longer,
+      # if we want to test that something does not show up.
+      WAIT_FOR: "15000"
+    depends_on:
+      - proxy
+      - streaming
+      - web
+      - glacier

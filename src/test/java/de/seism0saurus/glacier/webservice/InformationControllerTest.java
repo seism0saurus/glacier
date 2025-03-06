@@ -18,6 +18,10 @@ class InformationControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+    /**
+     * MastodonClient needs to be mocked because it directly tests the connection to a nonexistent webservice.
+     */
+    @SuppressWarnings("unused")
     @MockitoBean
     private MastodonClient mastodonClient;
 

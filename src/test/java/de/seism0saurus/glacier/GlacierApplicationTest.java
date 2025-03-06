@@ -17,6 +17,7 @@ class GlacierApplicationTests {
     /**
      * MastodonClient needs to be mocked because it directly tests the connection to a nonexistent webservice.
      */
+    @SuppressWarnings("unused")
     @MockitoBean
     MastodonClient client;
 

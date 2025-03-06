@@ -1,8 +1,12 @@
 import * as path from 'path';
 import * as fs from 'fs';
 
-const url = process.env['MASTODON_USER_API_URL'] || '';
-const accessToken = process.env['MASTODON_USER_ACCESS_TOKEN'] || '';
+// WARNING: Only do this in a development environment with local mastodon.
+// Never disable certificate checking in productive environments.
+process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+
+const url = process.env['MASTODON_USER_API_URL'] || 'https://proxy';
+const accessToken = process.env['MASTODON_USER_ACCESS_TOKEN'] || 'pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34';
 
 export async function createTextToot(
   text: string = 'Hi Glacier.\nThis is a test toot.',
@@ -15,12 +19,12 @@ export async function createTextToot(
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         status: text,
         visibility: visibility
-      })
+      }),
     });
 
     if (!response.ok) {
@@ -41,7 +45,7 @@ export async function createMediaToot(
 ): Promise<void> {
 
   const filePath = path.resolve(__dirname, mediaPath);
-
+  console.log('Media file path:', filePath);
   if (!fs.existsSync(filePath)) {
     console.error('Media file does not exists:', filePath);
   }
@@ -55,7 +59,7 @@ export async function createMediaToot(
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         status: text,

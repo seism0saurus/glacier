@@ -2,8 +2,10 @@ version: 2
 updates:
   - package-ecosystem: "maven"
     directory: "/"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "08:00"
     reviewers:
       - "seism0saurus"
     groups:
@@ -13,8 +15,10 @@ updates:
 
   - package-ecosystem: "npm"
     directory: "/frontend/"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "10:00"
     reviewers:
       - "seism0saurus"
     groups:
@@ -24,14 +28,18 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/.github"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "12:00"
     reviewers:
       - "seism0saurus"
 
   - package-ecosystem: "docker"
     directory: "/containerimage"
+    target-branch: 0.0.5
     schedule:
       interval: "daily"
+      time: "14:00"
     reviewers:
       - "seism0saurus"

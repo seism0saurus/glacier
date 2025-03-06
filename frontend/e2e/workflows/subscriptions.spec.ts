@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import {createTextToot} from '../helper/mastodon-client';
 
+const glacier_handle = process.env['GLACIER_HANDLE'] || '@glacier_e2e_test@proxy';
+
 test.describe('Subscription Tests', () => {
 
   // Goto application page before each test
@@ -9,7 +11,7 @@ test.describe('Subscription Tests', () => {
   });
 
   test('Toot without subscription for the used hashtag is not visible', async ({ page }) => {
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a private test toot.\n#glacierE2Etest`);
 
     await page.waitForTimeout(Number(process.env['WAIT_FOR']) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
@@ -23,7 +25,7 @@ test.describe('Subscription Tests', () => {
     await page.getByPlaceholder('New hashtag').press('Enter');
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toBeVisible();
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
@@ -36,7 +38,7 @@ test.describe('Subscription Tests', () => {
     await page.getByPlaceholder('New hashtag').press('Enter');
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toBeVisible();
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
@@ -45,7 +47,7 @@ test.describe('Subscription Tests', () => {
     await page.getByLabel('remove hashtag glaciere2etest').click();
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toHaveCount(0);
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a private test toot.\n#glacierE2Etest`);
 
     await page.waitForTimeout(Number(process.env['WAIT_FOR']) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
@@ -62,7 +64,7 @@ test.describe('Subscription Tests', () => {
     await page.getByPlaceholder('New hashtag').press('Enter');
     await expect(page.locator("[id='hashtag-automation']")).toBeVisible();
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest\n#automation');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest\n#automation`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
@@ -79,7 +81,7 @@ test.describe('Subscription Tests', () => {
     await page.getByPlaceholder('New hashtag').press('Enter');
     await expect(page.locator("[id='hashtag-automation']")).toBeVisible();
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest\n#automation');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest\n#automation`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
@@ -89,7 +91,7 @@ test.describe('Subscription Tests', () => {
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toHaveCount(0);
     await expect(page.locator("[id='hashtag-automation']")).toHaveCount(0);
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a private test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a private test toot.\n#glacierE2Etest`);
 
     await page.waitForTimeout(Number(process.env['WAIT_FOR']) || 3000); // Wait for 3 seconds to give the backend time, if it had sent a toot
 
@@ -107,7 +109,7 @@ test.describe('Subscription Tests', () => {
     await page.getByPlaceholder('New hashtag').press('Enter');
     await expect(page.locator("[id='hashtag-automation']")).toBeVisible();
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#automation');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#automation`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
@@ -116,7 +118,7 @@ test.describe('Subscription Tests', () => {
     await page.getByLabel('remove hashtag glaciere2etest').click();
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toHaveCount(0);
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#automation');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#automation`);
 
     await expect(page.locator('app-toot')).toHaveCount(2);
   });
@@ -133,7 +135,7 @@ test.describe('Subscription Tests', () => {
     await editableField.press('Enter');
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toContainText('glaciere2etest');
 
-    await createTextToot('Hi @glacier_e2e_test@mastodon.seism0saurus.de.\nThis is a test toot.\n#glacierE2Etest');
+    await createTextToot(`Hi ${glacier_handle}.\nThis is a test toot.\n#glacierE2Etest`);
 
     await expect(page.locator('app-toot')).toHaveCount(1);
     await expect(page.locator('app-toot')).toBeVisible();
