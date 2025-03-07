@@ -4,9 +4,37 @@ To ensure a working application when releasing and to provide feedback for devel
 
 ## Content
 
+- [Completely automated E2E Testing](#completely-automated-e2e-testing)
 - [Manual E2E Testing for debugging](#manual-e2e-testing-for-debugging)
-- [Try it](#try-it)
-  - [Demo](#demo)
+
+
+## Completely automated E2E Testing
+
+These are the more convenient steps for end-to-end testing without the need to install playwright or run Glacier and Playwright in your IDE.
+
+### Dependencies
+
+To execute the end-to-end tests you need `docker` with `docker compose` functionality.
+It's sad but `containerd` will not be able to run the compose file because the `traefik` loadbalancer needs a docker socket to work.
+
+The ports `80`, `443`, `8080` and `8090` need to be free on your system, and you need the privileges to use them.
+
+### Step by step to a successful test
+
+- Go into a shell in the root of your local copy of the repository. Execute the maven package goal:
+  ```bash
+  ./mvnw clean package
+  ```
+- Then unpack the content of the mastodon server. Switch to the (infrastructure)[./infrastructure] folder.
+  Then untar (infrastructure-content.tar.gz)[infrastructure-content.tar.gz]:
+  ```bash
+  cd infrastructure
+  tar -xf infrastructure-content.tar.gz -C ./
+  ```
+- Start the infrastructure and end-to-end tests with a single command:
+  ```bash
+  docker compose -f docker-compose.yaml up --build --abort-on-container-exit playwright --exit-code-from playwright
+  ```
 
 ## Manual E2E Testing for debugging
 
@@ -89,5 +117,4 @@ The ports `80`, `443`, `8080` and `8090` need to be free on your system, and you
   ```
   ![Screenshot of the Run/Debug configuration of the playwright test](run_configuration_playwright.png){width=400px}
 - Run the playwright configuration in your IDE
-
 

@@ -111,7 +111,7 @@ buildah build --build-arg JAR_FILE=glacier-0.0.6.jar  -f Dockerfile -t glacier .
 
 You can run unit tests by executing the maven goal `test`.
 
-For e2e tests see [E2E_TESTING.md](infrastructure/E2E_TESTING.md)
+For e2e tests see [E2E_TESTING.md](infrastructure/README)
 
 ## Run it
 
