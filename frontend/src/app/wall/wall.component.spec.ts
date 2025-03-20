@@ -26,10 +26,13 @@ describe('WallComponent', () => {
         {id: '2', url: 'url2'},
       ],
       capacity: 2,
-      restore: () => {},
-      enqueue: () => {},
+      restore: () => {
+      },
+      enqueue: () => {
+      },
       dequeue: () => undefined,
-      clear: () => {}, // Added missing method
+      clear: () => {
+      }, // Added missing method
       size: 2,         // Added missing property
       toArray: () => [] // Added missing method
     } as unknown as MessageQueue));
@@ -55,7 +58,117 @@ describe('WallComponent', () => {
     });
     fixture = TestBed.createComponent(WallComponent);
     component = fixture.componentInstance;
+
+    component.el = mockElementRef;
+
     fixture.detectChanges();
+  });
+
+  describe('onResize', () => {
+    it('should correctly update rowHeight and columns', () => {
+      mockElementRef.nativeElement.offsetHeight = 900;
+      mockElementRef.nativeElement.offsetWidth = 1600;
+
+      component.onResize();
+      fixture.detectChanges();
+
+      expect(component.rowHeight).toBe(860); // 900 - 40
+      expect(component.columns).toBe(3); // 1600 / 408 (floor)
+    });
+
+    it('should handle edge cases when width is less than one column width', () => {
+      mockElementRef.nativeElement.offsetHeight = 700;
+      mockElementRef.nativeElement.offsetWidth = 300;
+
+      component.onResize();
+      fixture.detectChanges();
+
+      expect(component.rowHeight).toBe(660); // 700 - 40
+      expect(component.columns).toBe(0); // 300 / 408 (floor)
+    });
+
+    describe('should handle typical screen widths', () => {
+      it('wxga', () => {
+        mockElementRef.nativeElement.offsetHeight = 720;
+        mockElementRef.nativeElement.offsetWidth = 1280;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(680);
+        expect(component.columns).toBe(3);
+      });
+      it('wxga+', () => {
+        mockElementRef.nativeElement.offsetHeight = 900;
+        mockElementRef.nativeElement.offsetWidth = 1440;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(860);
+        expect(component.columns).toBe(3);
+      });
+      it('hd+', () => {
+        mockElementRef.nativeElement.offsetHeight = 900;
+        mockElementRef.nativeElement.offsetWidth = 1600;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(860);
+        expect(component.columns).toBe(3);
+      });
+      it('fhd', () => {
+        mockElementRef.nativeElement.offsetHeight = 1080;
+        mockElementRef.nativeElement.offsetWidth = 1920;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(1040);
+        expect(component.columns).toBe(4);
+      });
+      it('wuxga', () => {
+        mockElementRef.nativeElement.offsetHeight = 1200;
+        mockElementRef.nativeElement.offsetWidth = 1920;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(1160);
+        expect(component.columns).toBe(4);
+      });
+      it('qwxga', () => {
+        mockElementRef.nativeElement.offsetHeight = 1152;
+        mockElementRef.nativeElement.offsetWidth = 2048;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(1112);
+        expect(component.columns).toBe(5);
+      });
+      it('4k', () => {
+        mockElementRef.nativeElement.offsetHeight = 2160;
+        mockElementRef.nativeElement.offsetWidth = 3840;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(2120);
+        expect(component.columns).toBe(9);
+      });
+      it('5k', () => {
+        mockElementRef.nativeElement.offsetHeight = 2880;
+        mockElementRef.nativeElement.offsetWidth = 5120;
+
+        component.onResize();
+        fixture.detectChanges();
+
+        expect(component.rowHeight).toBe(2840);
+        expect(component.columns).toBe(12);
+      });
+    });
   });
 
   it('should create', () => {
