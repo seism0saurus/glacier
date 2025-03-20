@@ -26,16 +26,7 @@ export class TootComponent {
 
       // send message to global listener
       this.sendHeightToIframe(element);
-
-      if (this.cantBeLoaded()) {
-        console.log("documentElement", element);
-        element.style["display"] = "none";
-      }
     }
-  }
-
-  private cantBeLoaded(): boolean {
-    return false;
   }
 
   private sendHeightToIframe(element: HTMLIFrameElement) {
@@ -66,7 +57,10 @@ export class TootComponent {
   handleError(iframe: HTMLIFrameElement) {
     console.log('error at iframe', iframe);
     let frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
-    // @ts-ignore
-    frameDoc.removeChild(frameDoc.documentElement);
+    if (frameDoc?.documentElement) {
+      frameDoc.removeChild(frameDoc.documentElement);
+    } else {
+      console.warn('Cannot handle error: documentElement is not available');
+    }
   }
 }
