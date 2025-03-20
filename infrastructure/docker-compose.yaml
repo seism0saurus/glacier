@@ -172,7 +172,7 @@ services:
 
   playwright:
     container_name: playwright
-    image: mcr.microsoft.com/playwright:v1.51.0
+    image: mcr.microsoft.com/playwright:v1.51.1
     networks:
       - mastodon
     volumes:
