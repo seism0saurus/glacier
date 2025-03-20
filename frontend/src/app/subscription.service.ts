@@ -71,7 +71,7 @@ export class SubscriptionService {
       this.destinations.push(modificationDestination);
       this.subscriptions[modificationDestination] = this.subscribeToStatusUpdatedMessages(modificationDestination);
 
-      const deletionDestination = this.destination(data.principal, data.hashtag, 'modification');
+      const deletionDestination = this.destination(data.principal, data.hashtag, 'deletion');
       this.destinations.push(deletionDestination);
       this.subscriptions[deletionDestination] = this.subscribeToStatusDeletedMessages(deletionDestination);
 
@@ -92,7 +92,7 @@ export class SubscriptionService {
       const modificationDestination = this.destination(data.principal, data.hashtag, 'modification');
       this.terminateSubscriptionByDestination(modificationDestination);
 
-      const deletionDestination = this.destination(data.principal, data.hashtag, 'modification');
+      const deletionDestination = this.destination(data.principal, data.hashtag, 'deletion');
       this.terminateSubscriptionByDestination(deletionDestination);
 
     } else {
