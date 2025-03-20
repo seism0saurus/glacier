@@ -12,4 +12,4 @@ sed -e "s|^  \"version\": \"[0-9]*\.[0-9]*\.[0-9]*\"|  \"version\": \"$1\"|" -i 
 npm install
 
 cd "$dir/.github/"
-sed -e "s|target-branch: [0-9]*\.[0-9]*\.[0-9]*|target-branch: $1|" -i dependabot.yaml
+sed -e "s|target-branch: [0-9]*\.[0-9]*\.[0-9]*|target-branch: $2|" -i dependabot.yaml
