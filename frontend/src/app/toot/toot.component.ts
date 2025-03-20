@@ -11,7 +11,7 @@ import { HttpClient } from "@angular/common/http";
 export class TootComponent {
 
   @Input()
-  url: SafeResourceUrl = {};
+  url?: SafeResourceUrl;
 
   @Input()
   uuid: string = "";
