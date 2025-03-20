@@ -71,7 +71,7 @@ export class SubscriptionService {
       this.destinations.push(modificationDestination);
       this.subscriptions[modificationDestination] = this.subscribeToStatusUpdatedMessages(modificationDestination);
 
-      const deletionDestination = this.destination(data.principal, data.hashtag, 'modification');
+      const deletionDestination = this.destination(data.principal, data.hashtag, 'deletion');
       this.destinations.push(deletionDestination);
       this.subscriptions[deletionDestination] = this.subscribeToStatusDeletedMessages(deletionDestination);
 
@@ -92,7 +92,7 @@ export class SubscriptionService {
       const modificationDestination = this.destination(data.principal, data.hashtag, 'modification');
       this.terminateSubscriptionByDestination(modificationDestination);
 
-      const deletionDestination = this.destination(data.principal, data.hashtag, 'modification');
+      const deletionDestination = this.destination(data.principal, data.hashtag, 'deletion');
       this.terminateSubscriptionByDestination(deletionDestination);
 
     } else {
@@ -100,7 +100,7 @@ export class SubscriptionService {
     }
   }
 
-  private terminateSubscriptionByDestination(dest: string) {
+  terminateSubscriptionByDestination(dest: string) {
     console.log('Terminating subscriptions for', dest);
     if (this.subscriptions[dest]) {
       this.subscriptions[dest].unsubscribe();
@@ -222,9 +222,12 @@ export class MessageQueue {
     if (messageToRemove) {
       const index = this.storage.indexOf(messageToRemove);
       if (index > -1) {
-        delete this.storage[index];
+        this.storage.splice(index,1);
       }
     }
+    // Compact the array by filtering out any undefined or empty values (if any remain)
+    this.storage = this.storage.filter(item => item !== undefined);
+
     localStorage.setItem('messageQueue', JSON.stringify(this.storage));
     return messageToRemove;
   }

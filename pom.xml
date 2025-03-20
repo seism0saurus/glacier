@@ -10,7 +10,7 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.5</version>
+    <version>0.0.6</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
@@ -62,7 +62,8 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>23</java.version>
-        <kotlin.version>2.1.10</kotlin.version>
+        <glacier.version>0.0.6</glacier.version>
+        <kotlin.version>2.1.20</kotlin.version>
         <lombok.version>1.18.36</lombok.version>
     </properties>
 
@@ -162,12 +163,12 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-core</artifactId>
-            <version>1.5.17</version>
+            <version>1.5.18</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.17</version>
+            <version>1.5.18</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback.contrib</groupId>
@@ -384,6 +385,31 @@
                                     mkdir -p ${project.basedir}/src/main/resources/static/; rm -rf ${project.basedir}/src/main/resources/static/*; cp -a ${project.basedir}/frontend/dist/glacier-frontend/browser/* ${project.basedir}/src/main/resources/static/
                                 </argument>
                             </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-and-rename-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>de.seism0saurus</groupId>
+                                    <artifactId>glacier</artifactId>
+                                    <version>${glacier.version}</version>
+                                    <type>jar</type>
+                                    <outputDirectory>${basedir}/infrastructure/glacier</outputDirectory>
+                                    <destFileName>glacier.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
                         </configuration>
                     </execution>
                 </executions>

@@ -5,7 +5,7 @@ services:
   db:
     image: postgres:14-alpine
     container_name: db
-    restart: always
+    restart: unless-stopped
     shm_size: 256mb
     expose:
       - "5432"
@@ -23,7 +23,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    restart: always
+    restart: unless-stopped
     expose:
       - "6379"
     networks:
@@ -36,7 +36,7 @@ services:
   web:
     image: ghcr.io/mastodon/mastodon:v4.3.3
     container_name: web
-    restart: always
+    restart: unless-stopped
     env_file: mastodon.env
     command: bundle exec puma -C config/puma.rb
     expose:
@@ -59,7 +59,7 @@ services:
   streaming:
     image: ghcr.io/mastodon/mastodon-streaming:v4.3.3
     container_name: streaming
-    restart: always
+    restart: unless-stopped
     env_file: mastodon.env
     command: node ./streaming/index.js
     expose:
@@ -80,7 +80,7 @@ services:
   sidekiq:
     image: ghcr.io/mastodon/mastodon:v4.3.3
     container_name: sidekiq
-    restart: always
+    restart: unless-stopped
     env_file: mastodon.env
     command: bundle exec sidekiq
     networks:
@@ -96,7 +96,7 @@ services:
   proxy:
     image: traefik:3
     container_name: proxy
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"

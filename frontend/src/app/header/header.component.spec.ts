@@ -1,8 +1,8 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import {ComponentFixture, TestBed} from '@angular/core/testing';
 
-import { HeaderComponent } from './header.component';
+import {HeaderComponent} from './header.component';
 import {AnimationService} from "../animation.service";
-import {BehaviorSubject, Subscription} from "rxjs";
+import {Subscription} from "rxjs";
 
 describe('HeaderComponent', () => {
   let component: HeaderComponent;
@@ -71,8 +71,36 @@ describe('HeaderComponent', () => {
   });
 
   it('should subscribe to the animation service on init', () => {
-    const spy = spyOn(BehaviorSubject.prototype, 'subscribe');
+    const spy = spyOn(service.getHeaderExtended(), 'subscribe');
     component.ngOnInit();
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('should update extended when observable emits a value', () => {
+    const testValue = false;
+    spyOn(service, 'getHeaderExtended').and.returnValue({
+      subscribe: (observer: any) => observer.next(testValue),
+    } as any);
+    component.ngOnInit();
+    expect(component.extended).toBe(testValue);
+  });
+
+  it('should log error when observable emits an error', () => {
+    const consoleSpy = spyOn(console, 'error');
+    const testError = 'Test error';
+    spyOn(service, 'getHeaderExtended').and.returnValue({
+      subscribe: (observer: any) => observer.error(testError),
+    } as any);
+    component.ngOnInit();
+    expect(consoleSpy).toHaveBeenCalledWith('Observable emitted an error: ' + testError);
+  });
+
+  it('should log complete notification when observable completes', () => {
+    const consoleSpy = spyOn(console, 'log');
+    spyOn(service, 'getHeaderExtended').and.returnValue({
+      subscribe: (observer: any) => observer.complete(),
+    } as any);
+    component.ngOnInit();
+    expect(consoleSpy).toHaveBeenCalledWith('Observable emitted the complete notification');
   });
 });

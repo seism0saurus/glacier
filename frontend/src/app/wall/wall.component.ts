@@ -23,7 +23,7 @@ export class WallComponent implements OnInit, OnDestroy {
   rowHeight: number;
   private serviceSubscription: Subscription | null = null;
 
-  constructor(private subscriptionService: SubscriptionService, private el: ElementRef) {
+  constructor(private subscriptionService: SubscriptionService, public el: ElementRef) {
   }
 
   @HostListener('window:resize', ['$event'])

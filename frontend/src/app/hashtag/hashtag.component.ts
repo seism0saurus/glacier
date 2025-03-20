@@ -95,7 +95,7 @@ export class HashtagComponent {
     //Do nothing, if the tag hasn't changed. Otherwise, change it
     if (tag !== sanitizedTag){
       // Remove tag and unsubscribe, if it is empty
-      if (!tag) {
+      if (!sanitizedTag) {
         this.subscriptionService.unsubscribeHashtag(tag);
         this.remove(tag);
         return;
