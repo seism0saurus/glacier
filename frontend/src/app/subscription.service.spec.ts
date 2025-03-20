@@ -1,9 +1,9 @@
 import {TestBed} from '@angular/core/testing';
 
-import {SubscriptionService} from './subscription.service';
-import {Observable, of} from "rxjs";
+import {MessageQueue, SubscriptionService} from './subscription.service';
+import {RxStompService} from './rx-stomp.service';
+import {Observable, of} from 'rxjs';
 import {Message} from "@stomp/stompjs";
-import {RxStompService} from "./rx-stomp.service";
 import {TerminationAckMessage} from "./message-types/termination-ack-message";
 
 describe('SubscriptionService', () => {
@@ -371,5 +371,251 @@ describe('SubscriptionService', () => {
     expect(storedHashtags).toEqual(['hashtag1', 'hashtag2']);
     expect(console.error)
       .toHaveBeenCalledWith('Could not terminate subscription for principal test-user and hashtag hashtag1');
+  });
+
+  describe('terminateSubscriptionByDestination', () => {
+    beforeEach(() => {
+      service['subscriptions'] = {
+        existingDestination: jasmine.createSpyObj('Subscription', ['unsubscribe']),
+      };
+    });
+
+    it('should unsubscribe and delete an existing subscription', () => {
+      service.terminateSubscriptionByDestination('existingDestination');
+
+      // Verify the subscription was deleted
+      expect(service['subscriptions']['existingDestination']).toBeUndefined();
+    });
+
+    it('should log an error if the subscription does not exist', () => {
+      const consoleErrorSpy = spyOn(console, 'error');
+
+      service.terminateSubscriptionByDestination('nonExistingDestination');
+
+      // Verify console.error was called with the correct message
+      expect(consoleErrorSpy).toHaveBeenCalledWith('No subscription found with destination', 'nonExistingDestination');
+    });
+  });
+
+});
+
+describe('SubscriptionService: terminateAllSubscriptions', () => {
+  let service: SubscriptionService;
+  let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
+
+  beforeEach(() => {
+    const spy = jasmine.createSpyObj('RxStompService', ['watch', 'publish']);
+    spy.watch.and.callFake(() =>
+      of({ body: JSON.stringify({ subscribed: true, hashtag: 'hashtag1', principal: 'user' }) })
+    );
+
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        {provide: RxStompService, useValue: spy},
+      ],
+    });
+
+    service = TestBed.inject(SubscriptionService);
+    rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
+
+    // Set up mock subscriptions and hashtags
+    service['hashtags'] = ['hashtag1', 'hashtag2'];
+    service['subscriptions'] = {
+      subscription1: jasmine.createSpyObj('Subscription', ['unsubscribe']),
+      subscription2: jasmine.createSpyObj('Subscription', ['unsubscribe']),
+    };
+    service['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+    service['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+  });
+
+  it('should unsubscribe all subscriptions in the subscriptions property', () => {
+    service.terminateAllSubscriptions();
+
+    expect(Object.keys(service['subscriptions']).length).toBe(0);
+  });
+
+  it('should unsubscribe subscriptionsSubscription and terminationsSubscription', () => {
+    service.terminateAllSubscriptions();
+
+    expect(service['subscriptionsSubscription'].unsubscribe).toHaveBeenCalled();
+    expect(service['terminationsSubscription'].unsubscribe).toHaveBeenCalled();
+  });
+
+  it('should call unsubscribeHashtag for each hashtag in hashtags property', () => {
+    spyOn(service, 'unsubscribeHashtag');
+
+    service.terminateAllSubscriptions();
+
+    expect(service.unsubscribeHashtag).toHaveBeenCalledWith('hashtag1');
+    expect(service.unsubscribeHashtag).toHaveBeenCalledWith('hashtag2');
+  });
+});
+
+describe('MessageQueue', () => {
+  let messageQueue: MessageQueue;
+
+  beforeEach(() => {
+    messageQueue = new MessageQueue();
+    // Mock the localStorage to isolate tests
+    spyOn(localStorage, 'setItem').and.stub();
+    spyOn(localStorage, 'getItem').and.returnValue(null);
+  });
+
+  describe('enqueue()', () => {
+    it('should add a message to the storage array', () => {
+      const message = { id: '1', content: 'Test Message', url: 'https://example.com' };
+
+      messageQueue.enqueue(message);
+
+      expect(messageQueue['storage'].length).toBe(1);
+      expect(messageQueue['storage'][0]).toEqual(message);
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        'messageQueue',
+        JSON.stringify([message])
+      );
+    });
+
+    it('should append messages to the array in order', () => {
+      const message1 = { id: '1', content: 'First Message', url: 'https://example.com/first' };
+      const message2 = { id: '2', content: 'Second Message', url: 'https://example.com/second' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+
+      expect(messageQueue['storage'].length).toBe(2);
+      expect(messageQueue['storage'][0]).toEqual(message1);
+      expect(messageQueue['storage'][1]).toEqual(message2);
+      expect(localStorage.setItem).toHaveBeenCalledTimes(2);
+    });
+
+    it('should remove oldest message, if queue limit is reached', () => {
+      messageQueue = new MessageQueue(3);
+
+      const message1 = { id: '1', content: 'First Message', url: 'https://example.com/first' };
+      const message2 = { id: '2', content: 'Second Message', url: 'https://example.com/second' };
+      const message3 = { id: '3', content: 'Third Message', url: 'https://example.com/third' };
+      const message4 = { id: '4', content: 'Fourth Message', url: 'https://example.com/fourth' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+      messageQueue.enqueue(message3);
+      messageQueue.enqueue(message4);
+
+      expect(messageQueue['storage'].length).toBe(3);
+      expect(messageQueue['storage'][0]).toEqual(message2);
+      expect(messageQueue['storage'][1]).toEqual(message3);
+      expect(messageQueue['storage'][2]).toEqual(message4);
+      expect(localStorage.setItem).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('dequeue()', () => {
+    it('should remove and return the first message in the array', () => {
+      const message1 = { id: '1', content: 'First Message', url: 'https://example.com/first' };
+      const message2 = { id: '2', content: 'Second Message', url: 'https://example.com/second' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+
+      const dequeuedMessage = messageQueue.dequeue("1");
+
+      expect(dequeuedMessage).toEqual(message1);
+      expect(messageQueue['storage'].length).toBe(1);
+      expect(messageQueue['storage'][0]).toEqual(message2);
+    });
+
+    it('should return undefined if the queue is empty', () => {
+      const dequeuedMessage = messageQueue.dequeue("1");
+
+      expect(dequeuedMessage).toBeUndefined();
+      expect(messageQueue['storage'].length).toBe(0);
+    });
+
+    it('shouldn`t have empty spaces after removal', () => {
+      const message1 = { id: '1', content: 'First Message', url: 'https://example.com/first' };
+      const message2 = { id: '2', content: 'Second Message', url: 'https://example.com/second' };
+      const message3 = { id: '3', content: 'Third Message', url: 'https://example.com/third' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+      messageQueue.enqueue(message3);
+
+      const dequeuedMessage = messageQueue.dequeue("2");
+
+      expect(dequeuedMessage).toEqual(message2);
+      expect(messageQueue['storage'].length).toBe(2);
+      expect(messageQueue['storage'][0]).toEqual(message1);
+      expect(messageQueue['storage'][1]).toEqual(message3);
+    });
+  });
+
+  describe('clear()', () => {
+    it('should remove all messages from the storage array', () => {
+      const message1 = { id: '1', content: 'First Message', url: '' };
+      const message2 = { id: '2', content: 'Second Message', url: '' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+
+      messageQueue.clear();
+
+      expect(messageQueue['storage'].length).toBe(0);
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        'messageQueue',
+        JSON.stringify([])
+      );
+    });
+  });
+
+  describe('size()', () => {
+    it('should be 0 without elements', () => {
+      expect(messageQueue['storage'].length).toBe(0);
+      expect(messageQueue.size()).toBe(0);
+    });
+
+    it('should be 1 with one element', () => {
+      const message1 = { id: '1', content: 'First Message', url: '' };
+
+      messageQueue.enqueue(message1);
+
+      expect(messageQueue['storage'].length).toBe(1);
+      expect(messageQueue.size()).toBe(1);
+    });
+
+    it('should be 2 with two elements', () => {
+      const message1 = { id: '1', content: 'First Message', url: '' };
+      const message2 = { id: '2', content: 'Second Message', url: '' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+
+      expect(messageQueue['storage'].length).toBe(2);
+      expect(messageQueue.size()).toBe(2);
+    });
+  });
+
+  describe('toArray()', () => {
+    it('should return an empy array without elements', () => {
+      expect(messageQueue.toArray()).toEqual([]);
+    });
+
+    it('should return an array with the same single element', () => {
+      const message1 = { id: '1', content: 'First Message', url: '' };
+
+      messageQueue.enqueue(message1);
+
+      expect(messageQueue.toArray()).toEqual([message1]);
+    });
+
+    it('should return an array with the same elements', () => {
+      const message1 = { id: '1', content: 'First Message', url: '' };
+      const message2 = { id: '2', content: 'Second Message', url: '' };
+
+      messageQueue.enqueue(message1);
+      messageQueue.enqueue(message2);
+
+      expect(messageQueue.toArray()).toEqual([message1, message2]);
+    });
   });
 });
