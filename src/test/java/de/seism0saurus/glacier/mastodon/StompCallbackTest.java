@@ -1,14 +1,19 @@
 package de.seism0saurus.glacier.mastodon;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 import de.seism0saurus.glacier.webservice.messaging.messages.StatusCreatedMessage;
 import de.seism0saurus.glacier.webservice.messaging.messages.StatusDeletedMessage;
 import de.seism0saurus.glacier.webservice.messaging.messages.StatusUpdatedMessage;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
@@ -21,10 +26,12 @@ import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import social.bigbone.api.entity.streaming.TechnicalEvent;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -169,11 +176,11 @@ public class StompCallbackTest {
 
         // Execute
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(),  "hashtag", handle, "glacier.example.com")
+                new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
         );
 
         // Verify
-        assertEquals(exception.getMessage(),"A mastodon handle is needed");
+        assertEquals(exception.getMessage(), "A mastodon handle is needed");
     }
 
     /**
@@ -186,11 +193,11 @@ public class StompCallbackTest {
 
         // Execute
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(),  "hashtag", handle, "glacier.example.com")
+                new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
         );
 
         // Verify
-        assertEquals(exception.getMessage(),"The mastodon handle does not contain an @ so either the name or the server is missing");
+        assertEquals(exception.getMessage(), "The mastodon handle does not contain an @ so either the name or the server is missing");
     }
 
     /**
@@ -408,12 +415,88 @@ public class StompCallbackTest {
     }
 
     /**
+     * Tests if the event handler processes a Technical Open event correctly
+     */
+    @Test
+    public void onEvent_EventTechnicalOpen() {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Open mockEvent = mock(TechnicalEvent.Open.class);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("got an Open event: Mock for Open"));
+    }
+
+    /**
+     * Tests if the event handler processes a Technical Closing event correctly
+     */
+    @Test
+    public void onEvent_EventTechnicalClosing() {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Closing mockEvent = mock(TechnicalEvent.Closing.class);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("got a Closing event: Mock for Closing"));
+    }
+
+    /**
+     * Tests if the event handler processes a Technical Closed event correctly
+     */
+    @Test
+    public void onEvent_EventTechnicalClosed() {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Closed mockEvent = mock(TechnicalEvent.Closed.class);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("got a Closed event: Mock for Closed"));
+    }
+
+    /**
+     * Tests if the event handler processes an unkknown Technical event correctly
+     */
+    @Test
+    public void onEvent_EventTechnicalUnknown() {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("got an unknown WebSocketEvent:"));
+    }
+
+    /**
      * Tests if the event handler processes a Technical Failure event correctly
      */
-    @SuppressWarnings("ThrowableNotThrown")
     @Test
     public void onEvent_EventTechnicalFailure() {
         // Setup
+        TestLogAppender logAppender = getTestLogAppender();
         String errorMessage = "Error Message";
         StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Failure mockEvent = mock(TechnicalEvent.Failure.class);
@@ -426,5 +509,30 @@ public class StompCallbackTest {
 
         // Verify
         Mockito.verify(mockEvent, Mockito.atLeastOnce()).getError();
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("got a Failure event. Restarting subscription. The error is: Error Message"));
     }
+
+    @NotNull
+    private static TestLogAppender getTestLogAppender() {
+        TestLogAppender logAppender = new TestLogAppender();
+        Logger logger = (Logger) LoggerFactory.getLogger(StompCallback.class);
+        logAppender.start();
+        logger.addAppender(logAppender);
+        return logAppender;
+    }
+
+    static class TestLogAppender extends AppenderBase<ILoggingEvent> {
+        private final List<String> loggedMessages = new ArrayList<>();
+
+        @Override
+        protected void append(ILoggingEvent eventObject) {
+            loggedMessages.add(eventObject.getFormattedMessage());
+        }
+
+        public List<String> getLoggedMessages() {
+            return loggedMessages;
+        }
+    }
+
 }
