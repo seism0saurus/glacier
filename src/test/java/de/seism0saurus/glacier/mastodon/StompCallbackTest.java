@@ -20,10 +20,13 @@ import social.bigbone.api.entity.streaming.MastodonApiEvent;
 import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import social.bigbone.api.entity.streaming.TechnicalEvent;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -154,6 +157,80 @@ public class StompCallbackTest {
                 eq(expectedDestination),
                 eq(expectedMessage)
         );
+    }
+
+    /**
+     * Tests if missing handle is handled with an exception, since we cannot work without one
+     */
+    @Test
+    public void handle_isNotProvided_throwsException() {
+        // Setup
+        String handle = null;
+
+        // Execute
+        Exception exception = assertThrows(IllegalArgumentException.class, () ->
+                new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(),  "hashtag", handle, "glacier.example.com")
+        );
+
+        // Verify
+        assertEquals(exception.getMessage(),"A mastodon handle is needed");
+    }
+
+    /**
+     * Tests if partial handle is handled with an exception, since we cannot work without one
+     */
+    @Test
+    public void handle_ispartiallyProvided_throwsException() {
+        // Setup
+        String handle = "peter.kropotkin";
+
+        // Execute
+        Exception exception = assertThrows(IllegalArgumentException.class, () ->
+                new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(),  "hashtag", handle, "glacier.example.com")
+        );
+
+        // Verify
+        assertEquals(exception.getMessage(),"The mastodon handle does not contain an @ so either the name or the server is missing");
+    }
+
+    /**
+     * Tests if complete handle is correctly parsed
+     */
+    @Test
+    public void handle_completeHandle_doesNotThrowException() throws NoSuchFieldException, IllegalAccessException {
+        // Setup
+        String handle = "peter.kropotkin@localhost";
+
+        // Execute
+        StompCallback stompCallback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
+
+        // Get the private field 'shortHandle' using reflection
+        Field shortHandleField = StompCallback.class.getDeclaredField("shortHandle");
+        shortHandleField.setAccessible(true); // Make the private field accessible
+        String shortHandle = (String) shortHandleField.get(stompCallback); // Read the value
+
+        // Assert
+        assertEquals(shortHandle, "peter.kropotkin");
+    }
+
+    /**
+     * Tests if complete handle with leading @ is correctly parsed
+     */
+    @Test
+    public void handle_completeHandleWithLeadingAt_doesNotThrowException() throws NoSuchFieldException, IllegalAccessException {
+        // Setup
+        String handle = "@peter.kropotkin@localhost";
+
+        // Execute
+        StompCallback stompCallback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
+
+        // Get the private field 'shortHandle' using reflection
+        Field shortHandleField = StompCallback.class.getDeclaredField("shortHandle");
+        shortHandleField.setAccessible(true); // Make the private field accessible
+        String shortHandle = (String) shortHandleField.get(stompCallback); // Read the value
+
+        // Assert
+        assertEquals(shortHandle, "peter.kropotkin");
     }
 
     /**
@@ -299,6 +376,23 @@ public class StompCallbackTest {
                 , Arguments.of(getHeaders("SAMEORIGIN", null), false) // Explicitly not allowed
                 , Arguments.of(getHeaders("SAMEORIGIN; ALLOWALL", null), false) // Multiple headers are not allowed
                 , Arguments.of(getHeaders("GNU Terry Pratchett", null), false) // Wrong headers
+                , Arguments.of(getHeaders(null, "default-src 'self'; img-src 'self'"), true) // Other stuff not frame-ancestors
+                , Arguments.of(getHeaders(null, "frame-ancestors glacier.example.com; default-src 'self'; img-src 'self';"), true) // Other stuff with frame-ancestors at the beginning
+                , Arguments.of(getHeaders(null, "default-src 'self'; frame-ancestors glacier.example.com; img-src 'self';"), true) // Other stuff with frame-ancestors in the middle
+                , Arguments.of(getHeaders(null, "default-src 'self';  img-src 'self'; frame-ancestors glacier.example.com;"), true) // Other stuff with frame-ancestors at the end
+                , Arguments.of(getHeaders(null, "frame-ancestors 'none'"), false) // Disallow frame-ancestors
+                , Arguments.of(getHeaders(null, "frame-ancestors othersite.example.com;"), false) // Wrong frame-ancestors
+                , Arguments.of(getHeaders(null, "frame-ancestors glacier.example.com;"), true) // Allow the test instance as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors othersite.example.com glacier.example.com;"), true) // Allow the test instance as frame-ancestor with other unrelated ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors glacier.example.com:80;"), true) // Allow the test instance with http port as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors glacier.example.com:443;"), true) // Allow the test instance with https port as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors http://glacier.example.com;"), true) // Allow the test instance with http port as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors https://glacier.example.com;"), true) // Allow the test instance with https port as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors http://glacier.example.com:80;"), true) // Allow the test instance with http port as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors https://glacier.example.com:443;"), true) // Allow the test instance with https port as frame-ancestor
+                , Arguments.of(getHeaders(null, "frame-ancestors http:;"), true) // Allow all http ancestors
+                , Arguments.of(getHeaders(null, "frame-ancestors https:;"), true) // Allow all https ancestors
+                , Arguments.of(getHeaders(null, ""), true) // empty csp header
         );
     }
 

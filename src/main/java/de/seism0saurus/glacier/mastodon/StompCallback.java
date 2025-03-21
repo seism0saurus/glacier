@@ -14,6 +14,7 @@ import social.bigbone.api.entity.streaming.*;
 import social.bigbone.api.entity.streaming.MastodonApiEvent.GenericMessage;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * The StompCallback class implements the WebSocketCallback interface and is responsible for processing WebSocket events.
@@ -195,16 +196,19 @@ public class StompCallback implements WebSocketCallback {
         boolean frameAncestorsExists = false;
         boolean frameAncestorsContainsServerOrWildcard = false;
 
-        if (csp != null) {
-            frameAncestorsExists = csp.stream()
-                    .anyMatch(policy -> policy.toUpperCase().startsWith("FRAME-ANCESTORS"));
+        if (csp != null && !csp.isEmpty()) {
+            // According to http standard, only the first Content-Security Policy is valid. So we take the first element of the Header list.
+            frameAncestorsExists = csp.getFirst().toUpperCase().contains("FRAME-ANCESTORS");
             if (frameAncestorsExists) {
-                frameAncestorsContainsServerOrWildcard = csp.stream()
-                        .filter(policy -> policy.toUpperCase().startsWith("FRAME-ANCESTORS"))
+                frameAncestorsContainsServerOrWildcard = Stream.of(csp.getFirst().split(";"))
+                        .filter(policy -> policy.toUpperCase().contains("FRAME-ANCESTORS"))
+                        .map(String::trim)
+                        // This is not perfect, but if the site of the too, does not explicitly allow glacier, or all http(s) sites as ancestors, we will most likely not be able to load it.
+                        // So this regex should match either *, http(s):, http(s)://* with or without ports or the glacier domain with or without leading http(s) and with or without ports.
                         .anyMatch(policy -> policy.toUpperCase().matches(
-                                "FRAME-ANCESTORS (\\S+ )*(((https?:\\/\\/)?\\*(:((\\*)|80|443))?)|((https?:\\/\\/)?"
-                                        + glacierDomain
-                                        + "(:((\\*)|80|443))?))( \\S+)*;")
+                                "FRAME-ANCESTORS (\\S+ )*((HTTPS?:(\\/\\/)?)|((HTTPS?:\\/\\/)?\\*(:((\\*)|80|443))?)|((HTTPS?:\\/\\/)?"
+                                        + glacierDomain.toUpperCase()
+                                        + "(:((\\*)|80|443))?))( \\S+)*")
                         );
             }
         }
