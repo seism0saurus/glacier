@@ -25,6 +25,8 @@ public class MastodonConfiguration {
 
     @Bean
     public MastodonClient mastodonClient(@Value("${mastodon.instance}") final String instance,
+                                         @Value("${mastodon.https}") final boolean https,
+                                         @Value("${mastodon.port}") final int port,
                                          @Value("${mastodon.accessToken}") final String accessToken,
                                          @Value("${mastodon.readTimeout}") final int readTimeout,
                                          @Value("${mastodon.writeTimeout}") final int writeTimeout,
@@ -33,23 +35,50 @@ public class MastodonConfiguration {
 
     ) {
         if (developmentModeMastodonClient) {
-            LOGGER.info("Starting Mastodon configuration in development mode trusting all certificates");
-            return new MastodonClient.Builder(instance)
-                    .accessToken(accessToken)
-                    .setReadTimeoutSeconds(readTimeout)
-                    .setWriteTimeoutSeconds(writeTimeout)
-                    .setConnectTimeoutSeconds(connectTimeout)
-                    .withTrustAllCerts()
-                    .debug()
-                    .build();
+            if (https){
+                LOGGER.warn("Starting Mastodon configuration in development mode trusting all certificates. This is dangerous!");
+                return new MastodonClient.Builder(instance)
+                        .accessToken(accessToken)
+                        .setReadTimeoutSeconds(readTimeout)
+                        .setWriteTimeoutSeconds(writeTimeout)
+                        .setConnectTimeoutSeconds(connectTimeout)
+                        .withTrustAllCerts()
+                        .withPort(port)
+                        .debug()
+                        .build();
+            } else {
+                LOGGER.warn("Starting Mastodon configuration in development mode with https disabled. This is dangerous!");
+                return new MastodonClient.Builder(instance)
+                        .accessToken(accessToken)
+                        .setReadTimeoutSeconds(readTimeout)
+                        .setWriteTimeoutSeconds(writeTimeout)
+                        .setConnectTimeoutSeconds(connectTimeout)
+                        .withPort(port)
+                        .withHttpsDisabled()
+                        .debug()
+                        .build();
+            }
         } else {
-            LOGGER.info("Starting Mastodon configuration in production mode verifying certificates with the java keystore");
-            return new MastodonClient.Builder(instance)
-                    .accessToken(accessToken)
-                    .setReadTimeoutSeconds(readTimeout)
-                    .setWriteTimeoutSeconds(writeTimeout)
-                    .setConnectTimeoutSeconds(connectTimeout)
-                    .build();
+            if (https) {
+                LOGGER.info("Starting Mastodon configuration in production mode verifying certificates with the java keystore");
+                return new MastodonClient.Builder(instance)
+                        .accessToken(accessToken)
+                        .setReadTimeoutSeconds(readTimeout)
+                        .setWriteTimeoutSeconds(writeTimeout)
+                        .setConnectTimeoutSeconds(connectTimeout)
+                        .withPort(port)
+                        .build();
+            } else {
+                LOGGER.warn("Starting Mastodon configuration in production with https disabled. This is dangerous!");
+                return new MastodonClient.Builder(instance)
+                        .accessToken(accessToken)
+                        .setReadTimeoutSeconds(readTimeout)
+                        .setWriteTimeoutSeconds(writeTimeout)
+                        .setConnectTimeoutSeconds(connectTimeout)
+                        .withPort(port)
+                        .withHttpsDisabled()
+                        .build();
+            }
         }
     }
 }
