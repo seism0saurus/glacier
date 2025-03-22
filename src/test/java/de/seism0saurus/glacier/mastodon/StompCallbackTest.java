@@ -3,9 +3,12 @@ package de.seism0saurus.glacier.mastodon;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
-import de.seism0saurus.glacier.webservice.messaging.messages.StatusCreatedMessage;
-import de.seism0saurus.glacier.webservice.messaging.messages.StatusDeletedMessage;
-import de.seism0saurus.glacier.webservice.messaging.messages.StatusUpdatedMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
+import de.seism0saurus.glacier.webservice.messaging.messages.*;
+import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +27,7 @@ import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.MastodonApiEvent;
 import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import social.bigbone.api.entity.streaming.TechnicalEvent;
+import social.bigbone.api.entity.streaming.WebSocketEvent;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -180,7 +184,7 @@ public class StompCallbackTest {
         );
 
         // Verify
-        assertEquals(exception.getMessage(), "A mastodon handle is needed");
+        assertEquals("A mastodon handle is needed", exception.getMessage());
     }
 
     /**
@@ -197,7 +201,7 @@ public class StompCallbackTest {
         );
 
         // Verify
-        assertEquals(exception.getMessage(), "The mastodon handle does not contain an @ so either the name or the server is missing");
+        assertEquals("The mastodon handle does not contain an @ so either the name or the server is missing", exception.getMessage());
     }
 
     /**
@@ -217,7 +221,7 @@ public class StompCallbackTest {
         String shortHandle = (String) shortHandleField.get(stompCallback); // Read the value
 
         // Assert
-        assertEquals(shortHandle, "peter.kropotkin");
+        assertEquals("peter.kropotkin", shortHandle);
     }
 
     /**
@@ -237,7 +241,7 @@ public class StompCallbackTest {
         String shortHandle = (String) shortHandleField.get(stompCallback); // Read the value
 
         // Assert
-        assertEquals(shortHandle, "peter.kropotkin");
+        assertEquals("peter.kropotkin", shortHandle);
     }
 
     /**
@@ -472,7 +476,7 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes an unkknown Technical event correctly
+     * Tests if the event handler processes an unknown Technical event correctly
      */
     @Test
     public void onEvent_EventTechnicalUnknown() {
@@ -488,6 +492,266 @@ public class StompCallbackTest {
         // Verify
         assertThat(logAppender.getLoggedMessages())
                 .anySatisfy(msg -> assertThat(msg).contains("got an unknown WebSocketEvent:"));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage status.update event with unloadable toot and optin correctly
+     */
+    @Test
+    public void onEvent_EventGenericMessage_UpdateWithUnloadableTootAndOptInIsHandled() throws JsonProcessingException {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+        SimpMessagingTemplate spyMessagingTemplate = spy(new SimpMessagingTemplate((message, timeout) -> {
+            System.out.println(message);
+            return true;
+        }));
+
+        HttpHeaders allowHeader = getHeaders("DENY", null);
+        when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
+
+        StompCallback callback = new StompCallback(subscriptionManager, spyMessagingTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder().event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        verify(spyMessagingTemplate, times(0)).convertAndSend(any(String.class), any(StatusCreatedMessage.class));
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("Toot not loadable by this glacier instance. Ignoring"));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage status.update event with loadable toot but without optin correctly
+     */
+    @Test
+    public void onEvent_EventGenericMessage_UpdateWithLoadableTootButMissingOptInIsHandled() throws JsonProcessingException {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+        SimpMessagingTemplate spyMessagingTemplate = spy(new SimpMessagingTemplate((message, timeout) -> {
+            System.out.println(message);
+            return true;
+        }));
+
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
+
+        StompCallback callback = new StompCallback(subscriptionManager, spyMessagingTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("other_handle").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder().event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        verify(spyMessagingTemplate, times(0)).convertAndSend(any(String.class), any(StatusCreatedMessage.class));
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("No opt in. Ignoring"));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage status.update event with unloadable toot and optin correctly
+     */
+    @Test
+    public void onEvent_EventGenericMessage_StatusUpdateWithLoadableTootAndOptInIsHandled() throws JsonProcessingException {
+        // Setup
+        SimpMessagingTemplate spyMessagingTemplate = spy(new SimpMessagingTemplate((message, timeout) -> {
+            System.out.println(message);
+            return true;
+        }));
+        StatusCreatedMessage createdMessage = StatusCreatedMessage.builder().id("4567").url("https://example.com/4567" + "/embed").build();
+
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
+
+        StompCallback callback = new StompCallback(subscriptionManager, spyMessagingTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder().event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        verify(spyMessagingTemplate, times(1)).convertAndSend(matches("/topic/hashtags/.*/hashtag/creation"), eq(createdMessage));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage update event with loadable toot and optin correctly
+     */
+    @Test
+    public void onEvent_EventGenericMessage_UpdateWithLoadableTootAndOptInIsHandled() throws JsonProcessingException {
+        // Setup
+        SimpMessagingTemplate spyMessagingTemplate = spy(new SimpMessagingTemplate((message, timeout) -> {
+            System.out.println(message);
+            return true;
+        }));
+        StatusCreatedMessage createdMessage = StatusCreatedMessage.builder().id("4567").url("https://example.com/4567" + "/embed").build();
+
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
+
+        StompCallback callback = new StompCallback(subscriptionManager, spyMessagingTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder().event("update").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        verify(spyMessagingTemplate, times(1)).convertAndSend(matches("/topic/hashtags/.*/hashtag/creation"), eq(createdMessage));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage delete event correctly
+     */
+    @Test
+    public void onEvent_EventGenericMessage_DeleteIsHandled() throws JsonProcessingException {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("12345").username("peter.kropotkin").acct("@karl.marx").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/12345").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder().event("delete").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("Delete toot with id"));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage status.delete event correctly
+     */
+    @Test
+    public void onEvent_EventGenericMessage_StatusDeleteIsHandled() throws JsonProcessingException {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("12345").username("peter.kropotkin").acct("@karl.marx").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/12345").id("4567").build();
+        JsonNode jsonNode = mapper.convertValue(payload, JsonNode.class);
+        GenericMessageContent content = GenericMessageContent.builder().event("status.delete").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("Delete toot with id"));
+    }
+
+    /**
+     * Tests if the event handler processes a GenericMessage event, that's not a update or delete message, correctly
+     */
+    @Test
+    public void onEvent_UnrelatedGenericMessageEvent_isIgnored() throws JsonProcessingException {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("12345").username("peter.kropotkin").acct("@karl.marx").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/12345").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder().event("other_event").stream(List.of("something_unrelated")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("Not an update event for the subscribed hashtag"));
+    }
+
+    /**
+     * Tests if the event handler handles a deserialization error in a GenericMessage event
+     */
+    @Test
+    public void onEvent_EventGenericMessageWithInvalidContent_handlesExceptionGracefully() {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+
+        when(mockEvent.getText()).thenReturn("not a json");
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("Could not parse GenericMessage"));
+    }
+
+
+    /**
+     * Tests if the event handler processes an unknown Websocket event correctly
+     */
+    @Test
+    public void onEvent_WebsocketEventUnknown() {
+        // Setup
+        TestLogAppender logAppender = getTestLogAppender();
+
+        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        WebSocketEvent mockEvent = mock(WebSocketEvent.class);
+
+        // Execute
+        callback.onEvent(mockEvent);
+
+        // Verify
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("got an unknown event: class social.bigbone.api.entity.streaming.WebSocketEvent$"));
     }
 
     /**
@@ -522,6 +786,7 @@ public class StompCallbackTest {
         return logAppender;
     }
 
+    @Getter
     static class TestLogAppender extends AppenderBase<ILoggingEvent> {
         private final List<String> loggedMessages = new ArrayList<>();
 
@@ -529,10 +794,5 @@ public class StompCallbackTest {
         protected void append(ILoggingEvent eventObject) {
             loggedMessages.add(eventObject.getFormattedMessage());
         }
-
-        public List<String> getLoggedMessages() {
-            return loggedMessages;
-        }
     }
-
 }
