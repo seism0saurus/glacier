@@ -18,35 +18,67 @@ public class MastodonConfigurationTest {
     final MastodonConfiguration mastodonConfiguration = mock(MastodonConfiguration.class);
 
     @Test
-    void shouldReturnMastodonClientWithCorrectInstance() {
+    void shouldReturnMastodonClientWithCorrectInstanceInDevelopmentModeHTTPSDisabled() {
         // Mock MastodonClient
         MastodonClient mockClient = mock(MastodonClient.class);
-        when(mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, false))
+        when(mastodonConfiguration.mastodonClient(instance, false, 80, accessToken, readTimeout, writeTimeout, connectTimeout, false))
                 .thenReturn(mockClient);
         when(mockClient.getInstanceName()).thenReturn(instance);
 
         // Act
-        MastodonClient client = mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, false);
+        MastodonClient client = mastodonConfiguration.mastodonClient(instance, false, 80, accessToken, readTimeout, writeTimeout, connectTimeout, false);
 
         // Assert
         assertThat(client.getInstanceName()).isEqualTo(instance);
-        verify(mastodonConfiguration, times(1)).mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, false);
+        verify(mastodonConfiguration, times(1)).mastodonClient(instance,false, 80, accessToken, readTimeout, writeTimeout, connectTimeout, false);
+    }
+
+    @Test
+    void shouldReturnMastodonClientWithCorrectInstanceInDevelopmentMode() {
+        // Mock MastodonClient
+        MastodonClient mockClient = mock(MastodonClient.class);
+        when(mastodonConfiguration.mastodonClient(instance, true, 443, accessToken, readTimeout, writeTimeout, connectTimeout, false))
+                .thenReturn(mockClient);
+        when(mockClient.getInstanceName()).thenReturn(instance);
+
+        // Act
+        MastodonClient client = mastodonConfiguration.mastodonClient(instance, true, 443, accessToken, readTimeout, writeTimeout, connectTimeout, false);
+
+        // Assert
+        assertThat(client.getInstanceName()).isEqualTo(instance);
+        verify(mastodonConfiguration, times(1)).mastodonClient(instance,true, 443, accessToken, readTimeout, writeTimeout, connectTimeout, false);
     }
 
     @Test
     void shouldReturnMastodonClientWithCorrectInstanceWithCertifcateCheck() {
         // Mock MastodonClient
         MastodonClient mockClient = mock(MastodonClient.class);
-        when(mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, true))
+        when(mastodonConfiguration.mastodonClient(instance, true, 443,accessToken, readTimeout, writeTimeout, connectTimeout, true))
                 .thenReturn(mockClient);
         when(mockClient.getInstanceName()).thenReturn(instance);
 
         // Act
-        MastodonClient client = mastodonConfiguration.mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, true);
+        MastodonClient client = mastodonConfiguration.mastodonClient(instance, true, 443,accessToken, readTimeout, writeTimeout, connectTimeout, true);
 
         // Assert
         assertThat(client.getInstanceName()).isEqualTo(instance);
-        verify(mastodonConfiguration, times(1)).mastodonClient(instance, accessToken, readTimeout, writeTimeout, connectTimeout, true);
+        verify(mastodonConfiguration, times(1)).mastodonClient(instance, true, 443,accessToken, readTimeout, writeTimeout, connectTimeout, true);
+    }
+
+    @Test
+    void shouldReturnMastodonClientWithCorrectInstanceWithHTTPSDisabled() {
+        // Mock MastodonClient
+        MastodonClient mockClient = mock(MastodonClient.class);
+        when(mastodonConfiguration.mastodonClient(instance, false, 8080,accessToken, readTimeout, writeTimeout, connectTimeout, true))
+                .thenReturn(mockClient);
+        when(mockClient.getInstanceName()).thenReturn(instance);
+
+        // Act
+        MastodonClient client = mastodonConfiguration.mastodonClient(instance, false, 8080,accessToken, readTimeout, writeTimeout, connectTimeout, true);
+
+        // Assert
+        assertThat(client.getInstanceName()).isEqualTo(instance);
+        verify(mastodonConfiguration, times(1)).mastodonClient(instance, false, 8080,accessToken, readTimeout, writeTimeout, connectTimeout, true);
     }
 
 }

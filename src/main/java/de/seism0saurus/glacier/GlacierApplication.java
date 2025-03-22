@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier;
 
+import jakarta.annotation.Generated;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -17,6 +18,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @SpringBootApplication
 public class GlacierApplication {
 
+    @Generated(value = "GlacierApplication")
     public static void main(String[] args) {
         SpringApplication.run(GlacierApplication.class, args);
     }
