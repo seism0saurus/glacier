@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice.messaging.messages;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,5 +30,7 @@ public class GenericMessageContentPayload {
 
     private String id;
     private String url;
+    @JsonAlias("edited_at")
+    private String editedAt;
     private List<Mention> mentions;
 }

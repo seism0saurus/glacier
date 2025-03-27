@@ -146,24 +146,10 @@ public class StompCallback implements WebSocketCallback {
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            if (genericMessageContent.getStream().contains("hashtag")
-                    && ("update".equals(genericMessageContent.getEvent())
-                    || "status.update".equals(genericMessageContent.getEvent())
-            )
-            ) {
-                GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
-
-                HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
-                if (isLoadable(httpHeaders, glacierDomain)) {
-                    if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
-                        StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
-                        this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
-                    } else {
-                        LOGGER.info("No opt in. Ignoring");
-                    }
-                } else {
-                    LOGGER.info("Toot not loadable by this glacier instance. Ignoring");
-                }
+            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())){
+                sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent, destination + "/creation");
+            } else if (genericMessageContent.getStream().contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
+                sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent, destination + "/modification");
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
                     || "status.delete".equals(genericMessageContent.getEvent())
@@ -175,6 +161,29 @@ public class StompCallback implements WebSocketCallback {
             }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
+        }
+    }
+
+    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination ) throws JsonProcessingException {
+        GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+
+        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        if (isLoadable(httpHeaders, glacierDomain)) {
+            if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
+                StatusMessage statusEvent = null;
+                if (StatusCreatedMessage.class.equals(statusMessageClass)){
+                    statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
+                } else if (StatusUpdatedMessage.class.equals(statusMessageClass)) {
+                    statusEvent = StatusUpdatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").editedAt(payload.getEditedAt()).build();
+                }
+                assert statusEvent != null;
+                this.simpMessagingTemplate.convertAndSend(destination, statusEvent);
+                LOGGER.info("Sending message to {}", destination);
+            } else {
+                LOGGER.info("No opt in. Ignoring");
+            }
+        } else {
+            LOGGER.info("Toot not loadable by this glacier instance. Ignoring");
         }
     }
 
@@ -259,7 +268,7 @@ public class StompCallback implements WebSocketCallback {
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
         if (isLoadable(httpHeaders, glacierDomain)) {
             assert status.getAccount() != null;
-            StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).author(status.getAccount().getDisplayName()).url(status.getUrl() + "/embed").build();
+            StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
         }
     }

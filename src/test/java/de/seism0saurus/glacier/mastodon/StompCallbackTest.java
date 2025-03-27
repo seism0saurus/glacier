@@ -135,14 +135,13 @@ public class StompCallbackTest {
      * Tests if the event handler processes a Status Created event correctly
      */
     @Test
-    public void onEvent_statusCreated_sendStatusCreatedToSubsciber() {
+    public void onEvent_statusCreated_sendStatusCreatedToSubscriber() {
         // Setup
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
         String expectedDestination = "/topic/hashtags/" + principal + "/" + hashtag + "/creation";
         StatusCreatedMessage expectedMessage = StatusCreatedMessage.builder()
                 .id("12345")
-                .author("peter.kropotkin@example.com")
                 .url("https://mastodon.example.com/12345/embed")
                 .build();
 
@@ -191,7 +190,7 @@ public class StompCallbackTest {
      * Tests if partial handle is handled with an exception, since we cannot work without one
      */
     @Test
-    public void handle_ispartiallyProvided_throwsException() {
+    public void handle_isPartiallyProvided_throwsException() {
         // Setup
         String handle = "peter.kropotkin";
 
@@ -248,7 +247,7 @@ public class StompCallbackTest {
      * Tests if the event handler processes a Status Edited event correctly
      */
     @Test
-    public void onEvent_statusEdited_sendStatusUpdatedToSubsciber() {
+    public void onEvent_statusEdited_sendStatusUpdatedToSubscriber() {
         // Setup
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
@@ -286,7 +285,7 @@ public class StompCallbackTest {
      * Tests if the event handler processes a Status Deleted event correctly
      */
     @Test
-    public void onEvent_statusDeleted_sendStatusDeletedToSubsciber() {
+    public void onEvent_statusDeleted_sendStatusDeletedToSubscriber() {
         // Setup
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
@@ -319,7 +318,7 @@ public class StompCallbackTest {
      * and does not send a message to the subscriber.
      */
     @Test
-    public void onEvent_unknownStreamEvent_dontSendMessageToSubsciber() {
+    public void onEvent_unknownStreamEvent_dontSendMessageToSubscriber() {
         // Setup
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
@@ -348,7 +347,6 @@ public class StompCallbackTest {
         String expectedDestination = "/topic/hashtags/" + principal + "/" + hashtag + "/creation";
         StatusCreatedMessage expectedMessage = StatusCreatedMessage.builder()
                 .id("12345")
-                .author("peter.kropotkin@example.com")
                 .url("https://mastodon.example.com/12345/embed")
                 .build();
 
@@ -567,7 +565,7 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes a GenericMessage status.update event with unloadable toot and optin correctly
+     * Tests if the event handler processes a GenericMessage status.update event with loadable toot and optin correctly
      */
     @Test
     public void onEvent_EventGenericMessage_StatusUpdateWithLoadableTootAndOptInIsHandled() throws JsonProcessingException {
@@ -576,7 +574,7 @@ public class StompCallbackTest {
             System.out.println(message);
             return true;
         }));
-        StatusCreatedMessage createdMessage = StatusCreatedMessage.builder().id("4567").url("https://example.com/4567" + "/embed").build();
+        StatusUpdatedMessage createdMessage = StatusUpdatedMessage.builder().id("4567").url("https://example.com/4567" + "/embed").editedAt("2025-01-017").build();
 
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
@@ -586,7 +584,7 @@ public class StompCallbackTest {
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
-        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").editedAt("2025-01-017").build();
         String payloadAsText = mapper.writeValueAsString(payload);
         JsonNode jsonNode = TextNode.valueOf(payloadAsText);
         GenericMessageContent content = GenericMessageContent.builder().event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
@@ -597,7 +595,7 @@ public class StompCallbackTest {
         callback.onEvent(mockEvent);
 
         // Verify
-        verify(spyMessagingTemplate, times(1)).convertAndSend(matches("/topic/hashtags/.*/hashtag/creation"), eq(createdMessage));
+        verify(spyMessagingTemplate, times(1)).convertAndSend(matches("/topic/hashtags/.*/hashtag/modification"), eq(createdMessage));
     }
 
     /**

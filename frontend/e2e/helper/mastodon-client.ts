@@ -11,7 +11,7 @@ const accessToken = process.env['MASTODON_USER_ACCESS_TOKEN'] || 'pyPuRhw4cZJHN4
 export async function createTextToot(
   text: string = 'Hi Glacier.\nThis is a test toot.',
   visibility: string = 'public'
-): Promise<void> {
+): Promise<string> {
   try {
     const endpoint = `${url}/api/v1/statuses`;
 
@@ -32,8 +32,42 @@ export async function createTextToot(
     }
     const data = await response.json();
     // console.log('Toot created successfully:', data);
+    return data.id;
   } catch (error) {
     console.error('Error during creation of status:', error);
+    return "";
+  }
+}
+
+export async function modifyTextToot(
+  id: string,
+  text: string = 'Hi Glacier.\nThis is a test toot.',
+  visibility: string = 'public'
+): Promise<string> {
+  try {
+    const endpoint = `${url}/api/v1/statuses/${id}`;
+
+    const response = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status: text,
+        visibility: visibility
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`Couldn't create status: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    // console.log('Toot created successfully:', data);
+    return data.id;
+  } catch (error) {
+    console.error('Error during creation of status:', error);
+    return "";
   }
 }
 

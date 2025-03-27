@@ -1,6 +1,5 @@
-import {Component, Input} from '@angular/core';
+import {Component, Input, SimpleChanges, OnChanges} from '@angular/core';
 import {SafeResourceUrl} from "@angular/platform-browser";
-import { HttpClient } from "@angular/common/http";
 
 @Component({
     selector: 'app-toot',
@@ -8,7 +7,7 @@ import { HttpClient } from "@angular/common/http";
     styleUrls: ['./toot.component.css'],
     standalone: false
 })
-export class TootComponent {
+export class TootComponent implements OnChanges{
 
   @Input()
   url?: SafeResourceUrl;
@@ -16,7 +15,18 @@ export class TootComponent {
   @Input()
   uuid: string = "";
 
-  constructor(private http: HttpClient) {
+  constructor() {
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['url'] || changes['uuid']) {
+      const iframeElement = document.getElementById(this.uuid) as HTMLIFrameElement;
+
+      if (iframeElement && iframeElement.contentWindow) {
+        // Force a hard reload of the iframe's content
+        iframeElement.contentWindow.location.href = iframeElement.src;
+      }
+    }
   }
 
   configureIframe(element: HTMLIFrameElement): void {
