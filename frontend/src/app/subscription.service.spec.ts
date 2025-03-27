@@ -107,7 +107,6 @@ describe('SubscriptionService', () => {
   it('should return an Observable from getCreatedEvents', (done) => {
     service.getCreatedEvents().subscribe((result) => {
       expect(result).toBeTruthy();
-      expect(result.toArray).toBeTruthy();  // Ensures it's the expected MessageQueue instance
       done();
     });
   });
@@ -142,7 +141,7 @@ describe('SubscriptionService', () => {
   it('should process a received StatusUpdatedMessage by updating the queue', () => {
     const destination = '/topic/test-status-updated-destination';
     const testMessage = {
-      body: JSON.stringify({id: '1234', url: 'updated-content'}),
+      body: JSON.stringify({id: '1234', url: 'updated-content', editedAt: '2025-01-17T12:00:00.000Z'}),
     };
     rxStompServiceSpy.watch.and.returnValue({
       subscribe: (callback: (message: any) => void) => {
@@ -150,13 +149,11 @@ describe('SubscriptionService', () => {
         return {unsubscribe: jasmine.createSpy('unsubscribe')};
       },
     } as any);
-    const dequeueSpy = spyOn(service['receivedMessages'], 'dequeue');
-    const enqueueSpy = spyOn(service['receivedMessages'], 'enqueue');
+    const updateSpy = spyOn(service['receivedMessages'], 'update');
 
     service.subscribeToStatusUpdatedMessages(destination);
 
-    expect(dequeueSpy).toHaveBeenCalledWith('1234');
-    expect(enqueueSpy).toHaveBeenCalledWith({id: '1234', url: 'updated-content'});
+    expect(updateSpy).toHaveBeenCalledWith({id: '1234', url: 'updated-content', editedAt: '2025-01-17T12:00:00.000Z'});
   });
 
   it('should unsubscribe all subscriptions when terminateAllSubscriptions is called', () => {

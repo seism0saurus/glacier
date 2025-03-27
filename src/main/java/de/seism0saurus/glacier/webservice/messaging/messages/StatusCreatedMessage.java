@@ -20,6 +20,5 @@ import lombok.*;
 public class StatusCreatedMessage extends StatusMessage {
 
     private String id;
-    private String author;
     private String url;
 }

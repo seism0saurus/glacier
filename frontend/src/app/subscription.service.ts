@@ -1,5 +1,5 @@
 import {Injectable} from '@angular/core';
-import {Observable, of, Subscription} from "rxjs";
+import {Observable, Subscription, BehaviorSubject} from "rxjs";
 import {RxStompService} from "./rx-stomp.service";
 import {Message} from "@stomp/stompjs";
 import {SubscriptionAckMessage} from "./message-types/subscription-ack-message";
@@ -23,7 +23,8 @@ export class SubscriptionService {
   private subscriptionsSubscription: Subscription;
   private terminationsSubscription: Subscription;
   private receivedMessages: MessageQueue = new MessageQueue();
-  private messageObservable$: Observable<MessageQueue> = of(this.receivedMessages);
+  private messageSubject$: BehaviorSubject<SafeMessage[]> = new BehaviorSubject<SafeMessage[]>([]);
+  public messageObservable$: Observable<SafeMessage[]> = this.messageSubject$.asObservable(); // Nur als Observable nach außen exponieren.
   private subscriptions: { [key: string]: Subscription } = {};
   private destinations: string[] = [];
   private hashtags: string[] = [];
@@ -48,14 +49,29 @@ export class SubscriptionService {
     // Restore hashtags from previous session
     const storedHashtags: string[] = JSON.parse(localStorage.getItem('hashtags') || '[]');
     storedHashtags.forEach(tag => this.subscribeHashtag(tag));
-}
+    this.messageSubject$.next(this.receivedMessages.toArray())
+  }
 
-  getCreatedEvents(): Observable<MessageQueue> {
+  /**
+   * Retrieves an observable stream of created events from the message queue.
+   * The method also restores previously received messages.
+   *
+   * @return {Observable<MessageQueue>} An observable emitting events from the message queue.
+   */
+  getCreatedEvents(): Observable<SafeMessage[]> {
     console.log('SubscriptionService:', 'New Observable created');
     this.receivedMessages.restore();
     return this.messageObservable$;
   }
 
+  /**
+   * Handles the subscription acknowledgment message and manages subscriptions
+   * for creation, modification, and deletion events based on the provided data.
+   *
+   * @param {SubscriptionAckMessage} data - The subscription acknowledgment message,
+   * including subscription status, principal, and hashtag information.
+   * @return {void} This method does not return a value.
+   */
   private handleSubscriptionAckMessage(data: SubscriptionAckMessage) {
     if (data.subscribed) {
       console.log('Adding subscriptions for creation, modification and deletion.');
@@ -80,6 +96,14 @@ export class SubscriptionService {
     }
   }
 
+  /**
+   * Handles termination acknowledgment messages by removing the associated hashtag
+   * and terminating related subscriptions for the specified principal.
+   *
+   * @param {TerminationAckMessage} data - The termination acknowledgment message containing
+   * properties such as `terminated`, `principal`, and `hashtag`.
+   * @return {void} No value is returned by this method.
+   */
   private handleTerminationAckMessage(data: TerminationAckMessage) {
     if (data.terminated) {
 
@@ -100,6 +124,14 @@ export class SubscriptionService {
     }
   }
 
+  /**
+   * Terminates a subscription associated with the specified destination.
+   * If a subscription exists for the given destination, it unsubscribes and removes the subscription.
+   * If no subscription is found, an error is logged.
+   *
+   * @param {string} dest - The destination identifier for the subscription to terminate.
+   * @return {void}
+   */
   terminateSubscriptionByDestination(dest: string) {
     console.log('Terminating subscriptions for', dest);
     if (this.subscriptions[dest]) {
@@ -110,6 +142,13 @@ export class SubscriptionService {
     }
   }
 
+  /**
+   * Terminates all active subscriptions and unsubscribes from hashtag-based subscriptions and main subscriptions.
+   *
+   * Removes all stored subscriptions and informs the backend that the subscriptions have been terminated.
+   *
+   * @return {void} Does not return a value.
+   */
   terminateAllSubscriptions() {
 
     // Tell the backend, that you terminate all subscriptions
@@ -130,10 +169,24 @@ export class SubscriptionService {
     );
   }
 
+  /**
+   * Clears all the items from the receivedMessages collection.
+   * This method removes all stored toots, resetting the state of the collection.
+   *
+   * @return {void} Does not return a value.
+   */
   clearAllToots() {
     this.receivedMessages.clear();
+    this.messageSubject$.next(this.receivedMessages.toArray())
   }
 
+  /**
+   * Subscribes to messages of the type 'StatusCreated' on the given destination.
+   * Processes each received message by parsing its content and queuing it for further handling.
+   *
+   * @param {string} dest - The destination to subscribe to for 'StatusCreated' messages.
+   * @return {Subscription} Returns a subscription object that can be used to manage the lifecycle of the subscription.
+   */
   subscribeToStatusCreatedMessages(dest: string) {
     return this.rxStompService
       .watch(dest)
@@ -141,20 +194,34 @@ export class SubscriptionService {
         console.log('StatusCreatedMessage received:', message.body);
         const data: StatusCreatedMessage = JSON.parse(message.body);
         this.receivedMessages.enqueue(data);
+        this.messageSubject$.next(this.receivedMessages.toArray())
       });
   }
 
+  /**
+   * Subscribes to status updated messages from the specified destination.
+   *
+   * @param {string} dest The destination to subscribe to for status updated messages.
+   * @return {Subscription} A subscription object that can be used to manage the subscription.
+   */
   subscribeToStatusUpdatedMessages(dest: string) {
     return this.rxStompService
       .watch(dest)
       .subscribe((message: Message) => {
         console.log('StatusUpdatedMessage received:', message.body);
         const data: StatusUpdatedMessage = JSON.parse(message.body);
-        this.receivedMessages.dequeue(data.id);
-        this.receivedMessages.enqueue(data);
+        this.receivedMessages.update(data);
+        this.messageSubject$.next(this.receivedMessages.toArray())
       });
   }
 
+  /**
+   * Subscribes to a destination for listening to status deleted messages.
+   * Processes the message, logs it, and dequeues it from received messages based on its ID.
+   *
+   * @param {string} dest The destination to subscribe to for receiving status deleted messages.
+   * @return {Subscription} A subscription object that can be used to manage the lifecycle of the subscription.
+   */
   subscribeToStatusDeletedMessages(dest: string) {
     return this.rxStompService
       .watch(dest)
@@ -162,24 +229,49 @@ export class SubscriptionService {
         console.log('StatusDeletedMessage received:', message.body);
         const data: StatusDeletedMessage = JSON.parse(message.body);
         this.receivedMessages.dequeue(data.id);
+        this.messageSubject$.next(this.receivedMessages.toArray())
       });
   }
 
+  /**
+   * Subscribes to updates for the specified hashtag by publishing a subscription request.
+   *
+   * @param {string} hashtag - The hashtag to subscribe to for updates.
+   * @return {void}
+   */
   subscribeHashtag(hashtag: string) {
     const message = {hashtag: hashtag};
     this.rxStompService.publish({destination: '/glacier/subscription', body: JSON.stringify(message)});
   }
 
+  /**
+   * Unsubscribes from updates for the specified hashtag. Sends a termination request to the server.
+   *
+   * @param {string} hashtag - The hashtag to unsubscribe from.
+   * @return {void} This method does not return a value.
+   */
   unsubscribeHashtag(hashtag: string) {
     const message = {hashtag: hashtag};
     this.rxStompService.publish({destination: '/glacier/termination', body: JSON.stringify(message)});
   }
 
+  /**
+   * Constructs a destination string based on the provided principal, hashtag, and type.
+   *
+   * @param {string} principal - The principal or main identifier to be included in the destination path.
+   * @param {string} hashtag - The hashtag to be included in the destination path.
+   * @param {string} type - The type of the destination or category to be appended.
+   * @return {string} The constructed destination path string.
+   */
   private destination(principal: string, hashtag: string, type: string): string {
     return '/topic/hashtags/' + principal + '/' + hashtag + '/' + type;
   }
 }
 
+/**
+ * Class representing a message queue with a limited capacity.
+ * The queue provides persistence through localStorage and supports deduplication of messages.
+ */
 export class MessageQueue {
   private storage: SafeMessage[] = [];
 
@@ -245,5 +337,19 @@ export class MessageQueue {
 
   toArray(): SafeMessage[] {
     return this.storage;
+  }
+
+  update(item: StatusUpdatedMessage) {
+    const index = this.storage.findIndex(scm => scm.id === item.id);
+    if (index !== -1) {
+      this.storage = this.storage.map(smc =>
+        smc.id === item.id? {
+          url: item.url + '?cachebreaker=' + new Date().getTime(),
+          id: item.id,
+          editedAt: item.editedAt
+        } : smc
+      );
+      console.log('Updated messages', this.storage);
+    }
   }
 }

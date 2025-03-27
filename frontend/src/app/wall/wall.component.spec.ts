@@ -1,12 +1,13 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
-
+import { HttpClientModule } from '@angular/common/http';
 import {WallComponent} from './wall.component';
 import {MatGridList, MatGridTile} from "@angular/material/grid-list";
 import {ElementRef} from '@angular/core';
 import {ResourceUrlSanitizerPipe} from "./resource-url-sanitizer.pipe";
-import {MessageQueue, SubscriptionService} from "../subscription.service";
+import {SubscriptionService} from "../subscription.service";
 import {SafeMessage} from "../message-types/safe-message";
 import {of} from "rxjs";
+import {TootComponent} from "../toot/toot.component";
 
 describe('WallComponent', () => {
   let component: WallComponent;
@@ -20,22 +21,10 @@ describe('WallComponent', () => {
       'getCreatedEvents',
       'terminateAllSubscriptions'
     ]);
-    mockSubscriptionService.getCreatedEvents.and.returnValue(of({
-      storage: [
-        {id: '1', url: 'url1'},
-        {id: '2', url: 'url2'},
-      ],
-      capacity: 2,
-      restore: () => {
-      },
-      enqueue: () => {
-      },
-      dequeue: () => undefined,
-      clear: () => {
-      }, // Added missing method
-      size: 2,         // Added missing property
-      toArray: () => [] // Added missing method
-    } as unknown as MessageQueue));
+    mockSubscriptionService.getCreatedEvents.and.returnValue(of([
+      {id: '1', url: 'url1'},
+      {id: '2', url: 'url2'},
+    ]));
 
     mockElementRef = {
       nativeElement: {
@@ -45,8 +34,12 @@ describe('WallComponent', () => {
     };
 
     TestBed.configureTestingModule({
-      declarations: [WallComponent],
+      declarations: [
+        TootComponent,
+        WallComponent
+      ],
       imports: [
+        HttpClientModule, // Add import below
         MatGridList,
         MatGridTile,
         ResourceUrlSanitizerPipe
