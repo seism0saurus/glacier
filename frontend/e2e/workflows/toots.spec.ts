@@ -130,6 +130,10 @@ test.describe('Toot Tests', () => {
 
 
     await modifyTextToot(idToot, `Hi ${glacier_handle}.\nThis is the edited toot.\n#glacierE2Etest`);
+    const secondTootIframe = await page.locator('app-toot iframe').nth(1);
+    await secondTootIframe.waitFor({ state: 'attached' });
+    const secondIframe = await secondTootIframe.contentFrame();
+    await secondIframe?.locator('body:has-text("This is the edited toot.")').waitFor({ state: 'visible' });
 
     await expect(page.locator('app-toot')).toHaveCount(3);
 
@@ -178,12 +182,13 @@ test.describe('Toot Tests', () => {
       const toot = await page.locator('app-toot iframe').nth(i);
       await toot.waitFor({ state: 'attached' });
       const iframe = await toot.contentFrame();
+
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
 
 
     await deleteToot(idToot);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(3000);
 
     await expect(page.locator('app-toot')).toHaveCount(2);
 
