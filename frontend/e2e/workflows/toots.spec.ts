@@ -87,11 +87,8 @@ test.describe('Toot Tests', () => {
 
   test('toots are in reverse order', async ({ page }) => {
     await createTextToot(`Hi ${glacier_handle}.\nThis is the first toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the first toot")').waitFor({ state: 'visible' });
     await createTextToot(`Hi ${glacier_handle}.\nThis is the second toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the second toot")').waitFor({ state: 'visible' });
     await createTextToot(`Hi ${glacier_handle}.\nThis is the third toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the third toot")').waitFor({ state: 'visible' });
 
     await expect(page.locator('app-toot')).toHaveCount(3);
 
@@ -104,6 +101,7 @@ test.describe('Toot Tests', () => {
 
     for (let i = 0; i < tootOrder.length; i++) {
       const toot = await page.locator('app-toot iframe').nth(i);
+      await toot.waitFor({ state: 'attached' });
       const iframe = await toot.contentFrame();
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
@@ -111,11 +109,8 @@ test.describe('Toot Tests', () => {
 
   test('edited toot is replaced in the same position as the original toot', async ({ page }) => {
     await createTextToot(`Hi ${glacier_handle}.\nThis is the first toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the first toot")').waitFor({ state: 'visible' });
     let idToot = await createTextToot(`Hi ${glacier_handle}.\nThis is the second toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the second toot")').waitFor({ state: 'visible' });
     await createTextToot(`Hi ${glacier_handle}.\nThis is the third toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the third toot")').waitFor({ state: 'visible' });
 
     await expect(page.locator('app-toot')).toHaveCount(3);
 
@@ -128,13 +123,13 @@ test.describe('Toot Tests', () => {
 
     for (let i = 0; i < tootOrder.length; i++) {
       const toot = await page.locator('app-toot iframe').nth(i);
+      await toot.waitFor({ state: 'attached' });
       const iframe = await toot.contentFrame();
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
 
 
     await modifyTextToot(idToot, `Hi ${glacier_handle}.\nThis is the edited toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the edited toot")').waitFor({ state: 'visible' });
 
     await expect(page.locator('app-toot')).toHaveCount(3);
 
@@ -147,6 +142,7 @@ test.describe('Toot Tests', () => {
 
     for (let i = 0; i < tootOrder.length; i++) {
       const toot = await page.locator('app-toot iframe').nth(i);
+      await toot.waitFor({ state: 'attached' });
       const iframe = await toot.contentFrame();
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
@@ -155,8 +151,7 @@ test.describe('Toot Tests', () => {
 
   test('deleted toot is removed', async ({ page }) => {
     let idToot = await createTextToot(`Hi ${glacier_handle}.\nThis is a toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is a toot")').waitFor({ state: 'visible' });
-
+    await page.locator('app-toot iframe').first().waitFor({ state: 'attached' });
     await expect(page.locator('app-toot')).toHaveCount(1);
 
     await deleteToot(idToot);
@@ -167,11 +162,8 @@ test.describe('Toot Tests', () => {
 
   test('deleted toot is removed and other toots close the gap', async ({ page }) => {
     await createTextToot(`Hi ${glacier_handle}.\nThis is the first toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the first toot")').waitFor({ state: 'visible' });
     let idToot = await createTextToot(`Hi ${glacier_handle}.\nThis is the second toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the second toot")').waitFor({ state: 'visible' });
     await createTextToot(`Hi ${glacier_handle}.\nThis is the third toot.\n#glacierE2Etest`);
-    await page.locator('app-toot:has-text("This is the third toot")').waitFor({ state: 'visible' });
 
     await expect(page.locator('app-toot')).toHaveCount(3);
 
@@ -184,6 +176,7 @@ test.describe('Toot Tests', () => {
 
     for (let i = 0; i < tootOrder.length; i++) {
       const toot = await page.locator('app-toot iframe').nth(i);
+      await toot.waitFor({ state: 'attached' });
       const iframe = await toot.contentFrame();
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
@@ -202,6 +195,7 @@ test.describe('Toot Tests', () => {
 
     for (let i = 0; i < tootOrder.length; i++) {
       const toot = await page.locator('app-toot iframe').nth(i);
+      await toot.waitFor({ state: 'attached' });
       const iframe = await toot.contentFrame();
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
