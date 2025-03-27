@@ -638,14 +638,17 @@ public class StompCallbackTest {
     @Test
     public void onEvent_EventGenericMessage_DeleteIsHandled() throws JsonProcessingException {
         // Setup
-        TestLogAppender logAppender = getTestLogAppender();
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        SimpMessagingTemplate spyMessagingTemplate = spy(new SimpMessagingTemplate((message, timeout) -> {
+            System.out.println(message);
+            return true;
+        }));
+        StatusDeletedMessage deletedMessage = StatusDeletedMessage.builder().id("4567").build();
+
+        StompCallback callback = new StompCallback(subscriptionManager, spyMessagingTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
-        Mention mention = Mention.builder().id("12345").username("peter.kropotkin").acct("@karl.marx").build();
-        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/12345").id("4567").build();
-        String payloadAsText = mapper.writeValueAsString(payload);
+        String payloadAsText = mapper.writeValueAsString(4567);
         JsonNode jsonNode = TextNode.valueOf(payloadAsText);
         GenericMessageContent content = GenericMessageContent.builder().event("delete").stream(List.of("hashtag")).payload(jsonNode).build();
         String serializedContent = mapper.writeValueAsString(content);
@@ -655,8 +658,7 @@ public class StompCallbackTest {
         callback.onEvent(mockEvent);
 
         // Verify
-        assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("Delete toot with id"));
+        verify(spyMessagingTemplate, times(1)).convertAndSend(matches("/topic/hashtags/.*/hashtag/deletion"), eq(deletedMessage));
     }
 
     /**
@@ -665,14 +667,18 @@ public class StompCallbackTest {
     @Test
     public void onEvent_EventGenericMessage_StatusDeleteIsHandled() throws JsonProcessingException {
         // Setup
-        TestLogAppender logAppender = getTestLogAppender();
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        SimpMessagingTemplate spyMessagingTemplate = spy(new SimpMessagingTemplate((message, timeout) -> {
+            System.out.println(message);
+            return true;
+        }));
+        StatusDeletedMessage deletedMessage = StatusDeletedMessage.builder().id("4567").build();
+
+        StompCallback callback = new StompCallback(subscriptionManager, spyMessagingTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
-        Mention mention = Mention.builder().id("12345").username("peter.kropotkin").acct("@karl.marx").build();
-        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/12345").id("4567").build();
-        JsonNode jsonNode = mapper.convertValue(payload, JsonNode.class);
+        String payloadAsText = mapper.writeValueAsString(4567);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
         GenericMessageContent content = GenericMessageContent.builder().event("status.delete").stream(List.of("hashtag")).payload(jsonNode).build();
         String serializedContent = mapper.writeValueAsString(content);
         when(mockEvent.getText()).thenReturn(serializedContent);
@@ -681,8 +687,7 @@ public class StompCallbackTest {
         callback.onEvent(mockEvent);
 
         // Verify
-        assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("Delete toot with id"));
+        verify(spyMessagingTemplate, times(1)).convertAndSend(matches("/topic/hashtags/.*/hashtag/deletion"), eq(deletedMessage));
     }
 
     /**

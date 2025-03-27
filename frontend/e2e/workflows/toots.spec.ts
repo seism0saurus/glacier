@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import {createMediaToot, createTextToot, modifyTextToot} from '../helper/mastodon-client';
+import {createMediaToot, createTextToot, deleteToot, modifyTextToot} from '../helper/mastodon-client';
 
 const glacier_handle = process.env['GLACIER_HANDLE'] || '@glacier_e2e_test@proxy';
 
@@ -134,7 +134,7 @@ test.describe('Toot Tests', () => {
 
 
     await modifyTextToot(idToot, `Hi ${glacier_handle}.\nThis is the edited toot.\n#glacierE2Etest`);
-    await page.waitForTimeout(500); // Wait for 10 seconds
+    await page.waitForTimeout(500);
 
     await expect(page.locator('app-toot')).toHaveCount(3);
 
@@ -142,6 +142,59 @@ test.describe('Toot Tests', () => {
     tootOrder = [
       `This is the third toot.`,
       `This is the edited toot.`,
+      `This is the first toot.`
+    ];
+
+    for (let i = 0; i < tootOrder.length; i++) {
+      const toot = await page.locator('app-toot iframe').nth(i);
+      const iframe = await toot.contentFrame();
+      await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
+    }
+
+  });
+
+  test('deleted toot is removed', async ({ page }) => {
+    let idToot = await createTextToot(`Hi ${glacier_handle}.\nThis is a toot.\n#glacierE2Etest`);
+
+    await expect(page.locator('app-toot')).toHaveCount(1);
+
+    await deleteToot(idToot);
+
+    await expect(page.locator('app-toot')).toHaveCount(0);
+  });
+
+  test('deleted toot is removed and other toots close the gap', async ({ page }) => {
+    await createTextToot(`Hi ${glacier_handle}.\nThis is the first toot.\n#glacierE2Etest`);
+    await page.waitForTimeout(500);
+    let idToot = await createTextToot(`Hi ${glacier_handle}.\nThis is the second toot.\n#glacierE2Etest`);
+    await page.waitForTimeout(500);
+    await createTextToot(`Hi ${glacier_handle}.\nThis is the third toot.\n#glacierE2Etest`);
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('app-toot')).toHaveCount(3);
+
+    // Verify if the order of `app-toot` elements is the reverse of the created toots
+    let tootOrder = [
+      `This is the third toot.`,
+      `This is the second toot.`,
+      `This is the first toot.`
+    ];
+
+    for (let i = 0; i < tootOrder.length; i++) {
+      const toot = await page.locator('app-toot iframe').nth(i);
+      const iframe = await toot.contentFrame();
+      await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
+    }
+
+
+    await deleteToot(idToot);
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('app-toot')).toHaveCount(2);
+
+    // Verify if the order of `app-toot` elements is the reverse of the created toots
+    tootOrder = [
+      `This is the third toot.`,
       `This is the first toot.`
     ];
 

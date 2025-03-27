@@ -152,10 +152,10 @@ public class StompCallback implements WebSocketCallback {
                 sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent, destination + "/modification");
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
-                    || "status.delete".equals(genericMessageContent.getEvent())
-            )
+                        || "status.delete".equals(genericMessageContent.getEvent())
+                       )
             ) {
-                LOGGER.info("Delete toot with id {} id", genericMessageContent.getPayload().textValue());
+                procesStatusDeletedEvent(genericMessageContent.getPayload().textValue(), destination);
             } else {
                 LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
             }
@@ -267,7 +267,6 @@ public class StompCallback implements WebSocketCallback {
         logEvent("got a StatusCreated event");
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
         if (isLoadable(httpHeaders, glacierDomain)) {
-            assert status.getAccount() != null;
             StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
         }

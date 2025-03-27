@@ -60,13 +60,39 @@ export async function modifyTextToot(
     });
 
     if (!response.ok) {
-      console.error(`Couldn't create status: ${response.status} ${response.statusText}`);
+      console.error(`Couldn't modify status: ${response.status} ${response.statusText}`);
     }
     const data = await response.json();
     // console.log('Toot created successfully:', data);
     return data.id;
   } catch (error) {
-    console.error('Error during creation of status:', error);
+    console.error('Error during modification of status:', error);
+    return "";
+  }
+}
+
+
+export async function deleteToot(
+  id: string,
+): Promise<string> {
+  try {
+    const endpoint = `${url}/api/v1/statuses/${id}`;
+
+    const response = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`Couldn't delete status: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    // console.log('Toot created successfully:', data);
+    return data.id;
+  } catch (error) {
+    console.error('Error during deletion of status:', error);
     return "";
   }
 }
