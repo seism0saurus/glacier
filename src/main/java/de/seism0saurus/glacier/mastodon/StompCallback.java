@@ -14,6 +14,7 @@ import social.bigbone.api.entity.streaming.*;
 import social.bigbone.api.entity.streaming.MastodonApiEvent.GenericMessage;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * The StompCallback class implements the WebSocketCallback interface and is responsible for processing WebSocket events.
@@ -145,33 +146,44 @@ public class StompCallback implements WebSocketCallback {
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            if (genericMessageContent.getStream().contains("hashtag")
-                    && ("update".equals(genericMessageContent.getEvent())
-                    || "status.update".equals(genericMessageContent.getEvent())
-            )
-            ) {
-                GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
-
-                HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
-                if (isLoadable(httpHeaders, glacierDomain)) {
-                    if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
-                        StatusMessage statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
-                        this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
-                    } else {
-                        LOGGER.info("No opt in. Ignoring");
-                    }
-                }
+            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())){
+                sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent, destination + "/creation");
+            } else if (genericMessageContent.getStream().contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
+                sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent, destination + "/modification");
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
-                    || "status.delete".equals(genericMessageContent.getEvent())
-            )
+                        || "status.delete".equals(genericMessageContent.getEvent())
+                       )
             ) {
-                LOGGER.info("Delete toot with id {} id", genericMessageContent.getPayload().textValue());
+                procesStatusDeletedEvent(genericMessageContent.getPayload().textValue(), destination);
             } else {
                 LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
             }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
+        }
+    }
+
+    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination ) throws JsonProcessingException {
+        GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+
+        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        if (isLoadable(httpHeaders, glacierDomain)) {
+            if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
+                StatusMessage statusEvent = null;
+                if (StatusCreatedMessage.class.equals(statusMessageClass)){
+                    statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
+                } else if (StatusUpdatedMessage.class.equals(statusMessageClass)) {
+                    statusEvent = StatusUpdatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").editedAt(payload.getEditedAt()).build();
+                }
+                assert statusEvent != null;
+                this.simpMessagingTemplate.convertAndSend(destination, statusEvent);
+                LOGGER.info("Sending message to {}", destination);
+            } else {
+                LOGGER.info("No opt in. Ignoring");
+            }
+        } else {
+            LOGGER.info("Toot not loadable by this glacier instance. Ignoring");
         }
     }
 
@@ -195,16 +207,19 @@ public class StompCallback implements WebSocketCallback {
         boolean frameAncestorsExists = false;
         boolean frameAncestorsContainsServerOrWildcard = false;
 
-        if (csp != null) {
-            frameAncestorsExists = csp.stream()
-                    .anyMatch(policy -> policy.toUpperCase().startsWith("FRAME-ANCESTORS"));
+        if (csp != null && !csp.isEmpty()) {
+            // According to http standard, only the first Content-Security Policy is valid. So we take the first element of the Header list.
+            frameAncestorsExists = csp.getFirst().toUpperCase().contains("FRAME-ANCESTORS");
             if (frameAncestorsExists) {
-                frameAncestorsContainsServerOrWildcard = csp.stream()
-                        .filter(policy -> policy.toUpperCase().startsWith("FRAME-ANCESTORS"))
+                frameAncestorsContainsServerOrWildcard = Stream.of(csp.getFirst().split(";"))
+                        .filter(policy -> policy.toUpperCase().contains("FRAME-ANCESTORS"))
+                        .map(String::trim)
+                        // This is not perfect, but if the site of the too, does not explicitly allow glacier, or all http(s) sites as ancestors, we will most likely not be able to load it.
+                        // So this regex should match either *, http(s):, http(s)://* with or without ports or the glacier domain with or without leading http(s) and with or without ports.
                         .anyMatch(policy -> policy.toUpperCase().matches(
-                                "FRAME-ANCESTORS (\\S+ )*(((https?:\\/\\/)?\\*(:((\\*)|80|443))?)|((https?:\\/\\/)?"
-                                        + glacierDomain
-                                        + "(:((\\*)|80|443))?))( \\S+)*;")
+                                "FRAME-ANCESTORS (\\S+ )*((HTTPS?:(//)?)|((HTTPS?://)?\\*(:((\\*)|80|443))?)|((HTTPS?://)?"
+                                        + glacierDomain.toUpperCase()
+                                        + "(:((\\*)|80|443))?))( \\S+)*")
                         );
             }
         }
@@ -252,8 +267,7 @@ public class StompCallback implements WebSocketCallback {
         logEvent("got a StatusCreated event");
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
         if (isLoadable(httpHeaders, glacierDomain)) {
-            assert status.getAccount() != null;
-            StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).author(status.getAccount().getDisplayName()).url(status.getUrl() + "/embed").build();
+            StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
         }
     }

@@ -17,4 +17,5 @@ public class StatusUpdatedMessage extends StatusMessage {
 
     private String id;
     private String url;
+    private String editedAt;
 }

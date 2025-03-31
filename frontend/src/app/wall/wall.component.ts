@@ -1,5 +1,5 @@
 import {Component, ElementRef, HostListener, OnDestroy, OnInit} from '@angular/core';
-import {MessageQueue, SubscriptionService} from "../subscription.service";
+import {SubscriptionService} from "../subscription.service";
 import {SafeMessage} from "../message-types/safe-message";
 import {Subscription} from "rxjs";
 
@@ -36,9 +36,8 @@ export class WallComponent implements OnInit, OnDestroy {
     this.rowHeight = this.el.nativeElement.offsetHeight - 40;
     this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
 
-    this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe((messages: MessageQueue) => {
-      console.log('MessageComponent:', 'Got new messages');
-      this.toots = messages.toArray();
+    this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe((messages: SafeMessage[]) => {
+      this.toots = [...messages];
     });
 
   }
@@ -52,7 +51,13 @@ export class WallComponent implements OnInit, OnDestroy {
   }
 
   trackToot(index: number, toot: SafeMessage) {
-    return toot ? toot.id : undefined;
+    if (toot){
+      if (toot.editedAt) {
+        return toot.id + toot.editedAt;
+      }
+      return toot.id;
+    }
+    return undefined;
   }
 
   getTootsForColumn(column: number): SafeMessage[] {
