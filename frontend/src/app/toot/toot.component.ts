@@ -1,13 +1,13 @@
-import {Component, Input, SimpleChanges, OnChanges} from '@angular/core';
+import {Component, Input} from '@angular/core';
 import {SafeResourceUrl} from "@angular/platform-browser";
 
 @Component({
-    selector: 'app-toot',
-    templateUrl: './toot.component.html',
-    styleUrls: ['./toot.component.css'],
-    standalone: false
+  selector: 'app-toot',
+  templateUrl: './toot.component.html',
+  styleUrls: ['./toot.component.css'],
+  standalone: false
 })
-export class TootComponent implements OnChanges{
+export class TootComponent {
 
   @Input()
   url?: SafeResourceUrl;
@@ -15,24 +15,20 @@ export class TootComponent implements OnChanges{
   @Input()
   uuid: string = "";
 
-  constructor() {
-  }
-
-  ngOnChanges(changes: SimpleChanges) {
-    if (changes['url'] || changes['uuid']) {
-      const iframeElement = document.getElementById(this.uuid) as HTMLIFrameElement;
-
-      if (iframeElement && iframeElement.contentWindow) {
-        // Force a hard reload of the iframe's content
-        iframeElement.contentWindow.location.href = iframeElement.src;
-      }
-    }
-  }
+  constructor() {}
 
   configureIframe(element: HTMLIFrameElement): void {
     if (element) {
       // Register global listener that handles only messages for this iframe
       window.addEventListener('message', this.getHeightListener(element));
+      console.log('Add listener for reload iframe:', element);
+      window.addEventListener('message', this.getReloadListener(element));
+
+      element.contentWindow?.postMessage({
+        type: 'reload',
+        id: this.uuid,
+      }, element.src);
+      console.log('reload iframe sent to:', element);
 
       // send message to global listener
       this.sendHeightToIframe(element);
@@ -48,6 +44,22 @@ export class TootComponent implements OnChanges{
     } else {
       console.debug('Could not access contentWindow of iframe ', this.uuid);
     }
+  }
+
+  private getReloadListener(element: HTMLIFrameElement) {
+    return function (e: MessageEvent<any>) {
+      const data = e.data || {};
+      console.log('message received:', data.type, data.id, e.source, element.id, element.contentWindow);
+      if (typeof data !== 'object' || data.type !== 'reload' || data.id !== element.id) {
+        return;
+      }
+      if ('source' in e && element.contentWindow !== e.source) {
+        return;
+      }
+
+      console.log('reload iframe received');
+      window.location.reload();
+    };
   }
 
   private getHeightListener(element: HTMLIFrameElement) {
