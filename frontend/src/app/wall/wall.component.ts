@@ -37,7 +37,6 @@ export class WallComponent implements OnInit, OnDestroy {
     this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
 
     this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe((messages: SafeMessage[]) => {
-      console.log('MessageComponent:', 'Got new messages', messages);
       this.toots = [...messages];
     });
 

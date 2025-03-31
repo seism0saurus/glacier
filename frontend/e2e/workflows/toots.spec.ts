@@ -128,8 +128,8 @@ test.describe('Toot Tests', () => {
       await expect(iframe?.locator('body')).toContainText(tootOrder[i]);
     }
 
-
     await modifyTextToot(idToot, `Hi ${glacier_handle}.\nThis is the edited toot.\n#glacierE2Etest`);
+
     const secondTootIframe = await page.locator('app-toot iframe').nth(1);
     await secondTootIframe.waitFor({ state: 'attached' });
     const secondIframe = await secondTootIframe.contentFrame();

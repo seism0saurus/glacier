@@ -47,7 +47,11 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.mastodon.rule=Host(`proxy`) && !PathPrefix(`/api/v1/streaming`)"
       - "traefik.http.routers.mastodon.entrypoints=websecure"
+      - "traefik.http.routers.mastodon.middlewares=no-cache@docker"
       - "traefik.http.routers.mastodon.tls=true"
+      - "traefik.http.middlewares.no-cache.headers.customresponseheaders.Cache-Control=no-cache"
+      - "traefik.http.middlewares.no-cache.headers.customresponseheaders.Pragma=no-cache"
+      - "traefik.http.middlewares.no-cache.headers.customresponseheaders.force=true"
     healthcheck:
       test: ['CMD-SHELL',"curl --noproxy localhost localhost:3000/health | grep -q 'OK' || exit 1"]
     volumes:

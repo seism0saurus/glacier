@@ -21,14 +21,6 @@ export class TootComponent {
     if (element) {
       // Register global listener that handles only messages for this iframe
       window.addEventListener('message', this.getHeightListener(element));
-      console.log('Add listener for reload iframe:', element);
-      window.addEventListener('message', this.getReloadListener(element));
-
-      element.contentWindow?.postMessage({
-        type: 'reload',
-        id: this.uuid,
-      }, element.src);
-      console.log('reload iframe sent to:', element);
 
       // send message to global listener
       this.sendHeightToIframe(element);
@@ -44,22 +36,6 @@ export class TootComponent {
     } else {
       console.debug('Could not access contentWindow of iframe ', this.uuid);
     }
-  }
-
-  private getReloadListener(element: HTMLIFrameElement) {
-    return function (e: MessageEvent<any>) {
-      const data = e.data || {};
-      console.log('message received:', data.type, data.id, e.source, element.id, element.contentWindow);
-      if (typeof data !== 'object' || data.type !== 'reload' || data.id !== element.id) {
-        return;
-      }
-      if ('source' in e && element.contentWindow !== e.source) {
-        return;
-      }
-
-      console.log('reload iframe received');
-      window.location.reload();
-    };
   }
 
   private getHeightListener(element: HTMLIFrameElement) {

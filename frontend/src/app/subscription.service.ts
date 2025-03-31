@@ -349,7 +349,6 @@ export class MessageQueue {
           editedAt: item.editedAt
         } : smc
       );
-      console.log('Updated messages', this.storage);
     }
   }
 }
