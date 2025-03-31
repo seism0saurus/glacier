@@ -49,7 +49,6 @@ export class SubscriptionService {
     // Restore hashtags from previous session
     const storedHashtags: string[] = JSON.parse(localStorage.getItem('hashtags') || '[]');
     storedHashtags.forEach(tag => this.subscribeHashtag(tag));
-    this.messageSubject$.next(this.receivedMessages.toArray())
   }
 
   /**
@@ -61,6 +60,7 @@ export class SubscriptionService {
   getCreatedEvents(): Observable<SafeMessage[]> {
     console.log('SubscriptionService:', 'New Observable created');
     this.receivedMessages.restore();
+    this.messageSubject$.next(this.receivedMessages.toArray())
     return this.messageObservable$;
   }
 
