@@ -23,7 +23,7 @@ describe('FooterService', () => {
   it('should do correct http request on getMastodonHandle subscription', () => {
     let handle: Handle = {name: ''};
     service.getMastodonHandle()
-      .subscribe();
+      .subscribe(data => handle = data);
     const req = httpMock.expectOne('/rest/mastodon-handle');
     req.flush({name: 'mastodon@example.com'});
     expect(req.request.method).toBe('GET');
@@ -44,7 +44,7 @@ describe('FooterService', () => {
       operatorWebsite: ''
     };
 
-    service.getInstanceOperator().subscribe();
+    service.getInstanceOperator().subscribe(data => operator = data);
 
     const req = httpMock.expectOne('/rest/operator');
     req.flush({

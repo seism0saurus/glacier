@@ -10,6 +10,7 @@ import social.bigbone.MastodonClient;
 import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
+import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,6 +69,27 @@ class SubscriptionManagerImplTest {
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag));
         verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
     }
+
+//    @Test
+//    void testSubscribeToHashtag_WithExceptionDuringStreaming() throws InterruptedException, IOException {
+//        String principal = "user123";
+//        String hashtag = "TestHashtag";
+//        Closeable subscription = mock(Closeable.class);
+//        doThrow(new IOException("Test IOException")).when(subscription).close();
+//        StreamingMethods methods = mock(StreamingMethods.class);
+//        when(methods.hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class))).thenReturn(subscription);
+//        when(mastodonClient.streaming()).thenReturn(methods);
+//
+//        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+//            subscriptionManager.subscribeToHashtag(principal, hashtag);
+//            Thread.sleep(3000L);
+//            subscriptionManager.terminateSubscription(principal, hashtag);
+//            Thread.sleep(30000L);
+//        });
+//
+//        assertEquals("java.io.IOException: Test IOException", exception.getMessage());
+//        verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
+//    }
 
     @Test
     void testSubscribeToHashtag_NullPrincipal() {

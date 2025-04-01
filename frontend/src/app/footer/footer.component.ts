@@ -41,10 +41,10 @@ export class FooterComponent implements OnInit{
 
   ngOnInit() {
     this.footerService.getMastodonHandle()
-      .subscribe();
+      .subscribe(data => this.mastodonHandle = data.name);
 
     this.footerService.getInstanceOperator()
-      .subscribe();
+      .subscribe(data => this.instanceOperator = data);
   }
 
   openLegal() {

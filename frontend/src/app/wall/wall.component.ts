@@ -32,12 +32,13 @@ export class WallComponent implements OnInit, OnDestroy {
     this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
   }
 
-  // noinspection JSUnusedGlobalSymbols
   ngOnInit() {
     this.rowHeight = this.el.nativeElement.offsetHeight - 40;
     this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
 
-    this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe();
+    this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe((messages: SafeMessage[]) => {
+      this.toots = [...messages];
+    });
 
   }
 

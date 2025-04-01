@@ -32,11 +32,19 @@ export class SubscriptionService {
   constructor(private rxStompService: RxStompService) {
     this.subscriptionsSubscription = this.rxStompService
       .watch('/user/topic/subscriptions')
-      .subscribe();
+      .subscribe((message: Message) => {
+        console.log('Subscription topic', message.body);
+        const data: SubscriptionAckMessage = JSON.parse(message.body);
+        this.handleSubscriptionAckMessage(data);
+      });
 
     this.terminationsSubscription = this.rxStompService
       .watch('/user/topic/terminations')
-      .subscribe();
+      .subscribe((message: Message) => {
+        console.log('Subscription topic', message.body);
+        const data: TerminationAckMessage = JSON.parse(message.body);
+        this.handleTerminationAckMessage(data);
+      });
 
     // Restore hashtags from previous session
     const storedHashtags: string[] = JSON.parse(localStorage.getItem('hashtags') || '[]');
@@ -182,7 +190,12 @@ export class SubscriptionService {
   subscribeToStatusCreatedMessages(dest: string) {
     return this.rxStompService
       .watch(dest)
-      .subscribe();
+      .subscribe((message: Message) => {
+        console.log('StatusCreatedMessage received:', message.body);
+        const data: StatusCreatedMessage = JSON.parse(message.body);
+        this.receivedMessages.enqueue(data);
+        this.messageSubject$.next(this.receivedMessages.toArray())
+      });
   }
 
   /**
@@ -194,7 +207,12 @@ export class SubscriptionService {
   subscribeToStatusUpdatedMessages(dest: string) {
     return this.rxStompService
       .watch(dest)
-      .subscribe();
+      .subscribe((message: Message) => {
+        console.log('StatusUpdatedMessage received:', message.body);
+        const data: StatusUpdatedMessage = JSON.parse(message.body);
+        this.receivedMessages.update(data);
+        this.messageSubject$.next(this.receivedMessages.toArray())
+      });
   }
 
   /**
@@ -207,7 +225,12 @@ export class SubscriptionService {
   subscribeToStatusDeletedMessages(dest: string) {
     return this.rxStompService
       .watch(dest)
-      .subscribe();
+      .subscribe((message: Message) => {
+        console.log('StatusDeletedMessage received:', message.body);
+        const data: StatusDeletedMessage = JSON.parse(message.body);
+        this.receivedMessages.dequeue(data.id);
+        this.messageSubject$.next(this.receivedMessages.toArray())
+      });
   }
 
   /**

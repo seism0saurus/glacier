@@ -20,7 +20,7 @@ class SubscriptionListenerTest {
     private SubscriptionListener subscriptionListener = new SubscriptionListener(subscriptionManager, 300_000L);
 
     @Test
-    void testOnConnectedEvent_WithoutPreviousDisconnect() {
+    void testOnConnectedEvent_WithoutPreviousDisconnect() throws Exception {
         // Create a valid Principal object
         Principal principal = () -> "user1";
 
@@ -33,7 +33,7 @@ class SubscriptionListenerTest {
     }
 
     @Test
-    void testOnConnectedEvent_WithoutPreviousDisconnect_WithoutPrincipal() {
+    void testOnConnectedEvent_WithoutPreviousDisconnect_WithoutPrincipal() throws Exception {
         // Mock the event
         connect(null);
 
@@ -43,7 +43,7 @@ class SubscriptionListenerTest {
     }
 
     @Test
-    void testOnConnectedEvent_WithPreviousDisconnect_WithoutWaitingForTimeout() {
+    void testOnConnectedEvent_WithPreviousDisconnect_WithoutWaitingForTimeout() throws Exception {
         // Create a valid Principal object
         Principal principal = () -> "user1";
         
@@ -91,7 +91,7 @@ class SubscriptionListenerTest {
     }
     
     @Test
-    void testOnDisconnectEvent_WithoutWaitingForTimeout() {
+    void testOnDisconnectEvent_WithoutWaitingForTimeout() throws Exception {
         // Create a valid Principal object
         Principal principal = () -> "user1";
 
@@ -137,7 +137,7 @@ class SubscriptionListenerTest {
     }
 
     @Test
-    void testOnDisconnectEvent_WithoutPrincipal() {
+    void testOnDisconnectEvent_WithoutPrincipal() throws Exception {
         // Create a valid Principal object for connect
         Principal principal = () -> "user1";
 
@@ -157,7 +157,7 @@ class SubscriptionListenerTest {
     }
 
     @Test
-    void testOnDisconnectEvent_WithoutPreviousConnection() {
+    void testOnDisconnectEvent_WithoutPreviousConnection() throws Exception {
         // Create a valid Principal object
         Principal principal = () -> "user1";
 

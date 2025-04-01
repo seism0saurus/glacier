@@ -54,6 +54,29 @@ public class StompCallbackTest {
      */
     SubscriptionManager subscriptionManager;
 
+    /**
+     * The variable "client" is an instance of the MastodonClient class from the social.bigbone package.
+     * <p>
+     * This class represents a client that interacts with the Mastodon social network. It provides
+     * methods for subscribing to hashtags and terminating subscriptions.
+     * <p>
+     * You can use the "client" object to perform operations related to subscriptions on Mastodon.
+     * <p>
+     * Example usage:
+     * <p>
+     * // Create a new Mastodon client
+     * MastodonClient client = new MastodonClient();
+     * <p>
+     * // Subscribe to a hashtag
+     * client.subscribeToHashtag("user@example.com", "#java");
+     * <p>
+     * // Terminate a subscription
+     * client.terminateSubscription("user@example.com", "#java");
+     * <p>
+     * // Terminate all subscriptions
+     * client.terminateAllSubscriptions("user@example.com");
+     */
+    social.bigbone.MastodonClient client;
 
     /**
      * The mockTemplate variable is an instance of the SimpMessagingTemplate class.
@@ -102,6 +125,7 @@ public class StompCallbackTest {
     @BeforeEach
     public void setup() {
         this.subscriptionManager = mock(SubscriptionManager.class);
+        this.client = mock(MastodonClient.class);
         this.mockTemplate = mock(SimpMessagingTemplate.class);
         this.restTemplate = mock(RestTemplate.class);
         this.mockStatus = mock(Status.class);
@@ -353,7 +377,6 @@ public class StompCallbackTest {
         }
     }
 
-    @SuppressWarnings("HttpUrlsUsage")
     public static Stream<Arguments> httpHeadersForIframes() {
         return Stream.of(
                 Arguments.of(getHeaders(null, null), true) // Default allow
@@ -752,7 +775,6 @@ public class StompCallbackTest {
         callback.onEvent(mockEvent);
 
         // Verify
-        //noinspection ThrowableNotThrown
         Mockito.verify(mockEvent, Mockito.atLeastOnce()).getError();
         assertThat(logAppender.getLoggedMessages())
                 .anySatisfy(msg -> assertThat(msg).contains("got a Failure event. Restarting subscription. The error is: Error Message"));

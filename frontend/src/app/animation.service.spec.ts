@@ -15,11 +15,17 @@ describe('AnimationService', () => {
   });
 
     it('should initially return true from getHeaderExtended', (done) => {
-        service.getHeaderExtended().subscribe();
+        service.getHeaderExtended().subscribe((value) => {
+            expect(value).toBeTrue();
+            done();
+        });
     });
 
     it('should return false from getHeaderExtended after setSubscribed is called', (done) => {
         service.setSubscribed();
-        service.getHeaderExtended().subscribe();
+        service.getHeaderExtended().subscribe((value) => {
+            expect(value).toBeFalse();
+            done();
+        });
     });
 });

@@ -1,3 +1,4 @@
+import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {ResourceUrlSanitizerPipe} from './resource-url-sanitizer.pipe';
 import {
   DomSanitizer,
@@ -10,7 +11,6 @@ import {
 } from "@angular/platform-browser";
 import {SecurityContext} from "@angular/core";
 
-// noinspection JSUnusedLocalSymbols
 class MockDomSanitizer extends DomSanitizer {
   bypassSecurityTrustResourceUrl(url: string): SafeResourceUrl {
     return 'sanitized:' + url;

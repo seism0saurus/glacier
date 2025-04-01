@@ -31,7 +31,14 @@ export class HeaderComponent implements OnInit, OnDestroy{
 
   ngOnInit() {
     this.extendedSubscription = this.animationService.getHeaderExtended()
-      .subscribe();
+      .subscribe({
+        next: value  => {
+          console.log('Observable emitted a value: ' + value);
+          this.extended = value;
+        },
+        error: err => console.error('Observable emitted an error: ' + err),
+        complete: () => console.log('Observable emitted the complete notification')
+      });
   }
 
   ngOnDestroy(): void {
