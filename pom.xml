@@ -10,7 +10,7 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.7</version>
+    <version>0.0.8</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
@@ -62,7 +62,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>23</java.version>
-        <glacier.version>0.0.7</glacier.version>
+        <glacier.version>0.0.8</glacier.version>
         <kotlin.version>2.1.20</kotlin.version>
         <lombok.version>1.18.36</lombok.version>
     </properties>
