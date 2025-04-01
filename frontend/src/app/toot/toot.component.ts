@@ -39,7 +39,7 @@ export class TootComponent {
   }
 
   private getHeightListener(element: HTMLIFrameElement) {
-    return function (e: MessageEvent<any>) {
+    return function (e: MessageEvent) {
       const data = e.data || {};
       if (typeof data !== 'object' || data.type !== 'setHeight' || data.id !== element.id) {
         return;

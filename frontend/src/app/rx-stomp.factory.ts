@@ -13,15 +13,15 @@ import {environment} from "../environments/environment";
  */
 export function rxStompServiceFactory(http: HttpClient, document: Document) {
   const rxStomp = new RxStompService();
-  var protocolWebsocket = "ws";
+  let protocolWebsocket = "ws";
   if (document.location.protocol == "https:") {
     protocolWebsocket = "wss";
   }
-  var port = environment.backendPort;
+  let port = environment.backendPort;
   if (port == 'auto') {
     port = document.location.port;
   }
-  var host = document.location.hostname
+  const host = document.location.hostname
   const brokerURL: string = protocolWebsocket + '://' + host + ':' + port + '/websocket';
   const rxStompConfig = generateConfig(brokerURL);
 

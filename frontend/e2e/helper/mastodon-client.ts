@@ -102,7 +102,7 @@ export async function createMediaToot(
   mediaPath: string = 'mastodon.jpeg',
   description: string = 'A cute mastodon in front of a glacier',
   visibility: string = 'public'
-): Promise<void> {
+): Promise<string> {
 
   const filePath = path.resolve(__dirname, mediaPath);
   console.log('Media file path:', filePath);
@@ -134,8 +134,10 @@ export async function createMediaToot(
 
     const data = await response.json();
     // console.log('Toot created successfully:', data);
+    return data.id;
   } catch (error) {
     console.error('Error during creation of status:', error);
+    return "";
   }
 }
 

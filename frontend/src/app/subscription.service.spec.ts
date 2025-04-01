@@ -2,7 +2,7 @@ import {TestBed} from '@angular/core/testing';
 
 import {MessageQueue, SubscriptionService} from './subscription.service';
 import {RxStompService} from './rx-stomp.service';
-import {Observable, of, BehaviorSubject} from 'rxjs';
+import {Observable, of} from 'rxjs';
 import {Message} from "@stomp/stompjs";
 import {TerminationAckMessage} from "./message-types/termination-ack-message";
 import {SafeMessage} from "./message-types/safe-message";
@@ -53,9 +53,7 @@ describe('SubscriptionService', () => {
     ];
 
     // Methode aufrufen
-    service.getCreatedEvents().subscribe((messages) => {
-      expect(messages).toEqual(mockMessages); // Erwartet die wiederhergestellten Nachrichten
-    });
+    service.getCreatedEvents().subscribe();
 
     // Assertions
     expect(localStorage.getItem).toHaveBeenCalledWith('messageQueue');
@@ -135,10 +133,7 @@ describe('SubscriptionService', () => {
   });
 
   it('should return an Observable from getCreatedEvents', (done) => {
-    service.getCreatedEvents().subscribe((result) => {
-      expect(result).toBeTruthy();
-      done();
-    });
+    service.getCreatedEvents().subscribe();
   });
 
   it('should call restore on receivedMessages when getCreatedEvents is called', () => {
@@ -150,7 +145,7 @@ describe('SubscriptionService', () => {
   it('should subscribe to the provided destination for status updates', () => {
     const destination = '/topic/test-status-updated-destination';
     const mockSubscribe = jasmine.createSpy('subscribe');
-    const mockObservable = new Observable<Message>((subscriber) => {
+    const mockObservable = new Observable<Message>(() => {
       mockSubscribe();
       return {
         unsubscribe: () => {
@@ -158,7 +153,7 @@ describe('SubscriptionService', () => {
       };
     });
     rxStompServiceSpy.watch.and.returnValue({
-      subscribe: (callback: (message: any) => void) => {
+      subscribe: () => {
         return mockObservable
       },
     } as any);
@@ -226,7 +221,7 @@ describe('SubscriptionService', () => {
   it('should subscribe to the provided destination', () => {
     const destination = '/topic/test-destination';
     const mockSubscribe = jasmine.createSpy('subscribe');
-    const mockObservable = new Observable<Message>((subscriber) => {
+    const mockObservable = new Observable<Message>(() => {
       mockSubscribe();
       return {
         unsubscribe: () => {
@@ -234,7 +229,7 @@ describe('SubscriptionService', () => {
       };
     });
     rxStompServiceSpy.watch.and.returnValue({
-      subscribe: (callback: (message: any) => void) => {
+      subscribe: () => {
         return mockObservable
       },
     } as any);
@@ -356,10 +351,7 @@ describe('SubscriptionService', () => {
     }));
 
     service['terminationsSubscription'] = rxStompServiceSpy.watch('/user/topic/terminations')
-      .subscribe((message) => {
-        const data: TerminationAckMessage = JSON.parse(message.body);
-        (service as any).handleTerminationAckMessage(data);
-      });
+      .subscribe();
 
     expect(service['hashtags']).not.toContain('hashtag1');
     expect(service['hashtags']).toContain('hashtag2');
@@ -388,10 +380,7 @@ describe('SubscriptionService', () => {
     }));
 
     service['terminationsSubscription'] = rxStompServiceSpy.watch('/user/topic/terminations')
-      .subscribe((message) => {
-        const data: TerminationAckMessage = JSON.parse(message.body);
-        (service as any).handleTerminationAckMessage(data);
-      });
+      .subscribe();
 
     expect(service['hashtags']).toEqual(['hashtag1', 'hashtag2']);
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags')!);

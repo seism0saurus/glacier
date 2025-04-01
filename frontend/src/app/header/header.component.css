@@ -40,10 +40,3 @@ img {
   max-width: 75px;
   margin: 8px;
 }
-
-.small {
-  animation-duration: 0.25s;
-  animation-timing-function: linear;
-  animation-name: shrink;
-  animation-fill-mode: forwards;
-}
