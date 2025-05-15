@@ -45,7 +45,7 @@ and is under the [CC BY 4.0 Deed license](https://creativecommons.org/licenses/b
 
 ### Demo
 
-A complete free usable test installation of **glacier** will be available soon under [glacier.seism0saurus.de](https://glacier.seism0saurus.de).
+A complete free usable test installation of **glacier** is available under [glacier.events](https://glacier.events).
 
 The demo page always contains the last stable version from the main branch.
 
@@ -131,7 +131,7 @@ For example *infosec.exchange* or *botsin.space*.
 #### HANDLE
 
 The handle is the mastodon handle of your account. The handle consists of your account name and the mastodon instance.
-For example *glacier@mastodon.seism0saurus.de*.
+For example *glacier@glacier.events*.
 
 #### ACCESS_KEY
 
@@ -213,7 +213,7 @@ nerdctl run -ti -e ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-h
 
 To create a new Glacier Wall follow these steps.
 
-1) Go to your Glacier instance. E.g. [glacier.seism0saurus.de](https://glacier.seism0saurus.de)
+1) Go to your Glacier instance. E.g. [glacier.events](https://glacier.events)
 
    ![Screenshot of the browser with the URL https://glacier.seism0saurus.de](assets/screenshot_url.png)
 2) Click into the field *Followed hashtags*
@@ -239,7 +239,7 @@ To create a new Glacier Wall follow these steps.
 To add a toot to your Glacier Wall follow these steps.
 
 1) Start a new toot
-2) Mention the bot of your Glacier instance in your toot. For example @glacier@mastodon.seism0saurus.de. 
+2) Mention the bot of your Glacier instance in your toot. For example @glacier@glacier.events. 
 This is important since not all toots with a hashtag reach the bot, which collects the toots.
 This is due to the concept of federation in the Fediverse.
 3) Use one of the hashtags of your Glacier Wall. For example #flowers.
@@ -249,7 +249,7 @@ Only visible toots with a hashtag are shown on a Glacier Wall.
 
 Here is an example toot:
 ```
-@glacier@mastodon.seism0saurus.de
+@glacier@glacier.events
 
 Hi,
 very cool project. Thanks for developing a social wall ;)
@@ -269,11 +269,11 @@ It's name comes from an extinct mammoth, that lived during the ice age.
 Therefore, the social wall application for Mastodon was named Glacier by its creator.
 - *Glacier instance*: A Glacier instance is one deployment of the Glacier web application.
 One instance can serve multiple Glacier Walls with different hashtags for different users.
-For example glacier.seism0saurus.de is an instance of Glacier.
+For example glacier.events is an instance of Glacier.
 I deploy the current version from the main branch on that server
 - *Glacier Wall*: A Glacier Wall is a single social wall for a user and is delivered by a Glacier instance.
 The Glacier Wall is bound to your web browser and a Glacier instance.
-For example, if you open [glacier.seism0saurs.de](https://glacier.seism0saurus.de) you get your personal Glacier Wall for testing.
+For example, if you open [glacier.events](https://glacier.events) you get your personal Glacier Wall for testing.
 If you open it in another web browser you get a second Glacier Wall with different hashtags and toots.
 But both Glacier Walls run on the same Glacier instance from me but are separate Glacier Walls
 - *Toot*: A toot is a post on mastodon. Glacier can show other types of posts from systems connected to the fediverse, too.
