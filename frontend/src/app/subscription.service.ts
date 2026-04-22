@@ -8,6 +8,7 @@ import {StatusCreatedMessage} from "./message-types/status-created-message";
 import {StatusUpdatedMessage} from "./message-types/status-updated-message";
 import {StatusDeletedMessage} from "./message-types/status-deleted-message";
 import {SafeMessage} from "./message-types/safe-message";
+import {CacheEntry} from "./fallback/fallback.service";
 
 /**
  * Service for managing subscriptions to topics, handling received messages,
@@ -234,6 +235,58 @@ export class SubscriptionService {
   }
 
   /**
+   * Ingests a batch of cache entries delivered by the HTTP fallback endpoint
+   * (D-06, D-07).  Applies CREATED / UPDATED / DELETED events in-order,
+   * deduplicating by id so that an event already delivered over STOMP
+   * does not appear twice on the wall.
+   *
+   * Called by FallbackService after each successful poll response (D-01).
+   *
+   * @param {string} _hashtag - The hashtag whose cache entries are being ingested
+   *   (reserved for future per-hashtag routing; not used for routing today).
+   * @param {readonly CacheEntry[]} entries - Ordered list of cache entries from
+   *   the server's ring buffer, oldest-first.
+   * @return {void}
+   */
+  ingestCacheEntries(_hashtag: string, entries: readonly CacheEntry[]): void {
+    let changed = false;
+    for (const entry of entries) {
+      switch (entry.type) {
+        case 'CREATED': {
+          const msg: StatusCreatedMessage = {
+            id: entry.id,
+            author: '',
+            url: entry.url ?? '',
+          };
+          this.receivedMessages.enqueue(msg);
+          changed = true;
+          break;
+        }
+        case 'UPDATED': {
+          if (entry.url && entry.editedAt) {
+            const msg: StatusUpdatedMessage = {
+              id: entry.id,
+              url: entry.url,
+              editedAt: entry.editedAt,
+            };
+            this.receivedMessages.update(msg);
+            changed = true;
+          }
+          break;
+        }
+        case 'DELETED': {
+          this.receivedMessages.dequeue(entry.id);
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) {
+      this.messageSubject$.next(this.receivedMessages.toArray());
+    }
+  }
+
+  /**
    * Subscribes to updates for the specified hashtag by publishing a subscription request.
    *
    * @param {string} hashtag - The hashtag to subscribe to for updates.
@@ -339,16 +392,52 @@ export class MessageQueue {
     return this.storage;
   }
 
+  /**
+   * Updates an existing message in the queue only when the incoming `editedAt`
+   * timestamp is at least as recent as the stored one (D-07).
+   *
+   * Both timestamps are normalised to UTC ISO-8601 strings before comparison
+   * so that lexicographic ordering equals chronological ordering regardless
+   * of the timezone offset in the original Mastodon or fallback payload.
+   *
+   * A NOOP when:
+   * - No message with the given `id` exists in the queue.
+   * - The incoming `editedAt` is older than the stored value.
+   * - Either timestamp is unparseable (guards against malformed input).
+   */
   update(item: StatusUpdatedMessage) {
     const index = this.storage.findIndex(scm => scm.id === item.id);
-    if (index !== -1) {
-      this.storage = this.storage.map(smc =>
-        smc.id === item.id? {
-          url: item.url + '?cachebreaker=' + new Date().getTime(),
-          id: item.id,
-          editedAt: item.editedAt
-        } : smc
-      );
+    if (index === -1) {
+      return;
     }
+
+    const existing = this.storage[index];
+
+    // UTC-normalised comparison per D-07
+    try {
+      const incomingUtc = new Date(item.editedAt).toISOString();
+      const currentUtc  = existing.editedAt
+        ? new Date(existing.editedAt).toISOString()
+        : ''; // empty string is lex-less-than any ISO date → allow update
+
+      if (incomingUtc < currentUtc) {
+        // Incoming edit is older than the stored edit — ignore
+        console.log('MessageQueue.update: ignoring stale edit for', item.id);
+        return;
+      }
+    } catch {
+      // Unparseable date — skip to avoid corrupting the queue
+      console.warn('MessageQueue.update: unparseable editedAt for', item.id);
+      return;
+    }
+
+    this.storage = this.storage.map(smc =>
+      smc.id === item.id ? {
+        url: item.url + '?cachebreaker=' + new Date().getTime(),
+        id: item.id,
+        editedAt: item.editedAt,
+      } : smc
+    );
+    localStorage.setItem('messageQueue', JSON.stringify(this.storage));
   }
 }

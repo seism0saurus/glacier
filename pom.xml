@@ -10,7 +10,7 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.8</version>
+    <version>0.0.9</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
@@ -62,7 +62,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>23</java.version>
-        <glacier.version>0.0.8</glacier.version>
+        <glacier.version>0.0.9</glacier.version>
         <kotlin.version>2.1.21</kotlin.version>
         <lombok.version>1.18.38</lombok.version>
     </properties>
@@ -145,6 +145,16 @@
 <!--            <groupId>org.springframework.boot</groupId>-->
 <!--            <artifactId>spring-boot-starter-data-mongodb</artifactId>-->
 <!--        </dependency>-->
+
+        <!--Actuator + Micrometer for D-11 gauges and health endpoint (SR-7, D-P2-02)-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
 
         <!--Test Libraries-->
         <dependency>

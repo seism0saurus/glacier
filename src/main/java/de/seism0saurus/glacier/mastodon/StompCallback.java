@@ -2,22 +2,33 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.*;
 import social.bigbone.api.entity.streaming.MastodonApiEvent.GenericMessage;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.Stream;
 
 /**
  * The StompCallback class implements the WebSocketCallback interface and is responsible for processing WebSocket events.
+ *
+ * <p>On each qualifying Mastodon streaming event, this class delegates to
+ * {@link MessageCache#recordThenPublish} which atomically appends the event to the
+ * ring buffer and fans it out over STOMP (D-03).  The {@link MessageCache}
+ * implementation owns the {@code SimpMessagingTemplate}; this class no longer holds it.
  */
 public class StompCallback implements WebSocketCallback {
 
@@ -36,11 +47,9 @@ public class StompCallback implements WebSocketCallback {
     private final SubscriptionManager subscriptionManager;
 
     /**
-     * The simpMessagingTemplate variable is an instance of the SimpMessagingTemplate class. It is used to send messages to WebSocket destinations.
-     * The SimpMessagingTemplate class provides methods such as convertAndSend() to convert and send messages to specified destinations.
-     * This variable is marked as private and final, indicating that it cannot be modified after initialization and can only be accessed within the containing class.
+     * The message cache. Atomically records events and fans them out over STOMP (D-03).
      */
-    private final SimpMessagingTemplate simpMessagingTemplate;
+    private final MessageCache messageCache;
 
     /**
      * The REST template is needed to check the headers of the URLs of the toots for X-FRAME headers.
@@ -58,6 +67,7 @@ public class StompCallback implements WebSocketCallback {
     private final String hashtag;
 
     private final String shortHandle;
+
     /**
      * The glacierDomain variable represents the domain used for this instance of glacier.
      */
@@ -65,47 +75,52 @@ public class StompCallback implements WebSocketCallback {
 
     /**
      * Initializes a new instance of the StompCallback class.
-     * The StompCallback class represents a callback for handling WebSocket events.
-     * It is used in conjunction with the SimpMessagingTemplate class to send messages to websocket destinations.
      *
-     * @param simpMessagingTemplate The SimpMessagingTemplate instance used for sending WebSocket messages.
-     * @param restTemplate          The RestTemplate instance used for making HTTP requests, to check headers of the embedded iframes.
-     * @param principal             The principal aka wallId associated with the subscription.
-     * @param hashtag               The hashtag to subscribe to.
-     * @param glacierDomain         The glacier domain for checking if a webpage is loadable as an iframe.
+     * <p>The {@code messageCache} parameter replaces the former
+     * {@code SimpMessagingTemplate} parameter; the template is now owned by
+     * {@link MessageCache} (D-03).
+     *
+     * @param subscriptionManager the manager to call when a stream failure requires restart
+     * @param messageCache        the cache that records events and publishes them over STOMP
+     * @param restTemplate        the template used to inspect embed headers of toot URLs
+     * @param principal           the wallId associated with the subscription
+     * @param hashtag             the hashtag to subscribe to
+     * @param handle              the bot's full Mastodon handle, used for the opt-in check
+     * @param glacierDomain       the glacier domain for iframe-loadability checks
      */
     public StompCallback(final SubscriptionManager subscriptionManager,
-                         final SimpMessagingTemplate simpMessagingTemplate,
+                         final MessageCache messageCache,
                          final RestTemplate restTemplate,
                          final String principal,
                          final String hashtag,
                          final String handle,
                          final String glacierDomain) {
         this.subscriptionManager = subscriptionManager;
-        this.simpMessagingTemplate = simpMessagingTemplate;
+        this.messageCache = messageCache;
         this.restTemplate = restTemplate;
         this.principal = principal;
         this.hashtag = hashtag;
         this.shortHandle = getShortHandle(handle);
         this.glacierDomain = glacierDomain;
-        LOGGER.info("StompCallback for {} with hashtag {} created", principal, hashtag);
+        // D-13/SR-8: never log raw principal — use hashed 8-char prefix
+        LOGGER.info("StompCallback for principal-hash={} with hashtag={} created",
+                LogScrubber.hash8(principal), hashtag);
     }
 
     private static @NotNull String getShortHandle(String handle) {
         String tmpHandle = handle;
-        if (null == tmpHandle){
+        if (null == tmpHandle) {
             throw new IllegalArgumentException("A mastodon handle is needed");
         }
-        if (tmpHandle.startsWith("@")){
+        if (tmpHandle.startsWith("@")) {
             // remove initial @
             tmpHandle = tmpHandle.substring(1);
         }
-        if (!tmpHandle.contains("@")){
+        if (!tmpHandle.contains("@")) {
             throw new IllegalArgumentException("The mastodon handle does not contain an @ so either the name or the server is missing");
         }
         return tmpHandle.substring(0, tmpHandle.indexOf('@'));
     }
-
 
     /**
      * Handles a WebSocket event.
@@ -146,15 +161,13 @@ public class StompCallback implements WebSocketCallback {
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())){
+            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())) {
                 sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent, destination + "/creation");
             } else if (genericMessageContent.getStream().contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
                 sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent, destination + "/modification");
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
-                        || "status.delete".equals(genericMessageContent.getEvent())
-                       )
-            ) {
+                    || "status.delete".equals(genericMessageContent.getEvent()))) {
                 procesStatusDeletedEvent(genericMessageContent.getPayload().textValue(), destination);
             } else {
                 LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
@@ -164,20 +177,33 @@ public class StompCallback implements WebSocketCallback {
         }
     }
 
-    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination ) throws JsonProcessingException {
+    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination) throws JsonProcessingException {
         GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
 
-        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        // C-03: timeouts on embed HEAD are treated as not-loadable to avoid stalling
+        // the Bigbone virtual thread.  See processStatusCreatedEvent for rationale.
+        HttpHeaders httpHeaders;
+        try {
+            httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        } catch (RestClientException ex) {
+            LOGGER.debug("HEAD request to {}/embed failed — treating as not-loadable (C-03): {}", payload.getUrl(), ex.getMessage());
+            return;
+        }
         if (isLoadable(httpHeaders, glacierDomain)) {
             if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
-                StatusMessage statusEvent = null;
-                if (StatusCreatedMessage.class.equals(statusMessageClass)){
-                    statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
-                } else if (StatusUpdatedMessage.class.equals(statusMessageClass)) {
-                    statusEvent = StatusUpdatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").editedAt(payload.getEditedAt()).build();
+                CacheEntry partial;
+                if (StatusCreatedMessage.class.equals(statusMessageClass)) {
+                    partial = new CacheEntry(EventType.CREATED, payload.getId(), payload.getUrl() + "/embed", null, 0L);
+                } else {
+                    // StatusUpdatedMessage — normalise editedAt to UTC (D-07)
+                    String editedAt = normaliseEditedAt(payload.getEditedAt());
+                    if (editedAt == null && payload.getEditedAt() != null) {
+                        // normalisation failed (malformed input) — already warned, drop
+                        return;
+                    }
+                    partial = new CacheEntry(EventType.UPDATED, payload.getId(), payload.getUrl() + "/embed", editedAt, 0L);
                 }
-                assert statusEvent != null;
-                this.simpMessagingTemplate.convertAndSend(destination, statusEvent);
+                messageCache.recordThenPublish(principal, hashtag, partial);
                 LOGGER.info("Sending message to {}", destination);
             } else {
                 LOGGER.info("No opt in. Ignoring");
@@ -265,10 +291,20 @@ public class StompCallback implements WebSocketCallback {
      */
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
-        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        // C-03: timeouts on embed HEAD are treated as not-loadable to avoid stalling
+        // the Bigbone virtual thread.  The RestTemplate bean is configured with a hard
+        // connect + read timeout (glacier.embed.*); ResourceAccessException is the
+        // runtime wrapper Spring uses for both connect and read timeouts.
+        HttpHeaders httpHeaders;
+        try {
+            httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        } catch (RestClientException ex) {
+            LOGGER.debug("HEAD request to {}/embed failed — treating as not-loadable (C-03): {}", status.getUrl(), ex.getMessage());
+            return;
+        }
         if (isLoadable(httpHeaders, glacierDomain)) {
-            StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
-            this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
+            CacheEntry partial = new CacheEntry(EventType.CREATED, status.getId(), status.getUrl() + "/embed", null, 0L);
+            messageCache.recordThenPublish(principal, hashtag, partial);
         }
     }
 
@@ -280,8 +316,8 @@ public class StompCallback implements WebSocketCallback {
      */
     private void processStatusEditedEvent(final Status status, final String destination) {
         logEvent("got a StatusEdited event");
-        StatusMessage statusEvent = StatusUpdatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
-        this.simpMessagingTemplate.convertAndSend(destination + "/modification", statusEvent);
+        CacheEntry partial = new CacheEntry(EventType.UPDATED, status.getId(), status.getUrl() + "/embed", null, 0L);
+        messageCache.recordThenPublish(principal, hashtag, partial);
     }
 
     /**
@@ -292,8 +328,8 @@ public class StompCallback implements WebSocketCallback {
      */
     private void procesStatusDeletedEvent(final String statusId, final String destination) {
         logEvent("got a StatusDeleted event");
-        StatusMessage statusEvent = StatusDeletedMessage.builder().id(statusId).build();
-        this.simpMessagingTemplate.convertAndSend(destination + "/deletion", statusEvent);
+        CacheEntry partial = new CacheEntry(EventType.DELETED, statusId, null, null, 0L);
+        messageCache.recordThenPublish(principal, hashtag, partial);
     }
 
     /**
@@ -324,9 +360,35 @@ public class StompCallback implements WebSocketCallback {
     /**
      * Logs an event.
      *
+     * <p>D-13/SR-8: uses hashed principal prefix — never the raw wallId UUID.
+     *
      * @param msg The message to be logged.
      */
     private void logEvent(final String msg) {
-        LOGGER.info("Subscription {} {}", principal, msg);
+        LOGGER.info("Subscription principal-hash={} {}", LogScrubber.hash8(principal), msg);
+    }
+
+    /**
+     * Normalises an ISO-8601 timestamp to UTC by parsing it as an {@link Instant} and
+     * calling {@code toString()}, which always produces a {@code Z}-suffix form (D-07).
+     *
+     * <p>Returns {@code null} and logs a WARN when the input cannot be parsed, so that
+     * a malformed {@code editedAt} in a Mastodon fork's payload does not crash the
+     * ingestion thread.
+     *
+     * @param raw the raw {@code editedAt} string from the Mastodon payload; may be {@code null}
+     * @return UTC normalised string, or {@code null} if {@code raw} was {@code null} or
+     *         unparseable
+     */
+    static String normaliseEditedAt(final String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(raw).toString();
+        } catch (DateTimeParseException ex) {
+            LOGGER.warn("Could not parse editedAt value '{}' — dropping update event (D-07)", raw);
+            return null;
+        }
     }
 }

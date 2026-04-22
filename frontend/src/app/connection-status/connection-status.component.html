@@ -1,0 +1,66 @@
+<!--
+  Connection-status chip-pill indicator (D-15, ADR-07).
+
+  A 32 px Material chip-pill aligned to the right side of the header flex container
+  (margin-inline-start: auto — see .css).  Six states drive distinct colours, icons,
+  and labels; all text is behind $localize with German as the compile-time default.
+
+  Accessibility
+  - Native <button type="button"> is keyboard-focusable and announces its role.
+  - State transitions are announced via the visually-hidden <span role="status"
+    aria-live="polite"> (suppressed on initial WEBSOCKET render per D-15).
+  - The icon carries aria-hidden="true"; the visible label carries the accessible name.
+  - MatMenu popover is closed by Escape (browser default for MatMenu).
+
+  prefers-reduced-motion
+  - The "Verbinde…" spinner icon has class `rotating-icon` which is suppressed
+    via @media (prefers-reduced-motion: reduce) in the CSS.
+-->
+
+<!-- Visually-hidden live region for screen-reader announcements (D-15) -->
+<span
+  class="sr-only"
+  role="status"
+  aria-live="polite"
+  aria-atomic="true"
+  [attr.aria-label]="liveRegionText"
+>{{ liveRegionText }}</span>
+
+<!-- Chip-pill button that opens the detail popover -->
+<button
+  type="button"
+  class="connection-chip"
+  [class]="'connection-chip connection-chip--' + modeKey"
+  [attr.data-testid]="'connection-status'"
+  [matMenuTriggerFor]="detailMenu"
+  [attr.aria-label]="chipLabel + ' — ' + chipDetail"
+  [attr.aria-haspopup]="'menu'"
+>
+  <!-- Icon -->
+  <mat-icon
+    class="connection-chip__icon"
+    [class.rotating-icon]="isProbing"
+    aria-hidden="true"
+  >{{ iconName }}</mat-icon>
+
+  <!-- Label -->
+  <span class="connection-chip__label">{{ chipLabel }}</span>
+</button>
+
+<!-- Popover detail menu (D-15, D-17) -->
+<mat-menu #detailMenu="matMenu" class="connection-status-menu">
+  <div class="connection-menu__content" role="document">
+    <p class="connection-menu__detail">{{ chipDetail }}</p>
+
+    <!-- Reload CTA — shown for OFFLINE and KILLSWITCHED (D-17) -->
+    <button
+      *ngIf="showReloadCta"
+      type="button"
+      mat-raised-button
+      color="primary"
+      class="connection-menu__cta"
+      (click)="onReload()"
+      i18n="connection.reload.cta@@connection.reload.cta"
+    >Neu laden</button>
+  </div>
+</mat-menu>

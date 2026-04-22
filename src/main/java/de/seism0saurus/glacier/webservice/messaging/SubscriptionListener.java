@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
+import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -78,6 +80,20 @@ public class SubscriptionListener {
     private final SubscriptionManager subscriptionManager;
 
     /**
+     * The message cache — evicted directly on disconnect-timer expiry so that
+     * cache entries are cleaned up even when the principal has no active Bigbone
+     * streaming subscriptions (ADR-05, D-11).
+     *
+     * <p>The {@link SubscriptionManager#terminateAllSubscriptions} call also triggers
+     * cache eviction via {@link MessageCache#evictPrincipal}, but only when the principal
+     * has entries in the subscription map.  Clients that provisioned the cache through the
+     * HTTP fallback path but never established a WebSocket stream would otherwise leak memory.
+     * Calling {@link MessageCache#evictPrincipal} here is idempotent — a no-op if the
+     * principal was already evicted by the subscription manager.
+     */
+    private final MessageCache messageCache;
+
+    /**
      * A map used to store timers for disconnect events.
      * <p>
      * The keys are String values representing the unique identifiers for the disconnect events,
@@ -90,8 +106,11 @@ public class SubscriptionListener {
      *
      * @param subscriptionManager the SubscriptionManager to be used for managing subscriptions
      */
-    public SubscriptionListener(final SubscriptionManager subscriptionManager, @Value("${glacier.timeouts.client_reconnect}") final long timeout) {
+    public SubscriptionListener(final SubscriptionManager subscriptionManager,
+                               final MessageCache messageCache,
+                               @Value("${glacier.timeouts.client_reconnect}") final long timeout) {
         this.subscriptionManager = subscriptionManager;
+        this.messageCache = messageCache;
         this.timeout = timeout;
     }
 
@@ -129,7 +148,9 @@ public class SubscriptionListener {
             LOGGER.warn("Client with session {} connected but has no user associated with it", headerAccessor.getSessionId());
             return;
         }
-        LOGGER.info("Client with session {} and username {} connected", headerAccessor.getSessionId(), event.getUser().getName());
+        // D-13/SR-8: log only hashed principal — never the raw wallId UUID
+        LOGGER.info("Client with session {} and principal-hash={} connected",
+                headerAccessor.getSessionId(), LogScrubber.hash8(event.getUser().getName()));
         Future<?> future = this.disconnectTimer.get(event.getUser().getName());
         if (future != null) {
             future.cancel(true);
@@ -153,17 +174,26 @@ public class SubscriptionListener {
             LOGGER.warn("Client with session {} disconnected but has no user associated with it", headerAccessor.getSessionId());
             return;
         }
-        LOGGER.info("Client with session {} and username {} disconnected. Starting timer to wait for reconnection", headerAccessor.getSessionId(), event.getUser().getName());
+        // D-13/SR-8: log only hashed principal — never the raw wallId UUID
+        LOGGER.info("Client with session {} and principal-hash={} disconnected. Starting timer to wait for reconnection",
+                headerAccessor.getSessionId(), LogScrubber.hash8(event.getUser().getName()));
         Future<?> future = executorService.submit(() -> {
-            LOGGER.info("Timer for principal {} started", event.getUser().getName());
+            // D-13/SR-8: capture hash once for closure — raw principal stays in the closure
+            // only to pass to terminateAllSubscriptions; the log uses the hash only
+            String principalHash = LogScrubber.hash8(event.getUser().getName());
+            LOGGER.info("Timer for principal-hash={} started", principalHash);
             try {
                 Thread.sleep(timeout);
             } catch (InterruptedException e) {
-                LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
+                LOGGER.info("Timeout for principal-hash={} was canceled", principalHash);
                 return;
             }
-            LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
+            LOGGER.info("Connection for principal-hash={} timed out. Terminating all subscriptions.", principalHash);
             this.subscriptionManager.terminateAllSubscriptions(event.getUser().getName());
+            // ADR-05 / D-11: also evict the message cache directly so that principals
+            // that provisioned the cache without active Bigbone streaming subscriptions
+            // (fallback-mode-only clients) are also cleaned up.  Idempotent if already evicted.
+            this.messageCache.evictPrincipal(event.getUser().getName());
             this.disconnectTimer.remove(event.getUser().getName());
         });
         this.disconnectTimer.put(event.getUser().getName(), future);

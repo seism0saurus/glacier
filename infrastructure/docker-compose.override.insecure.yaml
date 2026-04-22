@@ -1,0 +1,59 @@
+# TEST FIXTURE ONLY — do not include in production compose.
+#
+# Purpose: exposes a plain-HTTP port on the LOOPBACK INTERFACE ONLY so that
+# Playwright's `insecure` project can verify that the frontend enters the
+# INSECURE indicator state when served over http:// in production mode (D-14, D-19).
+#
+# Security constraints enforced here:
+#   - Port bound to 127.0.0.1:8081 (loopback only — never 0.0.0.0) so it is
+#     NOT reachable from any external network interface.  Binding to 0.0.0.0
+#     would create an exploitable unencrypted HTTP endpoint on the host's public
+#     IP (non-blocking Phase 2 fix #3).
+#   - COOKIE_SECURE=false is required so that the browser emits the `wallId`
+#     cookie over plain HTTP.  Without this flag the browser silently drops the
+#     Secure cookie, meaning the 401 path cannot exercise the INSECURE flow
+#     honestly (secure-tdd-implementer gap item #3, D-09).
+#
+# Usage (one-shot):
+#   cd infrastructure
+#   tar -xf infrastructure-content.tar.gz -C ./
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f docker-compose.override.insecure.yaml \
+#     up --build --abort-on-container-exit playwright --exit-code-from playwright
+#
+# The Playwright project that runs against this stack must be named `insecure`
+# in frontend/playwright.config.ts, with BASE_URL pointing to http://localhost:8081
+# (D-19).
+#
+# See infrastructure/README.md for the full operator context and the mandatory
+# FORWARD_HEADERS_STRATEGY=FRAMEWORK setting required behind traefik.
+
+services:
+  glacier:
+    ports:
+      # Loopback-only HTTP port for insecure-transport E2E tests.
+      # 127.0.0.1 binding is non-negotiable — see security note above.
+      - "127.0.0.1:8081:8080"
+    environment:
+      # Allow the wallId cookie to be sent over plain HTTP in this test fixture.
+      # Default is true; must be false here so the cookie is not silently dropped
+      # by the browser on an http:// origin (D-09, COOKIE_SECURE property).
+      COOKIE_SECURE: "false"
+
+  playwright:
+    # C-02: allows the playwright container (inside the Docker network) to reach
+    # the loopback-bound HTTP port 8081 on the Docker host.  The `fallback-insecure`
+    # spec navigates to http://host.docker.internal:8081 to trigger the INSECURE
+    # frontend state.  This extra_hosts entry resolves host.docker.internal to the
+    # host-gateway IP on Linux runners (equivalent to Docker Desktop behaviour).
+    # Do NOT add this to the glacier service — it would give glacier itself a route
+    # to other host-bound services, which is unnecessary and undesired.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Tell playwright.config.ts to activate only the `insecure` project (D-19).
+      # Docker Compose does not forward host-shell env vars into containers automatically;
+      # this explicit entry is what makes the CI step's PLAYWRIGHT_PROJECT=insecure
+      # reach process.env['PLAYWRIGHT_PROJECT'] inside the container.
+      PLAYWRIGHT_PROJECT: "insecure"
