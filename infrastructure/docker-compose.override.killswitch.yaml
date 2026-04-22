@@ -1,0 +1,53 @@
+# TEST FIXTURE ONLY — do not include in production compose.
+#
+# Purpose: disables the HTTP fallback feature entirely so that Playwright's
+# `killswitch` project can verify that /rest/messages returns 404 and that
+# the frontend enters the KILLSWITCHED indicator state (D-11, D-19).
+#
+# Usage (one-shot):
+#   cd infrastructure
+#   tar -xf infrastructure-content.tar.gz -C ./
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f docker-compose.override.killswitch.yaml \
+#     up --build --abort-on-container-exit playwright --exit-code-from playwright
+#
+# The Playwright project that runs against this stack must be named `killswitch`
+# in frontend/playwright.config.ts (D-19).
+#
+# See infrastructure/README.md for the full operator context and the mandatory
+# FORWARD_HEADERS_STRATEGY=FRAMEWORK setting required behind traefik.
+
+services:
+  glacier:
+    environment:
+      # Disable the HTTP fallback ring-buffer and /rest/messages endpoint (D-11).
+      # FallbackController returns 404 when this is "false".
+      GLACIER_FALLBACK_ENABLED: "false"
+
+      # ── Share-link env vars — killswitch variant ─────────────────────────────
+      # Under killswitch (GLACIER_FALLBACK_ENABLED=false):
+      #   - GET /rest/share/{id}/catalog returns 200 with initialToots:[]
+      #   - GET /rest/share/{id}/messages returns 404 (mirrors /rest/messages)
+      #   - Live WS relay continues to function
+      # All values below are identical to docker-compose.yaml; they are repeated
+      # here because compose override only adds/overwrites individual keys —
+      # omitting a key would not clear it, but explicit duplication makes the
+      # killswitch fixture self-documenting and auditable in isolation.
+      GLACIER_SHARE_HOST: "share.proxy"
+      GLACIER_SHARE_IMGPROXY_HMAC_SECRET: "e2e-dummy-hmac-secret-not-for-production-use"
+      GLACIER_SHARE_MAX_ACTIVE_PER_SHARER: "3"
+      GLACIER_SHARE_MAX_ACTIVE_PER_IP: "10"
+      GLACIER_SHARE_MAX_VIEWERS_PER_LINK: "100"
+      GLACIER_SHARE_TTL: "P7D"
+      GLACIER_SHARE_SWEEP_INTERVAL_MS: "300000"
+      GLACIER_SHARE_IMGPROXY_POSITIVE_CACHE_SECONDS: "3600"
+      GLACIER_SHARE_IMGPROXY_NEGATIVE_CACHE_SECONDS: "60"
+
+  playwright:
+    environment:
+      # Tell playwright.config.ts to activate only the `killswitch` project (D-19).
+      # Docker Compose does not forward host-shell env vars into containers automatically;
+      # this explicit entry is what makes the CI step's PLAYWRIGHT_PROJECT=killswitch
+      # reach process.env['PLAYWRIGHT_PROJECT'] inside the container.
+      PLAYWRIGHT_PROJECT: "killswitch"

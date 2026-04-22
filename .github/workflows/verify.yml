@@ -18,21 +18,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-${{ hashFiles('~/.m2/repository') }}
+          # Key includes pom.xml hash so that adding/removing dependencies
+          # (e.g. jsoup, caffeine) invalidates the cache automatically.
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-m2-verify-
       - name: Use cache for node
         uses: actions/cache@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-${{ hashFiles('~/.m2/frontend/node') }}
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
         uses: actions/cache@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-verify-
       - name: Compile the webapp
@@ -52,17 +54,23 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-verify-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results
@@ -98,17 +106,23 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-verify-
+          key: ${{ runner.os }}-m2-verify-${{ hashFiles('pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-verify-
       - name: Use cache for node
         uses: actions/cache/restore@v4
         with:
           path: frontend/node
-          key: ${{ runner.os }}-node-verify-
+          key: ${{ runner.os }}-node-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-verify-
       - name: Use cache for node_modules
         uses: actions/cache/restore@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
       - name: Package the webapp
         run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
       - name: Check if frontend is bundled into jar
@@ -129,6 +143,13 @@ jobs:
           path: glacier.jar
           retention-days: 1
 
+  # Standard e2e: chromium + firefox + webkit projects
+  # Covers: share-link.spec.ts, share-link-a11y.spec.ts, share-link-qr.spec.ts,
+  #         share-link-firefox.spec.ts, share-link-webkit.spec.ts,
+  #         share-link-fallback.spec.ts, share-link-rate-limit.spec.ts,
+  #         plus all existing wall/toot/subscription specs.
+  # The share subdomain (share.proxy) is reachable via the Traefik network alias
+  # added to the proxy service in docker-compose.yaml.
   e2e:
     runs-on: ubuntu-latest
     needs: package
@@ -145,14 +166,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-verify-
       - name: Use cache for ms-playwright
         uses: actions/cache@v4
         with:
           path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-verify-${{ hashFiles('~/.cache/ms-playwright') }}
+          key: ${{ runner.os }}-playwright-verify-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-playwright-verify-
       - name: Install Docker Compose
@@ -184,3 +205,127 @@ jobs:
         run: |
           docker ps
           docker compose logs
+
+  # Killswitch e2e: verifies GLACIER_FALLBACK_ENABLED=false behaviour
+  # Covers: share-link-killswitch.spec.ts (killswitch Playwright project).
+  # Under killswitch: catalog returns 200 {state, initialToots:[]};
+  # GET /rest/share/{id}/messages returns 404 (mirroring /rest/messages rule).
+  e2e-killswitch:
+    runs-on: ubuntu-latest
+    needs: package
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Use cache for node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
+      - name: Use cache for ms-playwright
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-verify-
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start e2e killswitch test inside docker-compose
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.killswitch.yaml \
+            up --build --abort-on-container-exit playwright --exit-code-from playwright
+      - name: Upload Playwright report (killswitch)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-killswitch
+          path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots (killswitch)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots-killswitch
+          path: frontend/test-results
+      - name: Show logs of service (killswitch)
+        working-directory: infrastructure
+        if: failure()
+        run: |
+          docker ps
+          docker compose -f docker-compose.yaml -f docker-compose.override.killswitch.yaml logs
+
+  # Insecure e2e: verifies plain-HTTP / no-TLS behaviour
+  # Covers: share-link-insecure.spec.ts (insecure Playwright project).
+  # Under insecure: __Host- prefix and Secure flag are dropped on shareViewerId
+  # and wallId cookies (CookieNamingBean, COOKIE_SECURE=false).
+  e2e-insecure:
+    runs-on: ubuntu-latest
+    needs: package
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Use cache for node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
+      - name: Use cache for ms-playwright
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-verify-
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start e2e insecure test inside docker-compose
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.insecure.yaml \
+            up --build --abort-on-container-exit playwright --exit-code-from playwright
+      - name: Upload Playwright report (insecure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-insecure
+          path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots (insecure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots-insecure
+          path: frontend/test-results
+      - name: Show logs of service (insecure)
+        working-directory: infrastructure
+        if: failure()
+        run: |
+          docker ps
+          docker compose -f docker-compose.yaml -f docker-compose.override.insecure.yaml logs
