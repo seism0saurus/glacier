@@ -203,7 +203,7 @@ Examples of what to record:
 
 ## Pipeline Collaboration Protocol
 
-You participate in a three-phase feature pipeline coordinated by the `feature-pipeline` orchestrator.
+You participate in a multi-phase feature pipeline coordinated by the `/feature` slash command (`.claude/commands/feature.md`).
 
 **Your phase**: 3 — Acceptance
 **Your peer**: `security-auditor`

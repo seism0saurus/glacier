@@ -149,7 +149,7 @@ Examples of what to record:
 
 ## Pipeline Collaboration Protocol
 
-You participate in a three-phase feature pipeline coordinated by the `feature-pipeline` orchestrator.
+You participate in a multi-phase feature pipeline coordinated by the `/feature` slash command (`.claude/commands/feature.md`).
 
 **Your phase**: 2 — Implementation *(only invoked when user-facing components are affected)*
 **Your peers**: `tdd-ddd-implementer` · `secure-tdd-implementer`

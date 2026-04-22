@@ -16,3 +16,4 @@
 /infrastructure/mastodon.env
 /infrastructure/dynamic.yml
 /test-results
+/.claude/agent-memory/

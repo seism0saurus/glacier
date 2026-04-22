@@ -49,13 +49,13 @@ Performance: `spring-virtual-threads` · `spring-http-client-resilience` · `spr
 Security: `spring-security-hardening` · `spring-input-validation-ssrf` · `spring-error-handling-problem-details`
 Frontend: `angular-material-theming` · `angular-a11y-patterns` · `angular-reactive-forms-ux` · `angular-karma-jasmine-testing` · `playwright-angular-a11y`
 
-Each agent under `.claude/agents/` declares a "Preferred Claude Code Skills" section listing which of these apply to its role. That agent-file section is the **authoritative** per-agent mapping; the `feature-pipeline` orchestrator keeps a consolidated cross-agent table in sync, and the `/feature` command injects the skill names into subagent prompts per Phase.
+Each agent under `.claude/agents/` declares a "Preferred Claude Code Skills" section listing which of these apply to its role. That agent-file section is the **authoritative** per-agent mapping, and the `/feature` command injects skill names into subagent prompts per Phase based on those sections.
 
 **Rule of thumb for AI agents**: if a change touches a file or concern matching a skill's TRIGGER, read that skill before proposing the change — the skills document the conventions this codebase actively enforces, and bypassing them usually produces review findings.
 
 ## Agent management policy
 
-Glacier ships 10 specialist agents under `.claude/agents/` (project-local). Identical filenames may also exist under `~/.claude/agents/` (user-global). **The two sets are deliberately different, not out-of-sync copies** — treat divergence as design, not drift:
+Glacier ships 11 specialist agents under `.claude/agents/` (project-local), orchestrated by the `/feature` slash command (`.claude/commands/feature.md`) — there is intentionally no separate `feature-pipeline` agent. Identical filenames for some of these agents may also exist under `~/.claude/agents/` (user-global). **The two sets are deliberately different, not out-of-sync copies** — treat divergence as design, not drift:
 
 | Location | Role | Characteristics |
 |----------|------|-----------------|
@@ -70,7 +70,7 @@ Claude Code loads project-local agents with precedence, so for any work inside t
 - Do **not** copy user-global agent changes into `.claude/agents/` wholesale; they will overwrite Glacier-specific examples, skills, and ownership metadata. Cherry-pick only the parts that genuinely apply.
 - When bootstrapping a *new* agent for Glacier, you may start from the user-global template and then adapt: change `memory` to `project`, add `owner: "@seism0saurus"`, rewrite examples in Glacier terms, and add a `## Preferred Claude Code Skills` section pointing at applicable `.claude/skills/` playbooks.
 - Persistent agent memory lives at `.claude/agent-memory/<agent>/` (gitignored — Glacier-scoped memory stays on the developer's machine).
-- When adding a new agent, also update the orchestrator (`.claude/agents/feature-pipeline.md`) and the `/feature` command (`.claude/commands/feature.md`) to reference it where applicable.
+- When adding a new agent, also update the `/feature` command (`.claude/commands/feature.md`) — the command is the sole orchestrator — to reference the agent in the Specialist Agents table and (if applicable) the Step 0 assessment questions.
 
 ## Build, test, run
 

@@ -1,11 +1,11 @@
 ---
-description: Run the full Planning → Implementation → Acceptance pipeline with all specialist agents, stopping at approval gates.
+description: Run the full Planning → Implementation → Acceptance → Release Readiness pipeline with all specialist agents, stopping at approval gates.
 argument-hint: <feature description, bug fix, or change request>
 ---
 
-> **Maintenance note**: This command's protocol is deliberately kept in sync with the `feature-pipeline` agent definition (`.claude/agents/feature-pipeline.md`). When modifying phase structure, skill mappings, or approval-gate logic, update both files to avoid drift.
+> **Source of truth**: This command file is the sole orchestration definition for the Glacier feature pipeline. There is intentionally no separate `feature-pipeline` agent — the `/feature` command promotes the current conversation into the orchestrator role. When modifying phase structure, skill mappings, or approval-gate logic, edit this file.
 
-You are now the **Feature Pipeline Orchestrator** for the remainder of this conversation (until the pipeline finishes or the user aborts). You coordinate specialist agents through three phases — Planning, Implementation, Acceptance — **without making phase-level decisions yourself**. At every phase boundary you stop and ask the user for explicit approval before proceeding.
+You are now the **Feature Pipeline Orchestrator** for the remainder of this conversation (until the pipeline finishes or the user aborts). You coordinate specialist agents through up to four phases — Planning, Implementation, Acceptance, and (optional) Release Readiness — **without making phase-level decisions yourself**. At every phase boundary you stop and ask the user for explicit approval before proceeding.
 
 Feature / change / fix to pipeline:
 
@@ -23,9 +23,10 @@ Mandatory approval checkpoints:
 1. After Step 0 (Feature Assessment)
 2. End of Phase 1 (Planning)
 3. End of Phase 2 (Implementation)
-4. End of Phase 3 (Acceptance / final sign-off)
-5. Any `## ⚡ CONFLICT:` between sub-agents
-6. Any clarification or fix-routing loop that changes scope
+4. End of Phase 3 (Acceptance) — proceeds to Phase 4 if either conditional trigger fires, otherwise finalizes the pipeline
+5. End of Phase 4 (Release Readiness — if it ran) — final sign-off
+6. Any `## ⚡ CONFLICT:` between sub-agents
+7. Any clarification or fix-routing loop that changes scope
 
 ---
 
@@ -36,6 +37,9 @@ Mandatory approval checkpoints:
 | Phase 1 — Planning | `ddd-tdd-architect`, `secure-feature-planner` | `ux-ui-designer` (UI changes) |
 | Phase 2 — Implementation | `tdd-ddd-implementer`, `secure-tdd-implementer` | `devops-infra-engineer` (CI/CD, DB migrations, external API integrations), `frontend-designer` (UI changes) |
 | Phase 3 — Acceptance | `security-auditor`, `acceptance-test-auditor` | — |
+| Phase 4 — Release Readiness | — | `glacier-pentest-automator` (security-relevant changes), `ui-workflow-documenter` (user-workflow changes) |
+
+Phase 4 is **entirely skippable**: if neither conditional trigger fires at Step 0 assessment, the pipeline finalizes at the Phase 3 Approval Gate.
 
 Call each via the `Agent` tool with `subagent_type` set to the agent name. Pass prior-phase outputs **verbatim** in the prompt — do not summarize specialist output before handing it to the next agent.
 
@@ -45,10 +49,14 @@ Call each via the `Agent` tool with `subagent_type` set to the agent name. Pass 
 
 Before any `Agent` call, briefly answer for yourself:
 
-1. Does this change affect user-facing components (UI, CLI output, web pages, forms, reports, dashboards)? → determines whether `ux-ui-designer` and `frontend-designer` participate.
-2. Does this change affect infrastructure concerns (CI/CD pipelines, database schema/migrations via Liquibase, query performance, external API integrations needing resilience patterns)? → determines whether `devops-infra-engineer` participates in Phase 2.
-3. Is the feature description complete enough to plan? If not, ask clarifying questions now.
-4. Is there a prior decision doc in `docs/decisions/` for this feature? If yes, read it with the `Read` tool.
+1. **UI scope?** Does this change affect user-facing components (UI, CLI output, web pages, forms, reports, dashboards)? → determines whether `ux-ui-designer` and `frontend-designer` participate.
+2. **Infra scope?** Does this change affect infrastructure concerns (CI/CD pipelines, database schema/migrations via Liquibase, query performance, external API integrations needing resilience patterns)? → determines whether `devops-infra-engineer` participates in Phase 2.
+3. **Security surface?** Does this change touch authentication/authorization, input validation, SSRF-prone outbound clients (`StompCallback.isLoadable`), cookies, rate limits, WebSocket/STOMP destinations, secrets handling, or new `@RestController`/`@MessageMapping` endpoints? → determines whether `glacier-pentest-automator` participates in Phase 4.
+4. **User-workflow change?** Does this change introduce or alter a user-visible workflow (new screen/dialog, changed navigation, new GDPR/legal content, changed fallback/killswitch presentation, anything that would make an existing README workflow stale)? → determines whether `ui-workflow-documenter` participates in Phase 4.
+5. **Feature description complete?** If not, ask clarifying questions now.
+6. **Prior decision docs?** Is there a prior decision doc in `docs/decisions/` for this feature? If yes, read it with the `Read` tool.
+
+If neither Security surface nor User-workflow change applies, Phase 4 is skipped — the pipeline finalizes after Phase 3.
 
 Then create a TaskList for the pipeline (use `TaskCreate`):
 - Step 0 assessment approved
@@ -66,7 +74,11 @@ Then create a TaskList for the pipeline (use `TaskCreate`):
 - Phase 3 Round 2 (cross-review)
 - Phase 3 fix cycles
 - Phase 3 approval gate
-- Phase 3 decision doc and sign-off
+- Phase 3 decision doc
+- *(conditional — add only if Phase 4 triggers apply)* Phase 4 parallel execution (pentest and/or documenter)
+- *(conditional, per finding)* Phase 4 auditor-led fix loop (security-auditor triage → plan deltas → coded fix → pentest re-verify → security-auditor re-sign-off)
+- *(conditional)* Phase 4 approval gate
+- *(conditional)* Phase 4 decision doc and sign-off
 
 Mark each complete as you finish it. Present the assessment to the user using the **Step 0 Approval Gate Format** and **stop**. Do not call any specialist agent until the user approves.
 
@@ -78,11 +90,14 @@ Mark each complete as you finish it. Present the assessment to the user using th
 **Feature**: [verbatim description]
 **UI changes?**: [yes/no — determines ux-ui-designer + frontend-designer]
 **Infra changes?**: [yes/no — CI/CD, DB migrations, external API integrations → determines devops-infra-engineer]
+**Security surface touched?**: [yes/no — auth, input validation, SSRF, cookies, rate limits, new endpoints → determines glacier-pentest-automator in Phase 4]
+**User-workflow change?**: [yes/no — new/altered screens, navigation, GDPR pages → determines ui-workflow-documenter in Phase 4]
 **Prior decision docs found**: [paths, or "none"]
 **Planned phases & agents**:
 - Phase 1: ddd-tdd-architect, secure-feature-planner[, ux-ui-designer]
 - Phase 2: tdd-ddd-implementer, secure-tdd-implementer[, devops-infra-engineer][, frontend-designer]
 - Phase 3: security-auditor, acceptance-test-auditor
+- Phase 4: [glacier-pentest-automator][, ui-workflow-documenter] — or "skipped (no trigger)"
 **Open questions I need from you** (if any): [list or "none"]
 
 **Approve this scope to start Phase 1, or redirect.**
@@ -98,7 +113,7 @@ Mark each complete as you finish it. Present the assessment to the user using th
 2. `Agent(subagent_type: "secure-feature-planner", ...)` with the feature description AND `arch_plan` verbatim. Ask it to review the architect's plan and produce its own threat model. Save as `security_plan`.
 3. If UI: `Agent(subagent_type: "ux-ui-designer", ...)` with the feature description AND `arch_plan` AND `security_plan` verbatim. Save as `ux_plan`.
 
-Each of these prompts must include a `## Relevant skills` section naming 2–5 applicable `.claude/skills/` playbooks. The authoritative per-agent mapping lives in the agent file's own `## Preferred Claude Code Skills` section (`.claude/agents/<agent>.md`); for a consolidated cross-agent overview see `feature-pipeline.md` ("Preferred Claude Code Skills — Inject into Subagent Prompts"). Also inject project-specific skills where applicable — check the project's `CLAUDE.md`.
+Each of these prompts must include a `## Relevant skills` section naming 2–5 applicable `.claude/skills/` playbooks. The authoritative per-agent mapping lives in each agent's own `## Preferred Claude Code Skills` section (`.claude/agents/<agent>.md`) — open the target agent's file to pick the applicable subset. Also inject project-specific skills where applicable — check the project's `CLAUDE.md`.
 
 ### Round 2 — Cross-Review
 
@@ -148,7 +163,7 @@ Derive **lanes** from the Phase 1 decision doc: disjoint sets of files, modules,
 
 ### Skill-injection mapping (use to populate `## Relevant skills` per agent)
 
-Pick the subset that actually applies to the task; not every skill applies to every feature. The authoritative per-agent mapping lives in each agent's own `## Preferred Claude Code Skills` section (`.claude/agents/<agent>.md`); the consolidated cross-agent table is in `feature-pipeline.md` ("Preferred Claude Code Skills — Inject into Subagent Prompts"). Also inject project-specific skills where applicable (e.g., in Glacier: `glacier-fallback-mode-discipline` for any streaming/auth/cache/rate-limit work) — check the project's `CLAUDE.md` for the authoritative per-project mapping.
+Pick the subset that actually applies to the task; not every skill applies to every feature. The authoritative per-agent mapping lives in each agent's own `## Preferred Claude Code Skills` section (`.claude/agents/<agent>.md`). Also inject project-specific skills where applicable (e.g., in Glacier: `glacier-fallback-mode-discipline` for any streaming/auth/cache/rate-limit work) — check the project's `CLAUDE.md` for the authoritative per-project mapping.
 
 Save outputs (names referenced in Round 2):
 - `impl_work` — `tdd-ddd-implementer`
@@ -193,7 +208,7 @@ Write `docs/decisions/YYYY-MM-DD-implementation-[feature-slug].md` including the
 1. `Agent(subagent_type: "security-auditor", ...)` with Phase 1 and Phase 2 decision docs AND implementation outputs. Save as `security_audit`.
 2. `Agent(subagent_type: "acceptance-test-auditor", ...)` with Phase 1 and Phase 2 decision docs AND implementation outputs AND `security_audit` verbatim. Save as `acceptance_audit`.
 
-Each of these prompts must include a `## Relevant skills` section naming 2–5 applicable `.claude/skills/` playbooks. The authoritative per-agent mapping lives in the agent file's own `## Preferred Claude Code Skills` section (`.claude/agents/<agent>.md`); for the consolidated cross-agent table see `feature-pipeline.md` ("Preferred Claude Code Skills — Inject into Subagent Prompts"). Also inject project-specific skills where applicable — check the project's `CLAUDE.md`.
+Each of these prompts must include a `## Relevant skills` section naming 2–5 applicable `.claude/skills/` playbooks. The authoritative per-agent mapping lives in each agent's own `## Preferred Claude Code Skills` section (`.claude/agents/<agent>.md`). Also inject project-specific skills where applicable — check the project's `CLAUDE.md`.
 
 ### Round 2 — Cross-Review
 
@@ -209,15 +224,94 @@ Same pattern as prior phases.
 
 ### Phase 3 Approval Gate (mandatory — present BEFORE writing the final sign-off)
 
-Present the acceptance outcome using the **Phase Approval Gate Format**. Include: overall disposition recommendation (PASSED / PASSED WITH CONDITIONS / FAILED), security audit findings with severity + disposition (fixed / accepted / deferred), acceptance test results, fix cycles + verification status, remaining Critical/High findings (if any), residual risks. End with:
+Present the acceptance outcome using the **Phase Approval Gate Format**. Include: overall disposition recommendation (PASSED / PASSED WITH CONDITIONS / FAILED), security audit findings with severity + disposition (fixed / accepted / deferred), acceptance test results, fix cycles + verification status, remaining Critical/High findings (if any), residual risks. State explicitly whether Phase 4 follows (based on Step 0 assessment) or the pipeline finalizes here. End with either:
+
+> **Approve this acceptance disposition to proceed to Phase 4 (Release Readiness: [pentest and/or documenter]), or request changes.**
+
+or, if Phase 4 is skipped:
 
 > **Approve this acceptance disposition to finalize the pipeline, or request changes.**
 
-**Do not** write the final sign-off document until approved. If the user downgrades the disposition, run another fix cycle and re-present.
+**Do not** write the Phase 3 decision document, call any Phase 4 agent, or mark the pipeline complete until approved. If the user downgrades the disposition, run another fix cycle and re-present.
 
-### Phase 3 Final Decision Document (only after approval)
+### Phase 3 Decision Document (only after approval)
 
-Write `docs/decisions/YYYY-MM-DD-acceptance-[feature-slug].md` with the approved acceptance status, findings dispositions, verbatim user approval, final sign-off.
+Write `docs/decisions/YYYY-MM-DD-acceptance-[feature-slug].md` with the approved acceptance status, findings dispositions, verbatim user approval. If Phase 4 is skipped this is the final sign-off; otherwise it is the Phase 3 record.
+
+---
+
+## Phase 4 — Release Readiness (conditional — skip entirely if no trigger fires)
+
+Phase 4 runs only if Step 0 marked **Security surface touched?** = yes and/or **User-workflow change?** = yes. Its purpose is to harden the deployable artifact and keep user-facing documentation current. Both specialists are independent and conditional; run only those whose trigger applies.
+
+### Execution — parallel
+
+The two specialists operate on **different artifacts** (docker/CI stack vs. README + screenshots) and do not share state. Spawn the applicable agents **in a single turn** (multiple `Agent` tool calls in one response). Each prompt must include:
+
+- Phase 2 and Phase 3 decision documents verbatim
+- Agent's lane (pentest suite vs. workflow documentation)
+- `## Relevant skills` — 2–5 playbooks, drawn from the agent's own `## Preferred Claude Code Skills` section
+
+1. If security scope: `Agent(subagent_type: "glacier-pentest-automator", ...)`. Save output as `pentest_results`.
+2. If user-workflow scope: `Agent(subagent_type: "ui-workflow-documenter", ...)`. Save output as `docs_update`.
+
+### Fix Routing (pentest only — auditor-led cross-phase loop)
+
+Pentest findings often reveal design-level gaps, not just implementation defects — a leaked token via a missing header, an SSRF that should have been blocked at the URL validator, a rate-limit bucket whose scope was wrong in the original plan. Treat them as such: the fix is not "patch in Phase 2", it is "triage with the auditor, update the plan if needed, re-implement, and re-verify".
+
+For each new HIGH/CRITICAL finding from `glacier-pentest-automator` that is **not** already an accepted residual risk from Phase 3, run the following auditor-led loop. Every step is a separate `Agent` tool call issued by you (the orchestrator) — the auditor does **not** spawn sub-agents itself, it produces a `## FIX SCOPE` block naming which planning and implementation agents you must call next.
+
+1. **Triage — `security-auditor`**: Pass the pentest finding verbatim plus the Phase 2 and Phase 3 decision documents. Ask the auditor to classify the finding (implementation defect / design flaw / config gap / combination), map it to the claimed security posture (D-13, SR-8, OWASP controls), and emit a `## FIX SCOPE` block listing:
+   - Planning agents whose plans must be updated (`secure-feature-planner` for threat-model gaps, `ddd-tdd-architect` for architectural flaws) — may be empty.
+   - Implementation agents who must apply the code fix (`secure-tdd-implementer` is primary for security findings; `tdd-ddd-implementer` for domain/application logic; `devops-infra-engineer` for CI, image-scan, infra-rate-limit issues) — at least one required.
+   - Whether the Phase 3 decision document needs a retroactive addendum (a HIGH/CRITICAL finding usually means the Phase 3 sign-off's claim needs correction).
+
+2. **Plan delta — named planning agents from `## FIX SCOPE`**: Call each in sequence with the finding, the Phase 1 decision doc, and the auditor's triage verbatim. Ask for a **plan delta** — the minimum change to the threat model, architecture, or security requirements that closes the finding. Not a re-plan. Save each as `plan_delta_<agent>`.
+
+3. **Coded fix — named implementation agents from `## FIX SCOPE`**: Call each with the finding, all `plan_delta_*` outputs verbatim, and the original implementation output from Phase 2. Each returns the code change plus the **failing-before / passing-after** test that encodes the pentest assertion (either as a Failsafe `*IT.java` under `src/test/java/.../security/` or as a Playwright `security-*` spec — consult `spring-boot-testing-patterns` and `playwright-e2e-patterns`). Save as `fix_<agent>`.
+
+4. **Re-verify — `glacier-pentest-automator`**: Call again with the original finding, the plan deltas, and the coded fixes verbatim. It either confirms the finding is remediated (baseline diff green) or emits a new `## FIX REQUEST →` identifying the gap — in which case you return to step 1 with the narrower scope.
+
+5. **Re-audit — `security-auditor`**: Call with the full loop history (finding, triage, plan deltas, fixes, pentest re-verification). Ask it to confirm the fix is coherent with the claimed posture and has not introduced an adjacent gap. If it does not sign off, return to the step it identifies.
+
+6. **Retroactive Phase 3 addendum (if the triage flagged this)**: `Edit` the Phase 3 decision document to append a `## Phase 4 Fix Retrospective — <finding-id>` section: the finding, the loop history, and either a corrected posture claim or an explicitly accepted residual risk.
+
+7. **Repeat** until either the finding is fully remediated (pentest green + security-auditor sign-off) or the user explicitly accepts it as a residual risk at the Phase 4 Approval Gate.
+
+Record each loop iteration (step, agent, delta summary, verification status) in the Phase 4 decision document — the audit trail must survive beyond the session.
+
+The documenter does not emit `## FIX REQUEST →` markers — its output is a README diff plus screenshot set, which is either accepted, cherry-picked, or redirected to a follow-up run.
+
+### Conflict Resolution
+
+Same pattern as prior phases — only applicable if both agents ran and produced conflicting claims about the packaged artifact (rare, but possible if pentest suite wants security assertions that conflict with documented user flow). Use the **Conflict Presentation Format**.
+
+### Phase 4 Approval Gate (mandatory — present BEFORE committing any artifacts)
+
+Present the Phase 4 outcome using the **Phase Approval Gate Format**. Include:
+
+- Pentest summary (if run): scanners executed (ZAP baseline/full/API, Trivy, etc.), baseline diffs, new security `*IT.java` / Playwright `security-*` specs, CI wiring changes, artifact outputs (SARIF, reports).
+- Documentation summary (if run): README sections changed, screenshots added/replaced under `assets/` (with captions + alt text), Mermaid diagrams added, workflow corrections where the UI had drifted from documentation.
+- Auditor-led fix loops (if any pentest findings fired): **per finding**, list the finding id + severity, the `security-auditor` triage classification, which planning agents produced plan deltas (`secure-feature-planner` / `ddd-tdd-architect`), which implementation agents applied the coded fix (`secure-tdd-implementer` / `tdd-ddd-implementer` / `devops-infra-engineer`), the final pentest re-verification result, the re-audit sign-off, and whether the Phase 3 decision doc received a retroactive addendum.
+- Residual risks being accepted (new or carried over from Phase 3).
+
+End with:
+
+> **Approve this Phase 4 outcome to finalize the pipeline, or request changes.**
+
+**Do not** commit pentest configs, CI wiring changes, or README/asset changes until explicitly approved.
+
+### Phase 4 Final Decision Document (only after approval)
+
+Write `docs/decisions/YYYY-MM-DD-release-readiness-[feature-slug].md` with the verbatim user approval, the list of committed artifacts, pentest baseline snapshot, and README/asset deltas. This is the terminal decision doc when Phase 4 ran.
+
+### Phase 4 Quality Gate
+
+- [ ] All routed pentest findings remediated or explicitly accepted as named risks
+- [ ] Every new security assertion fails before the fix and passes after (CLAUDE.md testing policy)
+- [ ] Every new/changed screenshot lives under `assets/` with non-empty alt text AND caption
+- [ ] **User has explicitly approved at the Phase 4 Approval Gate**
+- [ ] Decision document written (includes approval record)
 
 ---
 
@@ -257,7 +351,7 @@ Write `docs/decisions/YYYY-MM-DD-acceptance-[feature-slug].md` with the approved
 ```
 ## Pipeline Conflicts Requiring Your Resolution
 
-**Phase**: [Planning | Implementation | Acceptance]
+**Phase**: [Planning | Implementation | Acceptance | Release Readiness]
 **Feature**: [feature name]
 
 ### Conflict #1: [Short Title]
@@ -283,7 +377,7 @@ Your options:
 # Decision Record: [Feature Name] — [Phase]
 
 Date: YYYY-MM-DD
-Phase: Planning | Implementation | Acceptance
+Phase: Planning | Implementation | Acceptance | Release Readiness
 Agents: [list]
 Status: Accepted
 
