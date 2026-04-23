@@ -140,6 +140,34 @@
         </dependency>
 
 
+        <!-- Jsoup HTML parser — used by ShareRenderingService for safe text extraction (SR-SHARE-03, ADR-SHARE-03).
+             Version 1.18.3: released 2024-12, actively maintained by Jonathan Hedley, widely adopted (>100M Maven downloads).
+             No known critical CVEs. Pure Java, no native dependencies. -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.3</version>
+        </dependency>
+
+        <!-- Caffeine cache — used by ShareImageProxyService for positive/negative response caching.
+             Version 3.1.8: released 2024-01, actively maintained by Ben Manes, widely used in Spring Boot ecosystem. -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.1.8</version>
+        </dependency>
+
+        <!-- Spring Boot Actuator for metrics (already in parent pom pattern, added here explicitly) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
         <!--Database Libraries-->
 <!--        <dependency>-->
 <!--            <groupId>org.springframework.boot</groupId>-->

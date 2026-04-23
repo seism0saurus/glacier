@@ -135,4 +135,14 @@ public class GlacierApplication {
     public Clock clock() {
         return Clock.systemUTC();
     }
+
+    /**
+     * Provides a UTC {@link Clock} bean for injection into rate limiters.
+     * Using an injected Clock rather than Instant.now() makes timing deterministic in tests.
+     * NIST SP 800-53 AC-3 (rate limiting requires deterministic admission decisions).
+     */
+    @Bean
+    public Clock clock() {
+        return Clock.systemUTC();
+    }
 }

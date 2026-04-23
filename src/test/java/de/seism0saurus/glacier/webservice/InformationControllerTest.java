@@ -22,13 +22,16 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// SR-SHARE-10: ImageProxyHmacSecretValidator fails-closed in prod (glacier.cookie.secure=true default);
+// supply a valid 32-byte hmacSecret so the Spring context boots successfully under @SpringBootTest.
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "glacier.cookie.secure=true",
         "glacier.fallback.ratelimit.perMinute=30",
         "glacier.fallback.ratelimit.perMinutePerIp=120",
-        "glacier.ratelimit.eviction.intervalMs=600000"
+        "glacier.ratelimit.eviction.intervalMs=600000",
+        "glacier.share.imgproxy.hmacSecret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 })
 class InformationControllerTest {
 

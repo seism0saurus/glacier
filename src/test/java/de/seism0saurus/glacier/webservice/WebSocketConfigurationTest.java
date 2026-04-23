@@ -54,14 +54,18 @@ public class WebSocketConfigurationTest {
         StompEndpointRegistry registry = mock(WebMvcStompEndpointRegistry.class);
         StompWebSocketEndpointRegistration registration = mock(StompWebSocketEndpointRegistration.class);
         when(registry.addEndpoint(anyString())).thenReturn(registration);
+        // Use vararg-safe stub: matches any number of origin strings
+        // (main endpoint passes 3, share-view endpoint passes 4)
         when(registration.setAllowedOrigins(any(String[].class))).thenReturn(registration);
         WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com", true);
 
         // Execute
         webSocketConfiguration.registerStompEndpoints(registry);
 
-        // Verify
-        verify(registration, times(1)).setHandshakeHandler(any(DefaultHandshakeHandler.class));
+        // Verify: both endpoints (/websocket and /share-view-ws) set a DefaultHandshakeHandler.
+        // PrincipalHandler and ShareViewPrincipalHandler both extend DefaultHandshakeHandler,
+        // so the matcher fires twice — once per endpoint registration.
+        verify(registration, times(2)).setHandshakeHandler(any(DefaultHandshakeHandler.class));
     }
 
     /**
