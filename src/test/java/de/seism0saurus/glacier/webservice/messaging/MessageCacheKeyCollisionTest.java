@@ -31,7 +31,7 @@ class MessageCacheKeyCollisionTest {
         ConcurrentHashMap<PrincipalKey, String> cache = new ConcurrentHashMap<>();
 
         // Legitimate viewer's bucket is keyed by ShareViewerPrincipal
-        ShareLinkId linkId = new ShareLinkId(SHARED_NAME); // 43 chars — valid
+        ShareLinkId linkId = ShareLinkId.fromUrlPath(SHARED_NAME); // 43 chars — valid
         ShareViewerPrincipal legitimateViewer = new ShareViewerPrincipal(SHARED_NAME, linkId);
         PrincipalKey viewerKey = PrincipalKey.of(legitimateViewer);
         cache.put(viewerKey, "viewer-secret-data");
@@ -49,7 +49,7 @@ class MessageCacheKeyCollisionTest {
     void forgedWallPrincipal_cannotOverwriteShareViewerBucket() {
         ConcurrentHashMap<PrincipalKey, String> cache = new ConcurrentHashMap<>();
 
-        ShareLinkId linkId = new ShareLinkId(SHARED_NAME);
+        ShareLinkId linkId = ShareLinkId.fromUrlPath(SHARED_NAME);
         ShareViewerPrincipal legitimateViewer = new ShareViewerPrincipal(SHARED_NAME, linkId);
         PrincipalKey viewerKey = PrincipalKey.of(legitimateViewer);
         cache.put(viewerKey, "viewer-original-data");
@@ -77,7 +77,7 @@ class MessageCacheKeyCollisionTest {
         cache.put(sharerKey, "sharer-subscription-data");
 
         // Attacker constructs a ShareViewerPrincipal with the same name
-        ShareLinkId linkId = new ShareLinkId("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         ShareViewerPrincipal forgedViewer = new ShareViewerPrincipal("my-wall-id", linkId);
         PrincipalKey forgedKey = PrincipalKey.of(forgedViewer);
 

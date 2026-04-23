@@ -38,7 +38,7 @@ class ShareRenderingServiceTest {
     private ImageProxyUrlSigner mockProxyBuilder;
 
     private static final ShareLinkId SHARE_LINK_ID =
-            new ShareLinkId("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            ShareLinkId.fromUrlPath("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
     @BeforeEach
     void setUp() {

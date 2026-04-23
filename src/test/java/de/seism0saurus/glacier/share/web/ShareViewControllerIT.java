@@ -169,10 +169,10 @@ class ShareViewControllerIT {
 
     private ShareLink mockActiveShareLinkWithSharer(String shareLinkIdStr, String sharerWallId) {
         ShareLink link = org.mockito.Mockito.mock(ShareLink.class);
-        when(link.getId()).thenReturn(new ShareLinkId(shareLinkIdStr));
-        when(link.getSharerWallId()).thenReturn(sharerWallId);
-        when(link.getExpiresAt()).thenReturn(Instant.now().plusSeconds(86400 * 7));
-        when(link.getCreatedAt()).thenReturn(Instant.now());
+        when(link.id()).thenReturn(ShareLinkId.fromUrlPath(shareLinkIdStr));
+        when(link.sharerWallId()).thenReturn(sharerWallId);
+        when(link.expiresAt()).thenReturn(Instant.now().plusSeconds(86400 * 7));
+        when(link.createdAt()).thenReturn(Instant.now());
         return link;
     }
 }

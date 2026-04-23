@@ -35,9 +35,9 @@ class ShareViewStompRelayTest {
     private static final String WALL_ID = "test-wall-id";
     private static final String HASHTAG = "testhashtag";
     private static final ShareLinkId LINK_ID =
-            new ShareLinkId("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            ShareLinkId.fromUrlPath("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     private static final ShareLinkId LINK_ID_2 =
-            new ShareLinkId("sv_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
+            ShareLinkId.fromUrlPath("sv_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
 
     @BeforeEach
     void setUp() {
@@ -59,7 +59,7 @@ class ShareViewStompRelayTest {
         Object payload = Map.of("id", "toot-1");
         relay.relayTootEvent(WALL_ID, HASHTAG, "creation", payload);
 
-        String expectedTopic = "/topic/share/" + LINK_ID.getValue() + "/" + HASHTAG + "/creation";
+        String expectedTopic = "/topic/share/" + LINK_ID.value() + "/" + HASHTAG + "/creation";
         verify(mockTemplate).convertAndSend(eq(expectedTopic), eq(payload));
     }
 
@@ -74,10 +74,10 @@ class ShareViewStompRelayTest {
         relay.relayTootEvent(WALL_ID, HASHTAG, "modification", payload);
 
         verify(mockTemplate).convertAndSend(
-                eq("/topic/share/" + LINK_ID.getValue() + "/" + HASHTAG + "/modification"),
+                eq("/topic/share/" + LINK_ID.value() + "/" + HASHTAG + "/modification"),
                 eq(payload));
         verify(mockTemplate).convertAndSend(
-                eq("/topic/share/" + LINK_ID_2.getValue() + "/" + HASHTAG + "/modification"),
+                eq("/topic/share/" + LINK_ID_2.value() + "/" + HASHTAG + "/modification"),
                 eq(payload));
     }
 
@@ -120,7 +120,7 @@ class ShareViewStompRelayTest {
     void pushRevocation_publishesControlMessage() {
         relay.pushRevocation(LINK_ID);
 
-        String expectedControl = "/topic/share/" + LINK_ID.getValue() + "/control";
+        String expectedControl = "/topic/share/" + LINK_ID.value() + "/control";
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> payloadCaptor =
                 (ArgumentCaptor<Map<String, String>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(Map.class);
@@ -168,6 +168,6 @@ class ShareViewStompRelayTest {
 
     private static ShareLink shareLink(ShareLinkId id, String wallId) {
         Instant now = Instant.now();
-        return new ShareLink(id, wallId, now, now.plusSeconds(7 * 24 * 3600));
+        return ShareLink.create(id, wallId, now, java.time.Duration.ofDays(7));
     }
 }

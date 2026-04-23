@@ -60,33 +60,33 @@ class GlacierPrincipalTest {
 
     @Test
     void shareViewerPrincipal_getNameReturnsViewerId() {
-        ShareLinkId linkId = new ShareLinkId("sv_" + "A".repeat(40));
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_" + "A".repeat(40));
         ShareViewerPrincipal p = new ShareViewerPrincipal("sv_viewerid1234", linkId);
         assertThat(p.getName()).isEqualTo("sv_viewerid1234");
     }
 
     @Test
     void shareViewerPrincipal_implementsPrincipal() {
-        ShareLinkId linkId = new ShareLinkId("sv_" + "A".repeat(40));
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_" + "A".repeat(40));
         assertThat(new ShareViewerPrincipal("sv_x", linkId)).isInstanceOf(Principal.class);
     }
 
     @Test
     void shareViewerPrincipal_implementsGlacierPrincipal() {
-        ShareLinkId linkId = new ShareLinkId("sv_" + "A".repeat(40));
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_" + "A".repeat(40));
         assertThat(new ShareViewerPrincipal("sv_x", linkId)).isInstanceOf(GlacierPrincipal.class);
     }
 
     @Test
     void shareViewerPrincipal_holdsBoundShareLinkId() {
-        ShareLinkId linkId = new ShareLinkId("sv_" + "B".repeat(40));
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_" + "B".repeat(40));
         ShareViewerPrincipal p = new ShareViewerPrincipal("sv_viewer", linkId);
         assertThat(p.boundShareLinkId()).isEqualTo(linkId);
     }
 
     @Test
     void shareViewerPrincipal_nullViewerId_rejected() {
-        ShareLinkId linkId = new ShareLinkId("sv_" + "A".repeat(40));
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_" + "A".repeat(40));
         assertThatThrownBy(() -> new ShareViewerPrincipal(null, linkId))
                 .isInstanceOf(NullPointerException.class);
     }
@@ -107,7 +107,7 @@ class GlacierPrincipalTest {
         // This is the anti-collision guarantee that replaced the sv_ prefix convention.
         String sharedName = "sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         WallPrincipal wall = new WallPrincipal(sharedName);
-        ShareLinkId linkId = new ShareLinkId(sharedName); // sv_ + 40 chars = 43 total
+        ShareLinkId linkId = ShareLinkId.fromUrlPath(sharedName); // sv_ + 40 chars = 43 total
         ShareViewerPrincipal viewer = new ShareViewerPrincipal(sharedName, linkId);
 
         // Must NOT be equal — different types = different namespaces
@@ -129,7 +129,7 @@ class GlacierPrincipalTest {
 
     @Test
     void principalKey_forShareViewerPrincipal_hasKindShareViewer() {
-        ShareLinkId linkId = new ShareLinkId("sv_" + "C".repeat(40));
+        ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_" + "C".repeat(40));
         ShareViewerPrincipal viewer = new ShareViewerPrincipal("sv_viewer", linkId);
         PrincipalKey key = PrincipalKey.of(viewer);
         assertThat(key.kind()).isEqualTo(PrincipalKind.SHARE_VIEWER);

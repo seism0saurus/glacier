@@ -62,7 +62,7 @@ class ImageProxyIT {
     private WireMockServer wireMockServer;
 
     private static final ShareLinkId SHARE_LINK_ID =
-            new ShareLinkId("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            ShareLinkId.fromUrlPath("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
     @BeforeEach
     void startWireMock() {
