@@ -37,16 +37,60 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: [
+        '**/fallback-killswitch.spec.ts',
+        '**/fallback-insecure.spec.ts',
+        '**/share-link-killswitch.spec.ts',
+        '**/share-link-insecure.spec.ts',
+      ],
     },
 
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
+      testIgnore: [
+        '**/fallback-killswitch.spec.ts',
+        '**/fallback-insecure.spec.ts',
+        '**/share-link-killswitch.spec.ts',
+        '**/share-link-insecure.spec.ts',
+      ],
+      testMatch: ['**/share-link-firefox.spec.ts'],
     },
 
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      testIgnore: [
+        '**/fallback-killswitch.spec.ts',
+        '**/fallback-insecure.spec.ts',
+        '**/share-link-killswitch.spec.ts',
+        '**/share-link-insecure.spec.ts',
+      ],
+      testMatch: ['**/share-link-webkit.spec.ts'],
+    },
+
+    {
+      name: 'killswitch',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env['BASE_URL'] || 'http://localhost:8080/',
+      },
+      testMatch: [
+        '**/fallback-killswitch.spec.ts',
+        '**/share-link-killswitch.spec.ts',
+      ],
+    },
+
+    {
+      name: 'insecure',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env['BASE_URL_INSECURE'] || 'http://localhost:8081/',
+      },
+      testMatch: [
+        '**/fallback-insecure.spec.ts',
+        '**/share-link-insecure.spec.ts',
+      ],
     },
   ],
 });
