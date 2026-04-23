@@ -20,7 +20,6 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer {
 
     private final String glacierDomain;
-3
     /**
      * When {@code true}, the deployment is assumed to be production (TLS).
      * {@code http://localhost:8080} is removed from the allowed-origins list in that case
