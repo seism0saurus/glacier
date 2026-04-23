@@ -89,12 +89,11 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
         // ADR-SHARE-04: Dedicated endpoint for readonly share viewers.
         // Uses ShareViewPrincipalHandler which reads __Host-shareViewerId exclusively,
         // preventing any cross-namespace privilege escalation.
+        String[] shareViewOrigins = secureCookies
+                ? new String[]{"http://localhost:4200", "https://" + glacierDomain, "https://share." + glacierDomain}
+                : new String[]{"http://localhost:4200", "http://localhost:8080", "https://" + glacierDomain, "https://share." + glacierDomain};
         registry.addEndpoint("/share-view-ws")
-                .setAllowedOrigins(
-                        "http://localhost:4200",
-                        "http://localhost:8080",
-                        "https://" + glacierDomain,
-                        "https://share." + glacierDomain)
+                .setAllowedOrigins(shareViewOrigins)
                 .setHandshakeHandler(new ShareViewPrincipalHandler(secureCookies));
     }
 }
