@@ -89,7 +89,7 @@ public class ShareViewController {
         // Resolve the share link
         ShareLinkId linkId;
         try {
-            linkId = new ShareLinkId(shareId);
+            linkId = ShareLinkId.fromUrlPath(shareId);
         } catch (IllegalArgumentException e) {
             // Invalid format — treat as not found (anti-enumeration)
             return ResponseEntity.notFound().build();
@@ -108,12 +108,12 @@ public class ShareViewController {
         // Mint or validate viewer cookie
         String viewerId;
         if (!ShareViewPrincipalHandler.isValidShareViewerId(rawViewerId)) {
-            viewerId = cookieFactory.mintAndSet(response, link.getExpiresAt());
+            viewerId = cookieFactory.mintAndSet(response, link.expiresAt());
             AUDIT.info("share.link.accessed kind=catalog shareId-hash={} viewerId-hash={} action=cookie_minted",
                     LogScrubber.hash8(shareId), LogScrubber.hash8(viewerId));
         } else {
             viewerId = rawViewerId;
-            cookieFactory.refresh(response, viewerId, link.getExpiresAt());
+            cookieFactory.refresh(response, viewerId, link.expiresAt());
             AUDIT.info("share.link.accessed kind=catalog shareId-hash={} viewerId-hash={}",
                     LogScrubber.hash8(shareId), LogScrubber.hash8(viewerId));
         }
@@ -125,7 +125,7 @@ public class ShareViewController {
         ShareCatalogResponse catalog = ShareCatalogResponse.active(
                 shareId,
                 hashtags,
-                link.getExpiresAt()
+                link.expiresAt()
         );
 
         return ResponseEntity.ok(catalog);

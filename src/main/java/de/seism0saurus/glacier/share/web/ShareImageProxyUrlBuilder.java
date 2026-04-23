@@ -58,7 +58,7 @@ public class ShareImageProxyUrlBuilder implements ImageProxyUrlSigner {
         if (originalUrl == null || originalUrl.isBlank()) return null;
 
         long expiresAt = Instant.now().getEpochSecond() + TOKEN_VALIDITY_SECONDS;
-        String payload = originalUrl + "|" + expiresAt + "|" + shareLinkId.getValue();
+        String payload = originalUrl + "|" + expiresAt + "|" + shareLinkId.value();
 
         byte[] mac;
         try {

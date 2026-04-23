@@ -90,16 +90,16 @@ public class ShareViewStompRelay {
         for (ShareLink link : activeLinks) {
             // Topic path: /topic/share/{shareLinkId}/{hashtag}/{eventType}
             // wallId is DELIBERATELY absent from this path (SR-SHARE-02)
-            String topic = SHARE_TOPIC_PREFIX + link.getId().getValue()
+            String topic = SHARE_TOPIC_PREFIX + link.id().value()
                     + "/" + hashtag
                     + "/" + eventType;
             try {
                 messagingTemplate.convertAndSend(topic, payload);
                 log.debug("share.relay.published shareId-hash={} hashtag={} event={}",
-                        LogScrubber.hash8(link.getId().getValue()), hashtag, eventType);
+                        LogScrubber.hash8(link.id().value()), hashtag, eventType);
             } catch (Exception e) {
                 log.warn("share.relay.publish_failed shareId-hash={} reason={}",
-                        LogScrubber.hash8(link.getId().getValue()), e.getMessage());
+                        LogScrubber.hash8(link.id().value()), e.getMessage());
             }
         }
     }
@@ -116,15 +116,15 @@ public class ShareViewStompRelay {
      * @param shareLinkId the revoked share link (not-null)
      */
     public void pushRevocation(final ShareLinkId shareLinkId) {
-        String topic = SHARE_TOPIC_PREFIX + shareLinkId.getValue() + "/control";
+        String topic = SHARE_TOPIC_PREFIX + shareLinkId.value() + "/control";
         Map<String, String> controlPayload = Map.of("type", "revoked");
 
         try {
             messagingTemplate.convertAndSend(topic, controlPayload);
-            AUDIT.info("share.revoke.pushed shareId-hash={}", LogScrubber.hash8(shareLinkId.getValue()));
+            AUDIT.info("share.revoke.pushed shareId-hash={}", LogScrubber.hash8(shareLinkId.value()));
         } catch (Exception e) {
             log.warn("share.revoke.push_failed shareId-hash={} reason={}",
-                    LogScrubber.hash8(shareLinkId.getValue()), e.getMessage());
+                    LogScrubber.hash8(shareLinkId.value()), e.getMessage());
         }
     }
 }

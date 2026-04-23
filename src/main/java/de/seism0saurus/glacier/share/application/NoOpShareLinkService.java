@@ -30,7 +30,7 @@ public class NoOpShareLinkService implements ShareLinkService {
     private static final Logger log = LoggerFactory.getLogger(NoOpShareLinkService.class);
 
     @Override
-    public ShareLink create(String sharerWallId, Instant now) {
+    public ShareLink create(String sharerWallId, String sharerIp, Instant now) {
         log.warn("NoOpShareLinkService.create called — peer-lane implementation not yet available");
         throw new UnsupportedOperationException("ShareLinkService not implemented yet — waiting for tdd-ddd-implementer");
     }

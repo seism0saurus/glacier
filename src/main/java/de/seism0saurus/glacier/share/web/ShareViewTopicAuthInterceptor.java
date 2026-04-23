@@ -109,7 +109,7 @@ public class ShareViewTopicAuthInterceptor implements ChannelInterceptor {
 
         // Validate that the share link is ACTIVE
         try {
-            ShareLinkId shareLinkId = new ShareLinkId(shareLinkIdStr);
+            ShareLinkId shareLinkId = ShareLinkId.fromUrlPath(shareLinkIdStr);
             boolean active = shareLinkService.resolve(shareLinkId, Instant.now()).isPresent();
             if (!active) {
                 AUDIT.info("viewer.subscribe.rejected reason=link_not_active shareId-hash={} viewerId-hash={}",

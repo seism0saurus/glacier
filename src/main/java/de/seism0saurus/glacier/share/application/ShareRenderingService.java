@@ -75,7 +75,7 @@ public class ShareRenderingService {
         if (extracted.text().endsWith(OVERSIZE_PLACEHOLDER)) {
             AUDIT.info("share.render.oversize statusId-hash={} shareLinkId-hash={}",
                     LogScrubber.hash8(safeId(status)),
-                    LogScrubber.hash8(shareLinkId.getValue()));
+                    LogScrubber.hash8(shareLinkId.value()));
         }
 
         // Validate author profile URL (scheme-check)
