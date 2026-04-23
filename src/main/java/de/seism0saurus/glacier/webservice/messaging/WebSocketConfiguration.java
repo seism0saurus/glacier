@@ -20,6 +20,15 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer {
 
     private final String glacierDomain;
+3
+    /**
+     * When {@code true}, the deployment is assumed to be production (TLS).
+     * {@code http://localhost:8080} is removed from the allowed-origins list in that case
+     * to minimise CORS attack surface (FIX D, D-08, ADR-06).
+     *
+     * <p>Mirrors {@code glacier.cookie.secure} — the same flag that gates the cookie
+     * {@code Secure} attribute (D-09).
+     */
     private final boolean secureCookies;
 
     @Autowired(required = false)
@@ -43,6 +52,7 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
             registration.interceptors(shareViewTopicAuthInterceptor);
         }
     }
+
     /**
      * Configures the message broker for WebSocket communication.
      * <p>
@@ -58,18 +68,23 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     }
 
     /**
-     * Registers a STOMP endpoint for WebSocket communication.
-     * <p>
-     * The endpoint is registered under "/websocket".
-     * A "sessionId" is added to the attributes to enable sending messages to a specific user with a "/user" prefix.
+     * Registers the STOMP WebSocket endpoint with a security-hardened allowed-origins list.
      *
-     * @param registry the StompEndpointRegistry object used for registering the endpoint
+     * <p>FIX D (D-08, ADR-06): {@code http://localhost:8080} is only included when
+     * {@code glacier.cookie.secure=false} (dev/loopback mode). In production
+     * ({@code secureCookies=true}), it is excluded to reduce CORS attack surface.
+     * The Angular dev server on :4200 is always allowed (needed during local development
+     * regardless of the TLS flag).
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // Main wall endpoint — sharer context (wallId principal)
+        String[] allowedOrigins = secureCookies
+                ? new String[]{"http://localhost:4200", "https://" + glacierDomain}
+                : new String[]{"http://localhost:4200", "http://localhost:8080", "https://" + glacierDomain};
+
         registry.addEndpoint("/websocket")
-                .setAllowedOrigins("http://localhost:4200","http://localhost:8080","https://"+glacierDomain) //TODO: Make it better configurable and prevent localhost for prod
+                .setAllowedOrigins(allowedOrigins)
                 .setHandshakeHandler(new PrincipalHandler());
 
         // ADR-SHARE-04: Dedicated endpoint for readonly share viewers.

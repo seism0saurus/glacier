@@ -7,8 +7,18 @@ With **Glacier** you can follow hashtags to see the interaction of participants 
 
 Glacier ist still **BETA**. You can use it, but there could be some minor errors. Feel free to open an issue here on GitHub, to report any problems.
 
+## How this project is built
+
+Glacier is **planned and approved by a human maintainer**. Architecture decisions, feature scope, security requirements, UX direction, and acceptance criteria are authored and signed off by the maintainer before any code is written. **AI coding assistants help with the implementation**: they draft code, tests, and documentation within the bounds of an approved plan, and their output is reviewed by the maintainer before it lands. Every design decision, every change of scope, and every acceptance disposition is recorded in `docs/decisions/` so the human-in-the-loop trail is auditable.
+    
+    I, seism0saurus, am aware of the ethical and ecological problems of AI.
+    My goal is to deliver great software for humans and to understand the mechanics behind it.
+    But I also build this in my free time and have other responsibilities.
+    If you want to participate in the development, please make sure to use AI in a responsible way.
+
 ## Content
 
+- [How this project is built](#how-this-project-is-built)
 - [Licences](#licences)
 - [Try it](#try-it)
   - [Demo](#demo)
@@ -70,7 +80,7 @@ cd glacier
 
 After the build you can run Glacier locally from the commandline, to test the jar before packaging it into a container image.
 ```bash
-ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.8.jar
+ACCESS_KEY=my-secret-mastodon-api-key -e HANDLE=my-mastodon-handle -e INSTANCE=my-mastodon-instance -e MY_DOMAIN=localhost:8080 java -jar target/glacier-0.0.9.jar
 ```
 
 ### Run tests
@@ -88,7 +98,7 @@ To create a container image for Docker or other engines,
 copy the created jar into the [infrastructure/glacier](infrastructure/glacier) folder.
 Then change into the folder and run docker build.
 ```bash
-cp target/glacier-0.0.8.jar containerimage/
+cp target/glacier-0.0.9.jar containerimage/
 cd containerimage
 ```
 
@@ -98,13 +108,13 @@ or any compatible build tool that creates standard container images like [builda
 #### Docker
 
 ```bash
-docker build -t glacier --build-arg JAR_FILE=glacier-0.0.8.jar .
+docker build -t glacier --build-arg JAR_FILE=glacier-0.0.9.jar .
 ```
 
 #### Buildah
 
 ```bash
-buildah build --build-arg JAR_FILE=glacier-0.0.8.jar  -f Dockerfile -t glacier .
+buildah build --build-arg JAR_FILE=glacier-0.0.9.jar  -f Dockerfile -t glacier .
 ```
 
 ## Test it

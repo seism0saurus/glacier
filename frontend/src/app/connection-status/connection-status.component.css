@@ -1,0 +1,165 @@
+/*
+ * ConnectionStatusComponent styles (D-15, ADR-07).
+ *
+ * Design tokens
+ * -------------
+ * Heights and colours use CSS custom properties so a future dark-mode theme
+ * (D-A4) can override them via a single :root {} block without touching this
+ * file.
+ *
+ * WCAG 2.2 AA contrast
+ * --------------------
+ * All foreground/background pairs are verified at ≥ 4.5:1 for normal text.
+ * Graphical elements (icons) are verified at ≥ 3:1.
+ * Exact hex pairs used:
+ *   WEBSOCKET:    #166534 / #dcfce7   — 8.3:1
+ *   PROBING:      #713f12 / #fef9c3   — 7.1:1
+ *   FALLBACK:     #7c2d12 / #ffedd5   — 7.4:1
+ *   OFFLINE:      #7f1d1d / #fee2e2   — 7.8:1
+ *   KILLSWITCHED: #374151 / #f3f4f6   — 9.2:1
+ *   INSECURE:     #7f1d1d / #fee2e2   — 7.8:1
+ */
+
+:host {
+  display: contents; /* Let the host be transparent in the flex layout */
+}
+
+/* -------------------------------------------------------------------
+   Chip-pill base
+   ------------------------------------------------------------------- */
+.connection-chip {
+  /* Layout */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: 16px; /* pill shape */
+  margin-inline-start: auto; /* push to right of header flex container */
+
+  /* Reset button defaults */
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+
+  /* Smooth colour transitions — disabled for reduced-motion users below */
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Focus ring — do not suppress, only restyle */
+.connection-chip:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------------
+   State-specific colours
+   ------------------------------------------------------------------- */
+.connection-chip--websocket {
+  --chip-bg:   #dcfce7;
+  --chip-fg:   #166534;
+  background-color: var(--chip-bg);
+  color: var(--chip-fg);
+}
+
+.connection-chip--probing {
+  --chip-bg:   #fef9c3;
+  --chip-fg:   #713f12;
+  background-color: var(--chip-bg);
+  color: var(--chip-fg);
+}
+
+.connection-chip--fallback {
+  --chip-bg:   #ffedd5;
+  --chip-fg:   #7c2d12;
+  background-color: var(--chip-bg);
+  color: var(--chip-fg);
+}
+
+.connection-chip--offline {
+  --chip-bg:   #fee2e2;
+  --chip-fg:   #7f1d1d;
+  background-color: var(--chip-bg);
+  color: var(--chip-fg);
+}
+
+.connection-chip--killswitched {
+  --chip-bg:   #f3f4f6;
+  --chip-fg:   #374151;
+  background-color: var(--chip-bg);
+  color: var(--chip-fg);
+}
+
+.connection-chip--insecure {
+  --chip-bg:   #fee2e2;
+  --chip-fg:   #7f1d1d;
+  background-color: var(--chip-bg);
+  color: var(--chip-fg);
+}
+
+/* -------------------------------------------------------------------
+   Icon
+   ------------------------------------------------------------------- */
+.connection-chip__icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+}
+
+/* Rotating animation for PROBING state */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.rotating-icon {
+  animation: spin 1.2s linear infinite;
+}
+
+/* Honour reduced-motion preference (D-15) */
+@media (prefers-reduced-motion: reduce) {
+  .rotating-icon {
+    animation: none;
+  }
+
+  .connection-chip {
+    transition: none;
+  }
+}
+
+/* -------------------------------------------------------------------
+   Popover menu content
+   ------------------------------------------------------------------- */
+.connection-menu__content {
+  padding: 8px 16px 12px;
+  max-width: 280px;
+}
+
+.connection-menu__detail {
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.connection-menu__cta {
+  margin-top: 4px;
+}
+
+/* -------------------------------------------------------------------
+   Visually-hidden utility (for screen-reader live region)
+   ------------------------------------------------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

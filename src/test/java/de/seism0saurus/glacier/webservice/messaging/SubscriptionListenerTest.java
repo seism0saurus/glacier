@@ -1,6 +1,7 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
@@ -16,8 +17,9 @@ import static org.mockito.Mockito.*;
 class SubscriptionListenerTest {
 
     private final SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
+    private final MessageCache messageCache = mock(MessageCache.class);
 
-    private SubscriptionListener subscriptionListener = new SubscriptionListener(subscriptionManager, 300_000L);
+    private SubscriptionListener subscriptionListener = new SubscriptionListener(subscriptionManager, messageCache, 300_000L);
 
     @Test
     void testOnConnectedEvent_WithoutPreviousDisconnect() throws Exception {
@@ -64,7 +66,7 @@ class SubscriptionListenerTest {
     @Test
     void testOnConnectedEvent_WithPreviousDisconnect_WithWaitingForTimeout() throws Exception {
         // Reduce the timeout to one second
-        subscriptionListener = new SubscriptionListener(subscriptionManager, 1_000L);
+        subscriptionListener = new SubscriptionListener(subscriptionManager, messageCache, 1_000L);
 
         // Create a valid Principal object
         Principal principal = () -> "user1";
@@ -113,7 +115,7 @@ class SubscriptionListenerTest {
     @Test
     void testOnDisconnectEvent_WithWaitingForTimeout() throws Exception {
         // Reduce the timeout to one second
-        subscriptionListener = new SubscriptionListener(subscriptionManager, 1_000L);
+        subscriptionListener = new SubscriptionListener(subscriptionManager, messageCache, 1_000L);
 
         // Create a valid Principal object
         Principal principal = () -> "user1";

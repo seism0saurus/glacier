@@ -1,11 +1,12 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
@@ -52,10 +53,10 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final Map<String, Map<String, Future<?>>> subscriptions;
 
     /**
-     * The {@link SimpMessagingTemplate SimpMessagingTemplate} of this class.
-     * The template is passed to the {@link StompCallback StompCallback}, so that the callback can send asynchronous messages via WebSockets.
+     * The message cache. Provisioned before starting a virtual-thread subscription and
+     * evicted on termination so that the cache lifetime tracks the subscription lifetime (ADR-05).
      */
-    private final SimpMessagingTemplate simpMessagingTemplate;
+    private final MessageCache messageCache;
 
     /**
      * The domain for the Glacier service.
@@ -77,26 +78,26 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
 
     /**
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
-     * client, messaging template, and REST template.
+     * client, message cache, and REST template.
      *
-     * @param instance the Mastodon instance URL
+     * @param instance      the Mastodon instance URL
      * @param glacierDomain the domain for Glacier integration
-     * @param handle the Mastodon user handle
-     * @param client the Mastodon client used for API interactions
-     * @param simpMessagingTemplate the messaging template for WebSocket communications
-     * @param restTemplate the REST template for making HTTP requests
+     * @param handle        the Mastodon user handle
+     * @param client        the Mastodon client used for API interactions
+     * @param messageCache  the ring-buffer cache for event storage and STOMP fan-out
+     * @param restTemplate  the REST template for making HTTP requests
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
             @Value(value = "${glacier.domain}") String glacierDomain,
             @Value(value = "${mastodon.handle}") String handle,
             MastodonClient client,
-            SimpMessagingTemplate simpMessagingTemplate,
+            MessageCache messageCache,
             RestTemplate restTemplate) {
         this.glacierDomain = glacierDomain;
         this.handle = handle;
         this.restTemplate = restTemplate;
-        this.simpMessagingTemplate = simpMessagingTemplate;
+        this.messageCache = messageCache;
         this.subscriptions = new HashMap<>();
         this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
@@ -104,6 +105,11 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
 
     /**
      * Subscribes to a specified hashtag on Mastodon and starts a virtual thread for asynchronous listening.
+     *
+     * <p>Calls {@link MessageCache#provisionHashtag} before submitting the virtual thread.
+     * If {@code provisionHashtag} throws {@link de.seism0saurus.glacier.webservice.cache.CacheCapacityException},
+     * the exception propagates to the caller ({@code SubscriptionController}) without
+     * starting the Bigbone streaming thread.
      *
      * @param principal The principal of the user.
      * @param hashtag   The hashtag to subscribe to.
@@ -116,18 +122,28 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
         Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
         if (previousSubscriptions.get(hashtag) != null) {
-            LOGGER.info("A subscription for principal {} with the hashtag {} already exists", principal, hashtag);
+            // D-13/SR-8: log only hashed principal — never the raw wallId UUID
+            LOGGER.info("A subscription for principal-hash={} with the hashtag={} already exists",
+                    LogScrubber.hash8(principal), hashtag);
             return;
         }
+
+        // CacheCapacityException propagates to SubscriptionController — do not catch here (D-11)
+        messageCache.provisionHashtag(principal, hashtag);
+
         Future<?> future;
         LOGGER.debug("Submitting asynchronous future task...");
         future = executorService.submit(() -> {
-            StompCallback stompCallback = new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain);
+            StompCallback stompCallback = new StompCallback(this, messageCache, restTemplate, principal, hashtag, handle, glacierDomain);
             try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
-                LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
+                // D-13/SR-8: log only hashed principal — never the raw wallId UUID
+                LOGGER.info("Asynchronous subscription for principal-hash={} with the hashtag={} started",
+                        LogScrubber.hash8(principal), hashtag);
                 sleepForever(subscription);
             } catch (NullPointerException | IOException e) {
-                LOGGER.error("Asynchronous subscription for {} with the hashtag {} had an exception", principal, hashtag, e);
+                // D-13/SR-8: log only hashed principal — never the raw wallId UUID
+                LOGGER.error("Asynchronous subscription for principal-hash={} with the hashtag={} had an exception",
+                        LogScrubber.hash8(principal), hashtag, e);
                 throw new RuntimeException(e);
             }
         });
@@ -138,6 +154,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     /**
      * Terminates a subscription for a given principal and hashtag.
      *
+     * <p>Calls {@link MessageCache#evictHashtag} after cancelling the future (ADR-05).
+     *
      * @param principal The principal associated with the subscription.
      * @param hashtag   The hashtag of the subscription to be terminated.
      * @throws IllegalArgumentException If the provided principal or hashtag is unknown.
@@ -146,11 +164,13 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     public void terminateSubscription(final String principal, final String hashtag) {
         Map<String, Future<?>> subscriptionsOfPrincipal = this.subscriptions.get(principal);
         if (subscriptionsOfPrincipal == null) {
-            throw new IllegalArgumentException("The provided principal " + principal + " is unknown");
+            // D-13/SR-8: never echo raw principal in exception messages (feeds into 4xx responses)
+            throw new IllegalArgumentException("The provided principal is unknown");
         }
         Future<?> subscription = subscriptionsOfPrincipal.get(hashtag);
         if (subscription == null) {
-            throw new IllegalArgumentException("The provided hashtag " + hashtag + " for principal " + principal + " is unknown");
+            // D-13/SR-8: never echo raw principal in exception messages (feeds into 4xx responses)
+            throw new IllegalArgumentException("The provided hashtag is unknown for this principal");
         }
         subscriptionsOfPrincipal.remove(hashtag);
         if (subscriptionsOfPrincipal.isEmpty()) {
@@ -159,21 +179,28 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             this.subscriptions.put(principal, subscriptionsOfPrincipal);
         }
         subscription.cancel(true);
+        messageCache.evictHashtag(principal, hashtag);
     }
 
     /**
      * Terminate all subscriptions for the given principal.
      *
+     * <p>Calls {@link MessageCache#evictPrincipal} after cancelling all futures (ADR-05).
+     *
      * @param principal The principal for which subscriptions should be terminated.
      */
     @Override
     public void terminateAllSubscriptions(String principal) {
+        // Always evict the cache for this principal — the disconnect timer guarantees
+        // eviction regardless of whether subscriptions were already removed individually
+        // (e.g., via terminateSubscription). This prevents dormant cache entries from
+        // accumulating toward the 10 000-principal cap (ADR-05, D-11 memory-reclamation).
         Map<String, Future<?>> futureMap = this.subscriptions.get(principal);
-        if (futureMap == null) {
-            return;
+        if (futureMap != null) {
+            futureMap.forEach((tag, future) -> future.cancel(true));
+            this.subscriptions.remove(principal);
         }
-        futureMap.forEach((tag, future) -> future.cancel(true));
-        this.subscriptions.remove(principal);
+        messageCache.evictPrincipal(principal);
     }
 
     /**

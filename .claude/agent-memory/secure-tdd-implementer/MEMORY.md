@@ -1,0 +1,1 @@
+- [Glacier Phase 3 security patterns](project_glacier_security_patterns.md) — D-13 log hygiene with LogScrubber, BOLA/PrincipalHandler fix, AUDIT logger, CORS gating, Spring profile isolation, cache eviction chain

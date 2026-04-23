@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logback configuration for Glacier.
+
+  Security hardening (D-13, SR-8):
+  - The JSON encoder layout intentionally never includes MDC keys named
+    'cookie', 'setCookie', 'authorization' — these are dropped at the encoder level.
+  - A dedicated AUDIT logger (logger name "AUDIT") routes auth-failure and
+    rate-limit events to stdout at INFO level for operational visibility.
+  - Raw wallId / cookie values must never reach this encoder; see LogScrubber for helpers.
+-->
 <configuration>
+
+    <!--
+      Primary JSON appender for all application logs.
+      Uses logback-json-classic's JsonLayout which serialises MDC fields into the JSON
+      output.  The JsonLayout does not support field-level suppression natively; the
+      suppression of sensitive fields (cookie, setCookie, authorization) is enforced at
+      the code level by LogScrubber and by the convention that no production code puts
+      those keys into the MDC or logger calls (D-13, SR-8).
+    -->
     <appender name="jsonstdout" class="ch.qos.logback.core.ConsoleAppender">
         <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
             <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
@@ -10,7 +29,20 @@
         </layout>
     </appender>
 
+    <!--
+      AUDIT logger — dedicated channel for security-relevant events (D-13, SR-8):
+        - fallback.auth.fail
+        - fallback.ratelimit.hit
+        - cache.capacity.exhausted
+      Routes to the same JSON stdout at INFO level so operators can grep "AUDIT"
+      in log aggregators without needing a separate sink.
+    -->
+    <logger name="AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="jsonstdout"/>
+    </logger>
+
     <root level="info">
         <appender-ref ref="jsonstdout"/>
     </root>
+
 </configuration>

@@ -1,10 +1,11 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.webservice.cache.CacheCapacityException;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
 import social.bigbone.api.method.StreamingMethods;
@@ -12,9 +13,11 @@ import social.bigbone.api.method.StreamingMethods;
 import java.io.Closeable;
 import java.io.IOException;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class SubscriptionManagerImplTest {
@@ -23,7 +26,7 @@ class SubscriptionManagerImplTest {
     private MastodonClient mastodonClient;
 
     @Mock
-    private SimpMessagingTemplate simpMessagingTemplate;
+    private MessageCache messageCache;
 
     @Mock
     private RestTemplate restTemplate;
@@ -40,7 +43,7 @@ class SubscriptionManagerImplTest {
         String instance = "test-instance";
         String glacierDomain = "test-domain";
         String handle = "test-handle@test-instance";
-        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, simpMessagingTemplate, restTemplate);
+        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, messageCache, restTemplate);
     }
 
     @Test
@@ -69,27 +72,6 @@ class SubscriptionManagerImplTest {
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principal, hashtag));
         verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
     }
-
-//    @Test
-//    void testSubscribeToHashtag_WithExceptionDuringStreaming() throws InterruptedException, IOException {
-//        String principal = "user123";
-//        String hashtag = "TestHashtag";
-//        Closeable subscription = mock(Closeable.class);
-//        doThrow(new IOException("Test IOException")).when(subscription).close();
-//        StreamingMethods methods = mock(StreamingMethods.class);
-//        when(methods.hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class))).thenReturn(subscription);
-//        when(mastodonClient.streaming()).thenReturn(methods);
-//
-//        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-//            subscriptionManager.subscribeToHashtag(principal, hashtag);
-//            Thread.sleep(3000L);
-//            subscriptionManager.terminateSubscription(principal, hashtag);
-//            Thread.sleep(30000L);
-//        });
-//
-//        assertEquals("java.io.IOException: Test IOException", exception.getMessage());
-//        verify(methods).hashtag(eq(hashtag), anyBoolean(), any(StompCallback.class));
-//    }
 
     @Test
     void testSubscribeToHashtag_NullPrincipal() {
@@ -191,7 +173,9 @@ class SubscriptionManagerImplTest {
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
                 subscriptionManager.terminateSubscription(principal, hashtag)
         );
-        assertEquals("The provided principal " + principal + " is unknown", exception.getMessage());
+        // FIX A (D-13/SR-8): exception message must NOT echo the raw principal value
+        assertThat(exception.getMessage()).doesNotContain(principal);
+        assertThat(exception.getMessage()).contains("principal");
     }
 
     @Test
@@ -206,7 +190,9 @@ class SubscriptionManagerImplTest {
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
                 subscriptionManager.terminateSubscription(principal, unknownHashtag)
         );
-        assertEquals("The provided hashtag " + unknownHashtag + " for principal " + principal + " is unknown", exception.getMessage());
+        // FIX A (D-13/SR-8): exception message must NOT echo raw principal or hashtag values
+        assertThat(exception.getMessage()).doesNotContain(principal);
+        assertThat(exception.getMessage()).contains("hashtag");
     }
 
     @Test
@@ -308,5 +294,85 @@ class SubscriptionManagerImplTest {
         subscriptionManager.subscribeToHashtag(principal, hashtag2);
 
         assertEquals(2, subscriptionManager.numberOfSubscriptions(principal));
+    }
+
+    // -----------------------------------------------------------------
+    // New tests for Phase 1: MessageCache integration
+    // -----------------------------------------------------------------
+
+    /**
+     * subscribeToHashtag calls provisionHashtag before starting the virtual thread (D-11).
+     */
+    @Test
+    void subscribeToHashtag_callsProvisionHashtagBeforeStartingThread() {
+        String principal = "user123";
+        String hashtag = "TestHashtag";
+
+        subscriptionManager.subscribeToHashtag(principal, hashtag);
+
+        verify(messageCache, times(1)).provisionHashtag(principal, hashtag);
+    }
+
+    /**
+     * CacheCapacityException from provisionHashtag propagates to the caller (D-11).
+     */
+    @Test
+    void subscribeToHashtag_cacheCapacityExceptionFromProvision_propagatesToCaller() {
+        String principal = "user123";
+        String hashtag = "TooMany";
+        doThrow(new CacheCapacityException("cap exceeded"))
+                .when(messageCache).provisionHashtag(principal, hashtag);
+
+        assertThrows(CacheCapacityException.class, () ->
+                subscriptionManager.subscribeToHashtag(principal, hashtag)
+        );
+    }
+
+    /**
+     * terminateSubscription calls evictHashtag after cancelling the future (ADR-05).
+     */
+    @Test
+    void terminateSubscription_callsEvictHashtag() {
+        String principal = "user123";
+        String hashtag = "TestHashtag";
+        subscriptionManager.subscribeToHashtag(principal, hashtag);
+
+        subscriptionManager.terminateSubscription(principal, hashtag);
+
+        verify(messageCache, times(1)).evictHashtag(principal, hashtag);
+    }
+
+    /**
+     * terminateAllSubscriptions calls evictPrincipal after cancelling all futures (ADR-05).
+     */
+    @Test
+    void terminateAllSubscriptions_callsEvictPrincipal() {
+        String principal = "user123";
+        subscriptionManager.subscribeToHashtag(principal, "h1");
+        subscriptionManager.subscribeToHashtag(principal, "h2");
+
+        subscriptionManager.terminateAllSubscriptions(principal);
+
+        verify(messageCache, times(1)).evictPrincipal(principal);
+    }
+
+    /**
+     * terminateAllSubscriptions always calls evictPrincipal even when the principal
+     * has no active subscriptions in the subscription map.
+     *
+     * <p>Arrange: no subscriptions have been registered for the principal.
+     * <p>Act: call terminateAllSubscriptions (e.g. from a disconnect timer).
+     * <p>Assert: evictPrincipal is still called — the disconnect timer must
+     *   always reclaim cache entries regardless of subscription-map state (ADR-05, D-11).
+     */
+    @Test
+    void terminateAllSubscriptions_withNoActiveSubscriptions_stillCallsEvictPrincipal() {
+        String principal = "principal-with-cache-but-no-subscriptions";
+
+        // Act: timer fires; no subscriptions in the map (e.g. already terminated individually)
+        subscriptionManager.terminateAllSubscriptions(principal);
+
+        // Assert: cache eviction is unconditional (ADR-05 memory-reclamation contract)
+        verify(messageCache, times(1)).evictPrincipal(principal);
     }
 }

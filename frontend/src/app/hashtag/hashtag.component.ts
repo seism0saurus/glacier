@@ -1,9 +1,14 @@
-import {Component, ElementRef, ViewChild} from '@angular/core';
+import {Component, ElementRef, OnDestroy, OnInit, ViewChild} from '@angular/core';
 import {COMMA, ENTER, SEMICOLON} from '@angular/cdk/keycodes';
 import {SubscriptionService} from "../subscription.service";
 import {MatChipEditedEvent, MatChipInputEvent} from "@angular/material/chips";
 import {MatIconRegistry} from "@angular/material/icon";
 import {DomSanitizer} from "@angular/platform-browser";
+import {MatSnackBar} from "@angular/material/snack-bar";
+import {RxStompService} from "../rx-stomp.service";
+import {Message} from "@stomp/stompjs";
+import {SubscriptionAckMessage} from "../message-types/subscription-ack-message";
+import {Subscription} from "rxjs";
 
 
 /**
@@ -34,12 +39,12 @@ import {DomSanitizer} from "@angular/platform-browser";
  * - Ensures hashtags are trimmed, lowercased, and stripped of the `#` character before usage.
  */
 @Component({
-    selector: 'app-hashtag',
-    templateUrl: './hashtag.component.html',
-    styleUrls: ['./hashtag.component.css'],
-    standalone: false
+  selector: 'app-hashtag',
+  templateUrl: './hashtag.component.html',
+  styleUrls: ['./hashtag.component.css'],
+  standalone: false,
 })
-export class HashtagComponent {
+export class HashtagComponent implements OnInit, OnDestroy {
 
   addOnBlur = true;
   separatorKeysCodes: number[] = [ENTER, COMMA, SEMICOLON];
@@ -49,9 +54,14 @@ export class HashtagComponent {
   // @ts-ignore
   @ViewChild('hashtagInput') hashtagInput: ElementRef<HTMLInputElement>;
 
-  constructor(private subscriptionService: SubscriptionService,
-              private matIconRegistry: MatIconRegistry,
-              private domSanitizer: DomSanitizer
+  private _ackSubscription?: Subscription;
+
+  constructor(
+    private subscriptionService: SubscriptionService,
+    private matIconRegistry: MatIconRegistry,
+    private domSanitizer: DomSanitizer,
+    private snackBar: MatSnackBar,
+    private rxStompService: RxStompService,
   ) {
     this.matIconRegistry.addSvgIcon(
       `cancel_icon`,
@@ -65,6 +75,46 @@ export class HashtagComponent {
       `trash_icon`,
       this.domSanitizer.bypassSecurityTrustResourceUrl("../assets/trash.svg")
     );
+  }
+
+  ngOnInit(): void {
+    // Subscribe to STOMP ack messages to catch CAP_EXCEEDED rejections (D-12, D-17).
+    // The SubscriptionService already subscribes to /user/topic/subscriptions, but
+    // HashtagComponent needs its own subscription here to roll back the optimistic
+    // chip addition when the server rejects.
+    this._ackSubscription = this.rxStompService
+      .watch('/user/topic/subscriptions')
+      .subscribe((message: Message) => {
+        const data: SubscriptionAckMessage = JSON.parse(message.body);
+        if (!data.subscribed && data.rejection?.code === 'CAP_EXCEEDED') {
+          this._rollbackCapExceeded(data.hashtag, data.rejection.details);
+        }
+      });
+  }
+
+  ngOnDestroy(): void {
+    this._ackSubscription?.unsubscribe();
+  }
+
+  /**
+   * Rolls back the optimistic chip addition for a hashtag that the server
+   * rejected with CAP_EXCEEDED, and shows a localised snackbar (D-12, D-17).
+   */
+  private _rollbackCapExceeded(hashtag: string, details?: Record<string, unknown>): void {
+    // Remove optimistic chip from DOM
+    const index = this.hashtags.indexOf(hashtag);
+    if (index >= 0) {
+      this.hashtags.splice(index, 1);
+    }
+
+    const limit = details?.['limit'] as number | undefined;
+    const message = limit !== undefined
+      ? $localize`:cap.reached.snackbar@@cap.reached.snackbar:Maximal ${limit} Hashtags pro Sitzung. '${hashtag}' wurde nicht hinzugefügt.`
+      : $localize`:cap.reached.snackbar.no.limit@@cap.reached.snackbar.no.limit:Hashtag-Limit erreicht. '${hashtag}' wurde nicht hinzugefügt.`;
+
+    this.snackBar.open(message, $localize`:gap.snackbar.dismiss@@gap.snackbar.dismiss:Schließen`, {
+      duration: 8_000,
+    });
   }
 
   add(event: MatChipInputEvent): void {

@@ -1,0 +1,34 @@
+# TEST FIXTURE ONLY — do not include in production compose.
+#
+# Purpose: disables the HTTP fallback feature entirely so that Playwright's
+# `killswitch` project can verify that /rest/messages returns 404 and that
+# the frontend enters the KILLSWITCHED indicator state (D-11, D-19).
+#
+# Usage (one-shot):
+#   cd infrastructure
+#   tar -xf infrastructure-content.tar.gz -C ./
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f docker-compose.override.killswitch.yaml \
+#     up --build --abort-on-container-exit playwright --exit-code-from playwright
+#
+# The Playwright project that runs against this stack must be named `killswitch`
+# in frontend/playwright.config.ts (D-19).
+#
+# See infrastructure/README.md for the full operator context and the mandatory
+# FORWARD_HEADERS_STRATEGY=FRAMEWORK setting required behind traefik.
+
+services:
+  glacier:
+    environment:
+      # Disable the HTTP fallback ring-buffer and /rest/messages endpoint (D-11).
+      # FallbackController returns 404 when this is "false".
+      GLACIER_FALLBACK_ENABLED: "false"
+
+  playwright:
+    environment:
+      # Tell playwright.config.ts to activate only the `killswitch` project (D-19).
+      # Docker Compose does not forward host-shell env vars into containers automatically;
+      # this explicit entry is what makes the CI step's PLAYWRIGHT_PROJECT=killswitch
+      # reach process.env['PLAYWRIGHT_PROJECT'] inside the container.
+      PLAYWRIGHT_PROJECT: "killswitch"
