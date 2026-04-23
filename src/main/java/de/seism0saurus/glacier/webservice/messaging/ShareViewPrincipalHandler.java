@@ -164,7 +164,7 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
             if (param.startsWith("shareLinkId=")) {
                 String raw = param.substring("shareLinkId=".length());
                 try {
-                    return new ShareLinkId(raw);
+                    return ShareLinkId.fromUrlPath(raw);
                 } catch (IllegalArgumentException e) {
                     // Invalid format — return unbound; interceptor will reject SUBSCRIBE
                     return unboundShareLinkId();
@@ -182,6 +182,6 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
     private static ShareLinkId unboundShareLinkId() {
         // A well-formed but semantically empty ID that no real link can match.
         // 43 URL-safe base64 chars of zeros — cannot be a real share link.
-        return new ShareLinkId("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        return ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     }
 }
