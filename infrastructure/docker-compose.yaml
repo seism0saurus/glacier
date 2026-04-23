@@ -111,8 +111,14 @@ services:
       - ./proxy.crt:/etc/ssl/proxy.crt
       - ./proxy.key:/etc/ssl/proxy.key
       - /var/run/docker.sock:/var/run/docker.sock
+    # Add "share.proxy" as a network alias so that all containers in the
+    # mastodon network (glacier, playwright) can resolve the share subdomain
+    # to the Traefik proxy without needing extra_hosts IP entries.
+    # Traefik then routes Host:`share.proxy` to the glacier backend per dynamic.yml.
     networks:
-      - mastodon
+      mastodon:
+        aliases:
+          - share.proxy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`dashboard.localhost`)"
@@ -166,6 +172,42 @@ services:
       # Use the system certificates which got mounted with the volume
       USE_SYSTEM_CA_CERTS: true
       DEVMODE: true
+
+      # ── Share-link feature configuration ────────────────────────────────────
+      # Share subdomain hostname.  Must match the Traefik router rule in dynamic.yml
+      # and the TLS SAN in v3.ext.  In e2e: "share.proxy" (the Traefik proxy
+      # container hostname).  In production: "share.<glacier.domain>".
+      GLACIER_SHARE_HOST: "share.proxy"
+
+      # HMAC-SHA256 secret for signing image-proxy URLs (ADR-SHARE-07).
+      # In e2e a static dummy value is acceptable (no external traffic reaches
+      # the image proxy in CI).  In production this MUST be a random secret
+      # ≥32 bytes set via an env-var or secrets manager — the backend refuses
+      # to start in secure mode (COOKIE_SECURE=true) if this is absent or short.
+      # DO NOT commit a real production secret here.
+      GLACIER_SHARE_IMGPROXY_HMAC_SECRET: "e2e-dummy-hmac-secret-not-for-production-use"
+
+      # Hard caps: max active share links per sharer wallet, per source IP,
+      # and globally.  Viewer concurrency cap per individual link.
+      # Rationale in ADR-SHARE-09 / architect Round 2 cap discussion.
+      GLACIER_SHARE_MAX_ACTIVE_PER_SHARER: "3"
+      GLACIER_SHARE_MAX_ACTIVE_PER_IP: "10"
+      GLACIER_SHARE_MAX_VIEWERS_PER_LINK: "100"
+
+      # Link lifetime as ISO-8601 duration (7 days).  Sharers can revoke earlier.
+      GLACIER_SHARE_TTL: "P7D"
+
+      # How often the background sweeper runs to expire old share links (ms).
+      # 300 000 ms = 5 minutes.  Sweeper is an optimisation; expiry is enforced
+      # on every resolve() call independent of this interval.
+      GLACIER_SHARE_SWEEP_INTERVAL_MS: "300000"
+
+      # Caffeine cache TTLs for the image proxy (ADR-SHARE-07).
+      # Positive cache: 1 h (3600 s) — avatars/media update rarely.
+      # Negative cache: 60 s — avoids stampede on transient upstream failures
+      #   while staying short enough not to mislead viewers for long.
+      GLACIER_SHARE_IMGPROXY_POSITIVE_CACHE_SECONDS: "3600"
+      GLACIER_SHARE_IMGPROXY_NEGATIVE_CACHE_SECONDS: "60"
     healthcheck:
       test: [ 'CMD-SHELL', "wget -q --spider localhost:8080 || exit 1" ]
     depends_on:
@@ -230,6 +272,11 @@ services:
       # Glacier runs on port 8080
       GLACIER_HANDLE: "@glacier_e2e_test@proxy"
       BASE_URL: "http://glacier:8080"
+
+      # Share subdomain base URL for share-link Playwright specs.
+      # Reaches the same glacier container via Traefik (port 443, TLS).
+      # Traefik routes Host:share.proxy to glacier:8080 per dynamic.yml.
+      GLACIER_SHARE_BASE_URL: "https://share.proxy"
 
       # Since the runner is not very fast, we wait a little bit longer,
       # if we want to test that something does not show up.

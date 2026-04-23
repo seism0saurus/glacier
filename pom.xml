@@ -202,6 +202,35 @@
             <version>2.18.3</version>
         </dependency>
 
+        <!--Share-link feature dependencies (ADR-SHARE-03, ADR-SHARE-07)-->
+
+        <!--
+            Jsoup: server-side HTML parsing for JsoupTextExtractor.
+            Used by ShareRenderingService to extract plain text from toot HTML
+            (option 4C decision: Jsoup.parse(html).text() + paragraph handling).
+            Version pinned exactly; Dependabot (maven ecosystem) will propose
+            updates automatically via .github/dependabot.yaml.
+        -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.21.1</version>
+        </dependency>
+
+        <!--
+            Caffeine: in-memory cache for the image proxy (ADR-SHARE-07).
+            10 000 entries, positive TTL 1 h, negative TTL 60 s.
+            spring-boot-starter-cache auto-configures Caffeine when it is on the
+            classpath alongside spring-cache; we import it directly here so that
+            version management is explicit and Dependabot can track it.
+            Version pinned exactly; Dependabot will propose updates.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+
     </dependencies>
 
     <build>

@@ -25,6 +25,25 @@ services:
       # FallbackController returns 404 when this is "false".
       GLACIER_FALLBACK_ENABLED: "false"
 
+      # ── Share-link env vars — killswitch variant ─────────────────────────────
+      # Under killswitch (GLACIER_FALLBACK_ENABLED=false):
+      #   - GET /rest/share/{id}/catalog returns 200 with initialToots:[]
+      #   - GET /rest/share/{id}/messages returns 404 (mirrors /rest/messages)
+      #   - Live WS relay continues to function
+      # All values below are identical to docker-compose.yaml; they are repeated
+      # here because compose override only adds/overwrites individual keys —
+      # omitting a key would not clear it, but explicit duplication makes the
+      # killswitch fixture self-documenting and auditable in isolation.
+      GLACIER_SHARE_HOST: "share.proxy"
+      GLACIER_SHARE_IMGPROXY_HMAC_SECRET: "e2e-dummy-hmac-secret-not-for-production-use"
+      GLACIER_SHARE_MAX_ACTIVE_PER_SHARER: "3"
+      GLACIER_SHARE_MAX_ACTIVE_PER_IP: "10"
+      GLACIER_SHARE_MAX_VIEWERS_PER_LINK: "100"
+      GLACIER_SHARE_TTL: "P7D"
+      GLACIER_SHARE_SWEEP_INTERVAL_MS: "300000"
+      GLACIER_SHARE_IMGPROXY_POSITIVE_CACHE_SECONDS: "3600"
+      GLACIER_SHARE_IMGPROXY_NEGATIVE_CACHE_SECONDS: "60"
+
   playwright:
     environment:
       # Tell playwright.config.ts to activate only the `killswitch` project (D-19).
