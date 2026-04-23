@@ -157,16 +157,6 @@
 <!--            <artifactId>spring-boot-starter-data-mongodb</artifactId>-->
 <!--        </dependency>-->
 
-        <!--Actuator + Micrometer for D-11 gauges and health endpoint (SR-7, D-P2-02)-->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-core</artifactId>
-        </dependency>
-
         <!--Test Libraries-->
         <dependency>
             <groupId>org.springframework.boot</groupId>
