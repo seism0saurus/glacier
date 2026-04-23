@@ -102,6 +102,9 @@ public class PrincipalHandler extends DefaultHandshakeHandler {
         }
 
         attributes.put(PRINCIPAL, wallId);
-        return () -> wallId;
+        // ADR-SHARE-05 (revised): return typed WallPrincipal rather than a raw lambda.
+        // The sealed hierarchy prevents a ShareViewerPrincipal-forged string from
+        // polluting the wall's cache/rate-limit namespace.
+        return new WallPrincipal(wallId);
     }
 }

@@ -11,6 +11,7 @@ import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.socket.WebSocketHandler;
 
+import java.net.URI;
 import java.security.Principal;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,7 +26,7 @@ import static org.mockito.Mockito.when;
  * <p>Security requirements: SR-SHARE-06 (viewer cookie isolation),
  * SR-SHARE-07 (__Host-shareViewerId correct flags),
  * ADR-SHARE-04 (dedicated WS endpoint),
- * ADR-SHARE-05 (sv_ prefix separation).
+ * ADR-SHARE-05 revised (typed ShareViewerPrincipal, not sv_ prefix convention).
  */
 @ExtendWith(MockitoExtension.class)
 class ShareViewPrincipalHandlerTest {
@@ -37,7 +38,6 @@ class ShareViewPrincipalHandlerTest {
 
     @BeforeEach
     void setUp() {
-        // secure=true for tests
         handler = new ShareViewPrincipalHandler(true);
     }
 
@@ -51,6 +51,8 @@ class ShareViewPrincipalHandlerTest {
 
         assertThat(principal).isNotNull();
         assertThat(principal.getName()).isEqualTo(viewerId);
+        // ADR-SHARE-05 revised: must be typed ShareViewerPrincipal, not raw lambda
+        assertThat(principal).isInstanceOf(ShareViewerPrincipal.class);
     }
 
     @Test
@@ -62,21 +64,21 @@ class ShareViewPrincipalHandlerTest {
 
         assertThat(principal).isNotNull();
         assertThat(principal.getName()).startsWith("sv_");
-        assertThat(principal.getName().length()).isGreaterThanOrEqualTo(46); // sv_ + 43 chars
+        assertThat(principal.getName().length()).isGreaterThanOrEqualTo(46);
+        assertThat(principal).isInstanceOf(ShareViewerPrincipal.class);
     }
 
     @Test
     void shortCookieValueMintsNewShareViewerId() {
-        // "sv_" + only 5 chars = too short
         ServerHttpRequest request = requestWithCookie("__Host-shareViewerId", "sv_short");
         Map<String, Object> attrs = new HashMap<>();
 
         Principal principal = handler.determineUser(request, wsHandler, attrs);
 
         assertThat(principal).isNotNull();
-        // Should have minted a fresh one
         assertThat(principal.getName()).startsWith("sv_");
         assertThat(principal.getName()).isNotEqualTo("sv_short");
+        assertThat(principal).isInstanceOf(ShareViewerPrincipal.class);
     }
 
     @Test
@@ -89,7 +91,6 @@ class ShareViewPrincipalHandlerTest {
         Principal principal = handler.determineUser(request, wsHandler, attrs);
 
         assertThat(principal).isNotNull();
-        // Should have been rejected and a new sv_ one minted
         assertThat(principal.getName()).startsWith("sv_");
         assertThat(principal.getName()).isNotEqualTo(wallIdStyleCookie);
     }
@@ -97,7 +98,6 @@ class ShareViewPrincipalHandlerTest {
     @Test
     void wallIdCookiePresentAlongsideShareViewerIdIgnoresWallId() {
         String viewerId = "sv_" + "B".repeat(43);
-        // Both cookies present; share endpoint must use only shareViewerId
         ServerHttpRequest request = requestWithTwoCookies(
                 "wallId", "regular-wallid-uuid-1234567890abcdef",
                 "__Host-shareViewerId", viewerId
@@ -108,6 +108,7 @@ class ShareViewPrincipalHandlerTest {
 
         assertThat(principal.getName()).isEqualTo(viewerId);
         assertThat(principal.getName()).startsWith("sv_");
+        assertThat(principal).isInstanceOf(ShareViewerPrincipal.class);
     }
 
     @Test
@@ -119,27 +120,24 @@ class ShareViewPrincipalHandlerTest {
 
         String name = principal.getName();
         assertThat(name).startsWith("sv_");
-        // sv_ (3) + at least 43 base64url chars = at least 46
         assertThat(name.length()).isGreaterThanOrEqualTo(46);
-        // Should be URL-safe base64 after sv_
         String token = name.substring(3);
         assertThat(token).matches("[A-Za-z0-9_-]+");
     }
 
     @Test
     void twoSuccessiveMintedIdsAreDistinct() {
-        ServerHttpRequest req1 = requestWithNoCookies();
-        ServerHttpRequest req2 = requestWithNoCookies();
-
-        Principal p1 = handler.determineUser(req1, wsHandler, new HashMap<>());
-        Principal p2 = handler.determineUser(req2, wsHandler, new HashMap<>());
+        Principal p1 = handler.determineUser(requestWithNoCookies(), wsHandler, new HashMap<>());
+        Principal p2 = handler.determineUser(requestWithNoCookies(), wsHandler, new HashMap<>());
 
         assertThat(p1.getName()).isNotEqualTo(p2.getName());
     }
 
     // -----------------------------------------------------------------------
-    // Helpers
+    // Helpers — mock requests that also stub getURI() (needed by extractShareLinkId)
     // -----------------------------------------------------------------------
+
+    private static final URI DEFAULT_URI = URI.create("ws://localhost/share-view-ws");
 
     private ServerHttpRequest requestWithCookie(String name, String value) {
         Cookie cookie = new Cookie(name, value);
@@ -148,6 +146,7 @@ class ShareViewPrincipalHandlerTest {
         when(servletRequest.getSession()).thenReturn(mock(jakarta.servlet.http.HttpSession.class));
         ServletServerHttpRequest serverHttpRequest = mock(ServletServerHttpRequest.class);
         when(serverHttpRequest.getServletRequest()).thenReturn(servletRequest);
+        when(serverHttpRequest.getURI()).thenReturn(DEFAULT_URI);
         return serverHttpRequest;
     }
 
@@ -159,6 +158,7 @@ class ShareViewPrincipalHandlerTest {
         when(servletRequest.getSession()).thenReturn(mock(jakarta.servlet.http.HttpSession.class));
         ServletServerHttpRequest serverHttpRequest = mock(ServletServerHttpRequest.class);
         when(serverHttpRequest.getServletRequest()).thenReturn(servletRequest);
+        when(serverHttpRequest.getURI()).thenReturn(DEFAULT_URI);
         return serverHttpRequest;
     }
 
@@ -168,6 +168,7 @@ class ShareViewPrincipalHandlerTest {
         when(servletRequest.getSession()).thenReturn(mock(jakarta.servlet.http.HttpSession.class));
         ServletServerHttpRequest serverHttpRequest = mock(ServletServerHttpRequest.class);
         when(serverHttpRequest.getServletRequest()).thenReturn(servletRequest);
+        when(serverHttpRequest.getURI()).thenReturn(DEFAULT_URI);
         return serverHttpRequest;
     }
 }

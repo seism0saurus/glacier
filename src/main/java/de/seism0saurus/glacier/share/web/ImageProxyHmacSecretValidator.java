@@ -6,17 +6,21 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
-import java.util.Base64;
 
 /**
  * Validates and holds the HMAC secret for the image proxy URL signing scheme.
  *
- * <p>Fail-closed in production ({@code glacier.cookie.secure=true}):
- * if the secret is absent or too short, the application MUST NOT start.
- * An auto-generated secret in dev mode is allowed with a WARN but weakens the
- * open-proxy defence (anyone who can read logs can forge URLs). Dev mode only.
+ * <p><strong>Prod profile fail-closed (SR-SHARE-10, user resolution 2026-04-22 option A):</strong>
+ * When {@code glacier.cookie.secure=true}, this bean throws {@link IllegalStateException}
+ * at construction time if the secret is absent, blank, or shorter than 32 bytes.
+ * The Spring context therefore refuses to start — multi-replica deployments cannot silently
+ * diverge by auto-generating independent secrets.
  *
- * <p>Security: SR-SHARE-10. References: NIST SP 800-53 SC-17 (PKI) applied to HMAC,
+ * <p><strong>Dev profile ({@code glacier.cookie.secure=false}):</strong>
+ * Missing or blank secret is auto-generated via {@link SecureRandom} with a one-time WARN.
+ * A short-but-present secret is accepted with a WARN (dev convenience only).
+ *
+ * <p>Security: SR-SHARE-10. References: NIST SP 800-53 SC-17 (HMAC keying),
  * OWASP A02 (Cryptographic Failures).
  */
 @Component
@@ -24,16 +28,20 @@ public class ImageProxyHmacSecretValidator {
 
     private static final Logger log = LoggerFactory.getLogger(ImageProxyHmacSecretValidator.class);
 
-    /** Minimum HMAC secret length in bytes (256 bits). */
+    /** Minimum HMAC secret length in bytes (256 bits / 32 bytes). */
     public static final int MIN_SECRET_BYTES = 32;
 
     private final byte[] effectiveSecret;
 
     /**
-     * @param configuredSecret the secret from {@code glacier.share.imgproxy.hmacSecret};
+     * Constructs the validator, enforcing fail-closed boot behaviour in production.
+     *
+     * @param configuredSecret the raw secret from {@code glacier.share.imgproxy.hmacSecret};
      *                         may be {@code null} or blank if not configured
-     * @param secureCookies    {@code true} in production (fail-closed); {@code false} in dev
-     * @throws IllegalStateException in production if the secret is present but too short
+     * @param secureCookies    {@code true} in production (fail-closed at boot);
+     *                         {@code false} in dev (auto-generate with WARN)
+     * @throws IllegalStateException in production if the secret is absent, blank, or too short.
+     *                               The Spring context will not start.
      */
     public ImageProxyHmacSecretValidator(
             @Value("${glacier.share.imgproxy.hmacSecret:#{null}}") final String configuredSecret,
@@ -41,57 +49,62 @@ public class ImageProxyHmacSecretValidator {
 
         if (configuredSecret == null || configuredSecret.isBlank()) {
             if (secureCookies) {
-                // Fail-closed: log a warning at startup; requests to the proxy endpoint
-                // will be rejected at runtime until the secret is configured.
-                // We do NOT throw here to allow other parts of the application to start
-                // (e.g., existing wall endpoints unrelated to share image proxy).
-                // The proxy controller will check getEffectiveSecret() == null and return 503.
-                log.warn("SECURITY: glacier.share.imgproxy.hmacSecret is not configured. "
-                        + "The share image proxy is DISABLED until this is set. "
-                        + "Set a random secret of at least {} bytes for production.", MIN_SECRET_BYTES);
-                this.effectiveSecret = null;
+                // FAIL-CLOSED: refuse context startup in production (SR-SHARE-10, user option A).
+                // Multi-replica deployments diverge if each pod auto-generates its own secret;
+                // soft-fail contradicts "as hardened as possible" (secure-feature-planner R2).
+                throw new IllegalStateException(
+                        "SECURITY FAILURE: glacier.share.imgproxy.hmacSecret is not configured. "
+                                + "The share image proxy cannot start without a secret of at least "
+                                + MIN_SECRET_BYTES + " bytes (256 bits). "
+                                + "Set this in your environment before starting the application.");
             } else {
-                // Dev mode: auto-generate with WARNING
+                // Dev mode: auto-generate with a single WARN. Not suitable for production.
                 byte[] generated = generateRandomSecret();
                 log.warn("glacier.share.imgproxy.hmacSecret is not configured. "
                         + "Auto-generating a temporary secret for dev mode. "
                         + "This is NOT secure for production — set glacier.share.imgproxy.hmacSecret "
-                        + "in your configuration (minimum {} bytes).", MIN_SECRET_BYTES);
+                        + "(minimum {} bytes).", MIN_SECRET_BYTES);
                 this.effectiveSecret = generated;
+                return;
             }
-        } else {
-            byte[] secretBytes = configuredSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            if (secretBytes.length < MIN_SECRET_BYTES) {
-                if (secureCookies) {
-                    throw new IllegalStateException(
-                            "glacier.share.imgproxy.hmacSecret is too short: " + secretBytes.length
-                                    + " bytes. Minimum is " + MIN_SECRET_BYTES + " bytes (256 bits). "
-                                    + "Use a cryptographically random secret.");
-                } else {
-                    log.warn("glacier.share.imgproxy.hmacSecret is shorter than recommended ({} < {} bytes). "
-                            + "Acceptable in dev mode only.", secretBytes.length, MIN_SECRET_BYTES);
-                }
-            }
-            this.effectiveSecret = secretBytes;
         }
+
+        byte[] secretBytes = configuredSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (secretBytes.length < MIN_SECRET_BYTES) {
+            if (secureCookies) {
+                // FAIL-CLOSED: short secret in prod also causes boot failure (SR-SHARE-10).
+                throw new IllegalStateException(
+                        "SECURITY FAILURE: glacier.share.imgproxy.hmacSecret is too short: "
+                                + secretBytes.length + " bytes. Minimum is " + MIN_SECRET_BYTES
+                                + " bytes (256 bits). Use a cryptographically random secret.");
+            } else {
+                log.warn("glacier.share.imgproxy.hmacSecret is shorter than recommended ({} < {} bytes). "
+                        + "Acceptable in dev mode only.", secretBytes.length, MIN_SECRET_BYTES);
+            }
+        }
+        this.effectiveSecret = secretBytes;
     }
 
     /**
      * Returns the effective HMAC secret bytes.
      *
-     * @return the secret bytes, or {@code null} if not configured in secure mode
-     *         (proxy will be disabled until configured)
+     * <p>Always non-null because the constructor throws in production when the secret
+     * is absent. In dev mode returns the auto-generated secret.
+     *
+     * @return the secret bytes; callers receive a defensive copy
      */
     public byte[] getEffectiveSecret() {
-        return effectiveSecret != null ? effectiveSecret.clone() : null;
+        return effectiveSecret.clone();
     }
 
     /**
      * Returns {@code true} if the proxy is properly configured and operational.
-     * When {@code false}, the proxy endpoint must return 503 Service Unavailable.
+     *
+     * <p>Always {@code true} because the constructor throws on misconfiguration in prod.
+     * This method is retained for defensive checks in the proxy controller.
      */
     public boolean isOperational() {
-        return effectiveSecret != null;
+        return true;
     }
 
     private static byte[] generateRandomSecret() {

@@ -1,60 +1,120 @@
 package de.seism0saurus.glacier.share.web;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.TestPropertySource;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Verifies fail-closed boot behaviour for the image-proxy HMAC secret.
+ * Unit tests for {@link ImageProxyHmacSecretValidator}.
  *
- * <p>Security requirement: SR-SHARE-10 (HMAC secret must be present in prod).
- * Security risk: if HMAC secret is missing, the proxy is open to SSRF via
- * unsigned URL crafting. Must fail at boot in production profile.
+ * <p>Security requirement: SR-SHARE-10 (fail-closed HMAC boot policy).
+ * Decision reference: user resolution 2026-04-22 option A — fail-closed in prod,
+ * auto-generate with WARN in dev.
  */
 class ImageProxyHmacSecretValidatorTest {
 
+    // -----------------------------------------------------------------------
+    // Production profile (secureCookies=true) — FAIL CLOSED
+    // -----------------------------------------------------------------------
+
     @Test
-    void proxyIsDisabledWhenSecretMissingInSecureMode() {
-        // secure=true (prod profile) — proxy disabled (not a boot failure, but proxy returns 503)
-        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator(null, true);
-        org.assertj.core.api.Assertions.assertThat(validator.isOperational()).isFalse();
-        org.assertj.core.api.Assertions.assertThat(validator.getEffectiveSecret()).isNull();
+    void missingSecretInProd_throwsAtConstruction() {
+        // SR-SHARE-10: missing secret in production MUST prevent context startup
+        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator(null, true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("glacier.share.imgproxy.hmacSecret")
+                .hasMessageContaining("32 bytes");
     }
 
     @Test
-    void proxyIsDisabledWhenSecretBlankInSecureMode() {
-        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator("", true);
-        org.assertj.core.api.Assertions.assertThat(validator.isOperational()).isFalse();
+    void blankSecretInProd_throwsAtConstruction() {
+        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("glacier.share.imgproxy.hmacSecret");
     }
 
     @Test
-    void throwsWhenSecretTooShortInSecureMode() {
-        // Minimum 32 bytes (256 bits) — short secrets are rejected
+    void whitespaceOnlySecretInProd_throwsAtConstruction() {
+        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("   ", true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("glacier.share.imgproxy.hmacSecret");
+    }
+
+    @Test
+    void shortSecretInProd_throwsAtConstruction() {
+        // Minimum 32 bytes — present but too short also throws
         assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("short", true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("32 bytes");
     }
 
     @Test
-    void acceptsAdequateLengthSecretInSecureMode() {
-        String goodSecret = "A".repeat(32);
-        assertThatNoException().isThrownBy(() -> new ImageProxyHmacSecretValidator(goodSecret, true));
+    void exactMinLengthSecretInProd_startsSuccessfully() {
+        // Exactly 32 ASCII chars = 32 UTF-8 bytes — just at minimum
+        assertThatNoException()
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator("A".repeat(32), true));
     }
 
     @Test
-    void warnButDoesNotFailWhenSecretMissingInDevMode() {
-        // secure=false (dev mode) — auto-generates with WARN, does not crash
-        assertThatNoException().isThrownBy(() -> new ImageProxyHmacSecretValidator(null, false));
-    }
-
-    @Test
-    void providesWorkingSecretInDevModeEvenIfNotConfigured() {
-        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator(null, false);
+    void adequateLengthSecretInProd_isOperationalAndReturnsSecret() {
+        ImageProxyHmacSecretValidator validator =
+                new ImageProxyHmacSecretValidator("A".repeat(32), true);
+        assertThat(validator.isOperational()).isTrue();
         byte[] secret = validator.getEffectiveSecret();
-        org.assertj.core.api.Assertions.assertThat(secret).isNotNull();
-        org.assertj.core.api.Assertions.assertThat(secret.length).isGreaterThanOrEqualTo(32);
+        assertThat(secret).isNotNull();
+        assertThat(secret.length).isGreaterThanOrEqualTo(32);
+    }
+
+    // -----------------------------------------------------------------------
+    // Dev profile (secureCookies=false) — auto-generate with WARN
+    // -----------------------------------------------------------------------
+
+    @Test
+    void missingSecretInDev_autoGenerates_noException() {
+        // Dev mode: missing secret auto-generates a random one, does not throw
+        assertThatNoException()
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator(null, false));
+    }
+
+    @Test
+    void missingSecretInDev_autoGeneratedSecretIsOperational() {
+        ImageProxyHmacSecretValidator validator =
+                new ImageProxyHmacSecretValidator(null, false);
+        assertThat(validator.isOperational()).isTrue();
+        byte[] secret = validator.getEffectiveSecret();
+        assertThat(secret).isNotNull();
+        assertThat(secret.length).isGreaterThanOrEqualTo(32);
+    }
+
+    @Test
+    void blankSecretInDev_autoGenerates_noException() {
+        assertThatNoException()
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator("", false));
+        ImageProxyHmacSecretValidator validator =
+                new ImageProxyHmacSecretValidator("", false);
+        assertThat(validator.isOperational()).isTrue();
+    }
+
+    @Test
+    void shortSecretInDev_acceptedWithWarn() {
+        // Dev only: short but present secret is accepted (warn, not throw)
+        assertThatNoException()
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator("short", false));
+        ImageProxyHmacSecretValidator validator =
+                new ImageProxyHmacSecretValidator("short", false);
+        assertThat(validator.isOperational()).isTrue();
+    }
+
+    @Test
+    void getEffectiveSecretReturnsCopy_notReference() {
+        // Defensive copy: modifying the returned array must not affect internal state
+        ImageProxyHmacSecretValidator validator =
+                new ImageProxyHmacSecretValidator("A".repeat(32), true);
+        byte[] copy1 = validator.getEffectiveSecret();
+        copy1[0] = (byte) 0xFF;
+        byte[] copy2 = validator.getEffectiveSecret();
+        assertThat(copy2[0]).isNotEqualTo((byte) 0xFF);
     }
 }

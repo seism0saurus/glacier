@@ -1,7 +1,7 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
+import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -11,6 +11,7 @@ import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
+import java.net.URI;
 import java.security.Principal;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -23,23 +24,25 @@ import static de.seism0saurus.glacier.util.LogScrubber.hash8;
 /**
  * Handshake handler for the viewer-only {@code /share-view-ws} STOMP endpoint.
  *
- * <p>Reads the {@code __Host-shareViewerId} cookie and uses it as the principal.
+ * <p>Reads the {@code __Host-shareViewerId} cookie and uses it as the viewer identity.
  * Mints a new viewer ID if the cookie is absent, blank, too short, or missing the
  * mandatory {@value #SV_PREFIX} prefix.
  *
- * <p>Security controls (ADR-SHARE-04, ADR-SHARE-05, SR-SHARE-06, SR-SHARE-07):
+ * <p>Extracts the {@code shareLinkId} query parameter from the WebSocket upgrade URI
+ * and binds it to the returned {@link ShareViewerPrincipal}. The interceptor
+ * ({@link de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor}) uses this
+ * bound link ID to enforce that the viewer may only subscribe to their share's topics.
+ *
+ * <p>Security controls (ADR-SHARE-04, ADR-SHARE-05 revised, SR-SHARE-06, SR-SHARE-07):
  * <ul>
- *   <li>Only reads {@code __Host-shareViewerId} — ignores {@code wallId}
- *       even if both cookies are present (prevents cross-endpoint privilege escalation).</li>
- *   <li>Validates {@code sv_} prefix to prevent namespace collision with wallId principals
- *       in rate-limiters and audit logs (ADR-SHARE-05).</li>
+ *   <li>Returns {@link ShareViewerPrincipal} — typed principal that structurally cannot
+ *       collide with {@link WallPrincipal} in cache or rate-limit bucket maps (ADR-SHARE-05).</li>
+ *   <li>Only reads {@code __Host-shareViewerId} — ignores {@code wallId} even if present.</li>
+ *   <li>{@code sv_} prefix on cookie VALUES retained as log/observability aid only;
+ *       authorization is enforced by the type, not the prefix (ADR-SHARE-05 revised).</li>
  *   <li>Minimum token length {@value #MIN_VIEWER_ID_LENGTH} chars to prevent brute-force.</li>
  *   <li>New IDs generated via {@link SecureRandom} (256 bits entropy, URL-safe base64).</li>
  * </ul>
- *
- * <p>Caller note: the minted cookie is written to the HTTP response before the WS upgrade;
- * Spring's {@link DefaultHandshakeHandler} executes the handshake within the HTTP request
- * context so we have access to the {@link HttpServletResponse}.
  */
 public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
 
@@ -50,7 +53,11 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
     public static final String COOKIE_NAME_SECURE = "__Host-shareViewerId";
     public static final String COOKIE_NAME_INSECURE = "shareViewerId";
 
-    /** Required prefix on all shareViewerId values — prevents namespace collision with wallId. */
+    /**
+     * Prefix on shareViewerId cookie VALUES — retained as log/observability aid.
+     * Authorization is enforced by the {@link ShareViewerPrincipal} type, not this prefix.
+     * (ADR-SHARE-05 revised)
+     */
     public static final String SV_PREFIX = "sv_";
 
     /** Minimum total length of a valid shareViewerId (sv_ + 43 base64url chars = 46). */
@@ -77,6 +84,9 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
         String cookieName = secureCookies ? COOKIE_NAME_SECURE : COOKIE_NAME_INSECURE;
         String viewerId = null;
 
+        // Extract shareLinkId from query parameter (e.g. /share-view-ws?shareLinkId=sv_xxx)
+        ShareLinkId boundShareLinkId = extractShareLinkId(request.getURI());
+
         if (request instanceof ServletServerHttpRequest servletRequest) {
             HttpSession session = servletRequest.getServletRequest().getSession();
             attributes.put(PrincipalHandler.SESSION_ID, session.getId());
@@ -91,7 +101,6 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
                     if (isValidShareViewerId(raw)) {
                         viewerId = raw;
                     } else {
-                        // Invalid cookie — mint fresh, log at AUDIT with scrubbed info
                         String reason = raw == null ? "null"
                                 : raw.isBlank() ? "blank"
                                 : !raw.startsWith(SV_PREFIX) ? "missing_sv_prefix"
@@ -106,12 +115,12 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
                 AUDIT.info("viewer.handshake new_viewer_id viewerId-hash={}", hash8(viewerId));
             }
         } else {
-            // Non-servlet request — mint anonymous share viewer ID
             viewerId = mintNewShareViewerId();
         }
 
-        final String finalViewerId = viewerId;
-        return () -> finalViewerId;
+        // ADR-SHARE-05 revised: return typed ShareViewerPrincipal bound to the share link.
+        // The ShareViewTopicAuthInterceptor validates the shareLinkId is ACTIVE on SUBSCRIBE.
+        return new ShareViewerPrincipal(viewerId, boundShareLinkId);
     }
 
     /**
@@ -125,7 +134,6 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
         if (value == null || value.isBlank()) return false;
         if (!value.startsWith(SV_PREFIX)) return false;
         if (value.length() < MIN_VIEWER_ID_LENGTH) return false;
-        // Validate the token part after sv_ is URL-safe base64
         String token = value.substring(SV_PREFIX.length());
         return token.matches("[A-Za-z0-9_-]+");
     }
@@ -140,5 +148,40 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
     /** Returns the appropriate cookie name based on transport security mode. */
     public String cookieName() {
         return secureCookies ? COOKIE_NAME_SECURE : COOKIE_NAME_INSECURE;
+    }
+
+    /**
+     * Extracts the {@code shareLinkId} query parameter from the WebSocket upgrade URI and
+     * constructs a {@link ShareLinkId}. Returns a sentinel "unbound" share link ID if the
+     * parameter is absent or invalid — the interceptor will reject SUBSCRIBE attempts for
+     * an unbound viewer.
+     */
+    private static ShareLinkId extractShareLinkId(final URI uri) {
+        if (uri == null) return unboundShareLinkId();
+        String query = uri.getQuery();
+        if (query == null || query.isBlank()) return unboundShareLinkId();
+        for (String param : query.split("&")) {
+            if (param.startsWith("shareLinkId=")) {
+                String raw = param.substring("shareLinkId=".length());
+                try {
+                    return new ShareLinkId(raw);
+                } catch (IllegalArgumentException e) {
+                    // Invalid format — return unbound; interceptor will reject SUBSCRIBE
+                    return unboundShareLinkId();
+                }
+            }
+        }
+        return unboundShareLinkId();
+    }
+
+    /**
+     * Sentinel share link ID used when no valid {@code shareLinkId} is present in the
+     * upgrade request. The interceptor rejects any SUBSCRIBE from a principal bound to
+     * this value because it cannot match any real share link.
+     */
+    private static ShareLinkId unboundShareLinkId() {
+        // A well-formed but semantically empty ID that no real link can match.
+        // 43 URL-safe base64 chars of zeros — cannot be a real share link.
+        return new ShareLinkId("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     }
 }
