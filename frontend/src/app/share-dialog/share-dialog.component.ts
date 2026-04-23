@@ -1,0 +1,375 @@
+import {
+  Component,
+  OnInit,
+  ChangeDetectionStrategy,
+  signal,
+  computed,
+} from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { MatDialogModule, MatDialogRef, MatDialog } from '@angular/material/dialog';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { ShareLinkService } from '../share/services/share-link.service';
+import { QrCodeComponent } from '../qr-code/qr-code.component';
+import {
+  ShareLinkCreated,
+  ShareLinkEntry,
+} from '../share/model/readonly-toot-view';
+
+/**
+ * Material dialog for the sharer to create, view, and revoke share links.
+ *
+ * Accessibility (UX plan §1.1):
+ * - Focus moves to dialog title on open (handled by MatDialog).
+ * - On close, caller must restore focus to the QR badge.
+ * - Revoke confirmation dialog: focus on "Abbrechen" (not the destructive action).
+ * - LiveAnnouncer used for all async state changes.
+ *
+ * CSRF: delegated entirely to ShareLinkService.
+ * Rate limiting: 429 snackbar shown by ShareLinkService; dialog just disables button.
+ */
+@Component({
+  selector: 'app-share-dialog',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CommonModule,
+    MatDialogModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    QrCodeComponent,
+  ],
+  template: `
+    <h1 mat-dialog-title i18n="@@share.dialog.title">Wand teilen</h1>
+
+    <mat-dialog-content>
+      <!-- Lead paragraph -->
+      <p i18n="@@share.dialog.lead">
+        Erstellen Sie eine zugängliche Kopie Ihrer Wand für Leute mit Bildschirmleser oder Zoom.
+        Jeder mit dem Link oder QR-Code sieht Ihre Wand.
+      </p>
+
+      <!-- Cap reached message -->
+      @if (capReached()) {
+        <p
+          id="cap-message"
+          class="cap-message"
+          role="alert"
+          i18n="@@share.cap.reached"
+        >
+          Maximal 3 aktive Links. Widerrufen Sie einen vorhandenen Link, um einen neuen zu erstellen.
+        </p>
+      }
+
+      <!-- Active link display (shown after creation) -->
+      @if (activeLink()) {
+        <div class="created-link" data-testid="created-link">
+          <!-- QR code -->
+          <app-qr-code
+            [url]="activeLink()!.readonlyUrl"
+            [ariaLabel]="qrAriaLabel"
+          ></app-qr-code>
+
+          <!-- URL copy field -->
+          <div class="url-copy-row">
+            <mat-form-field appearance="outline" class="url-field">
+              <mat-label i18n="@@share.dialog.url.label">Link kopieren</mat-label>
+              <input
+                matInput
+                readonly
+                [value]="activeLink()!.readonlyUrl"
+                data-testid="share-url-input"
+              />
+            </mat-form-field>
+            <button
+              mat-icon-button
+              type="button"
+              (click)="copyUrl()"
+              [attr.aria-label]="copyButtonLabel"
+              data-testid="copy-button"
+            >
+              <mat-icon fontIcon="content_copy"></mat-icon>
+            </button>
+          </div>
+
+          <!-- Expiry -->
+          <p class="expiry-text" aria-live="off">
+            <span i18n="@@share.dialog.expires">Läuft ab am </span>
+            <time [attr.datetime]="activeLink()!.expiresAt">
+              {{ formatExpiry(activeLink()!.expiresAt) }}
+            </time>
+          </p>
+
+          <!-- Revoke button -->
+          <button
+            mat-stroked-button
+            type="button"
+            color="warn"
+            (click)="confirmRevoke(activeLink()!.shareLinkId)"
+            data-testid="revoke-button"
+            i18n="@@share.dialog.revoke"
+          >Zugriff entziehen</button>
+        </div>
+      }
+
+      <!-- List of existing active links -->
+      @if (existingLinks().length > 0) {
+        <section aria-labelledby="active-links-heading">
+          <h2
+            id="active-links-heading"
+            class="section-heading"
+            i18n="@@share.dialog.active-links.heading"
+          >Aktive Links</h2>
+          @for (link of existingLinks(); track link.shareLinkId) {
+            <div class="link-row" data-testid="link-row">
+              <span class="link-expiry">{{ formatExpiry(link.expiresAt) }}</span>
+              <button
+                mat-stroked-button
+                type="button"
+                color="warn"
+                (click)="confirmRevoke(link.shareLinkId)"
+                [attr.aria-describedby]="'expiry-' + link.shareLinkId"
+                i18n="@@share.dialog.revoke"
+              >Widerrufen</button>
+              <span [id]="'expiry-' + link.shareLinkId" class="visually-hidden">
+                {{ formatExpiry(link.expiresAt) }}
+              </span>
+            </div>
+          }
+        </section>
+      }
+
+      <!-- Error message -->
+      @if (csrfError()) {
+        <p role="alert" class="error-message" i18n="@@share.dialog.csrf.failed">
+          Verbindung verloren. Dialog schließen und erneut öffnen.
+        </p>
+      }
+    </mat-dialog-content>
+
+    <mat-dialog-actions align="end">
+      <!-- Create link button -->
+      @if (!activeLink() && !loading()) {
+        <button
+          mat-flat-button
+          type="button"
+          color="primary"
+          (click)="createLink()"
+          [disabled]="capReached()"
+          [attr.aria-describedby]="capReached() ? 'cap-message' : null"
+          data-testid="create-button"
+          i18n="@@share.dialog.create.button"
+        >Link erstellen</button>
+      }
+
+      @if (loading()) {
+        <mat-progress-spinner
+          mode="indeterminate"
+          diameter="24"
+          aria-label="Erstelle Link…"
+        ></mat-progress-spinner>
+      }
+
+      <!-- Close button -->
+      <button
+        mat-button
+        type="button"
+        mat-dialog-close
+        data-testid="close-button"
+        i18n="@@share.dialog.close"
+      >Schließen</button>
+    </mat-dialog-actions>
+  `,
+  styles: [`
+    .created-link { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+    .url-copy-row { display: flex; align-items: center; gap: 8px; }
+    .url-field { flex: 1; }
+    .expiry-text { font-size: 0.875rem; margin: 0; }
+    .cap-message { color: var(--mat-sys-error, red); }
+    .error-message { color: var(--mat-sys-error, red); }
+    .section-heading { font-size: 1rem; margin: 16px 0 8px; }
+    .link-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .link-expiry { flex: 1; font-size: 0.875rem; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+  `],
+})
+export class ShareDialogComponent implements OnInit {
+
+  activeLink = signal<ShareLinkCreated | null>(null);
+  existingLinks = signal<ShareLinkEntry[]>([]);
+  loading = signal(false);
+  capReached = signal(false);
+  csrfError = signal(false);
+
+  get qrAriaLabel(): string {
+    return $localize`:@@share.qr.hint:Geteilten Link anzeigen`;
+  }
+
+  get copyButtonLabel(): string {
+    return $localize`:@@share.dialog.copy.button:Kopieren`;
+  }
+
+  constructor(
+    private dialogRef: MatDialogRef<ShareDialogComponent>,
+    private shareLinkService: ShareLinkService,
+    private dialog: MatDialog,
+    private liveAnnouncer: LiveAnnouncer,
+  ) {}
+
+  ngOnInit(): void {
+    this.loadExistingLinks();
+  }
+
+  private loadExistingLinks(): void {
+    this.shareLinkService.listShareLinks().subscribe({
+      next: (links) => this.existingLinks.set(links),
+      error: () => { /* Non-critical; list is optional. */ },
+    });
+  }
+
+  createLink(): void {
+    this.loading.set(true);
+    this.csrfError.set(false);
+
+    this.shareLinkService.createShareLink().subscribe({
+      next: (created) => {
+        this.loading.set(false);
+        this.activeLink.set(created);
+        this.liveAnnouncer.announce(
+          $localize`:@@share.dialog.created.announce:Link erstellt. Läuft in 7 Tagen ab.`,
+          'polite',
+        );
+        // Move focus to URL field via timeout to allow Angular to render
+        setTimeout(() => {
+          const input = document.querySelector<HTMLInputElement>('[data-testid="share-url-input"]');
+          input?.focus();
+          input?.select();
+        }, 100);
+      },
+      error: (err) => {
+        this.loading.set(false);
+        if (err?.status === 0 || err?.status >= 500) {
+          this.csrfError.set(true);
+        }
+        // 429 is handled by ShareLinkService snackbar
+      },
+    });
+  }
+
+  copyUrl(): void {
+    const url = this.activeLink()?.readonlyUrl;
+    if (!url) return;
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).then(() => {
+        this.liveAnnouncer.announce(
+          $localize`:@@share.dialog.copied.announce:Link kopiert`,
+          'polite',
+        );
+      });
+    } else {
+      // Graceful fallback for insecure transport (no Clipboard API)
+      const input = document.querySelector<HTMLInputElement>('[data-testid="share-url-input"]');
+      input?.select();
+    }
+  }
+
+  confirmRevoke(shareLinkId: string): void {
+    const ref = this.dialog.open(ShareRevokeConfirmDialogComponent);
+    ref.afterClosed().subscribe((confirmed: boolean) => {
+      if (confirmed) {
+        this.executeRevoke(shareLinkId);
+      }
+    });
+  }
+
+  private executeRevoke(shareLinkId: string): void {
+    this.shareLinkService.revokeShareLink(shareLinkId).subscribe({
+      complete: () => {
+        // Remove from local lists
+        this.existingLinks.update((list) =>
+          list.filter((l) => l.shareLinkId !== shareLinkId)
+        );
+        if (this.activeLink()?.shareLinkId === shareLinkId) {
+          this.activeLink.set(null);
+        }
+        this.liveAnnouncer.announce(
+          $localize`:@@share.dialog.revoked.announce:Link widerrufen`,
+          'assertive',
+        );
+      },
+      error: (err) => {
+        if (err?.status === 404) {
+          this.liveAnnouncer.announce(
+            $localize`:@@share.dialog.revoke.already-expired.announce:Link war bereits abgelaufen und wurde entfernt`,
+            'polite',
+          );
+          // Clean up from list anyway
+          this.existingLinks.update((list) =>
+            list.filter((l) => l.shareLinkId !== shareLinkId)
+          );
+        }
+      },
+    });
+  }
+
+  formatExpiry(isoDate: string): string {
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      }).format(new Date(isoDate));
+    } catch {
+      return isoDate;
+    }
+  }
+}
+
+/**
+ * Minimal confirmation dialog for the revoke action.
+ *
+ * Focus starts on "Abbrechen" (not the destructive action) per WCAG 3.3.4.
+ */
+@Component({
+  selector: 'app-share-revoke-confirm-dialog',
+  standalone: true,
+  imports: [MatDialogModule, MatButtonModule],
+  template: `
+    <h1 mat-dialog-title i18n="@@share.dialog.revoke.confirm.title">Link widerrufen?</h1>
+    <mat-dialog-content>
+      <p i18n="@@share.dialog.revoke.confirm.body">
+        Alle Personen, die diesen Link nutzen, verlieren sofort den Zugriff.
+        Dies lässt sich nicht rückgängig machen.
+      </p>
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <!-- Cancel gets focus first (WCAG 3.3.4 — destructive action not default) -->
+      <button
+        mat-button
+        type="button"
+        [mat-dialog-close]="false"
+        cdkFocusInitial
+        data-testid="revoke-cancel"
+        i18n="@@share.dialog.revoke.confirm.cancel"
+      >Abbrechen</button>
+      <button
+        mat-flat-button
+        type="button"
+        color="warn"
+        [mat-dialog-close]="true"
+        data-testid="revoke-confirm"
+        i18n="@@share.dialog.revoke.confirm.confirm"
+      >Widerrufen</button>
+    </mat-dialog-actions>
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class ShareRevokeConfirmDialogComponent {}
