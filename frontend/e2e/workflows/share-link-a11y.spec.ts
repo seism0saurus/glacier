@@ -4,7 +4,7 @@
  * Uses @axe-core/playwright for WCAG 2.2 AA automated scan.
  * Also tests keyboard navigation and 200% zoom reflow.
  *
- * Deferred: test.fail until backend endpoints are wired (Phase 2 backend lanes).
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
@@ -14,7 +14,7 @@ const SHARE_TEST_URL = process.env['SHARE_TEST_URL'] || '/share/test-share-id-pl
 
 test.describe('Share link — accessibility', () => {
 
-  test.fail('readonly wall has zero critical/serious axe violations', async ({ page }) => {
+  test('readonly wall has zero critical/serious axe violations', async ({ page }) => {
     await page.goto(SHARE_TEST_URL);
     await expect(page.getByTestId('share-feed')).toHaveAttribute('aria-busy', 'false', {
       timeout: 15_000,
@@ -30,7 +30,7 @@ test.describe('Share link — accessibility', () => {
     expect(criticalOrSerious).toEqual([]);
   });
 
-  test.fail('keyboard navigation: Tab moves through toots and links', async ({ page }) => {
+  test('keyboard navigation: Tab moves through toots and links', async ({ page }) => {
     await page.goto(SHARE_TEST_URL);
     await expect(page.getByTestId('share-feed')).toHaveAttribute('aria-busy', 'false', {
       timeout: 15_000,
@@ -42,7 +42,7 @@ test.describe('Share link — accessibility', () => {
     expect(['A', 'BUTTON', 'INPUT', 'DETAILS']).toContain(focused);
   });
 
-  test.fail('200% zoom: no horizontal scroll on 360px viewport', async ({ page }) => {
+  test('200% zoom: no horizontal scroll on 360px viewport', async ({ page }) => {
     // Emulate 360px viewport width at 200% zoom (effective CSS width = 180px)
     await page.setViewportSize({ width: 360, height: 640 });
     await page.evaluate(() => {
@@ -56,7 +56,7 @@ test.describe('Share link — accessibility', () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
   });
 
-  test.fail('skip links are present and keyboard-reachable', async ({ page }) => {
+  test('skip links are present and keyboard-reachable', async ({ page }) => {
     await page.goto(SHARE_TEST_URL);
 
     // First Tab should reach the skip links nav
@@ -65,7 +65,7 @@ test.describe('Share link — accessibility', () => {
     expect(focused).toContain('Feed');
   });
 
-  test.fail('toot articles have role=group with aria-labelledby', async ({ page }) => {
+  test('toot articles have role=group with aria-labelledby', async ({ page }) => {
     await page.goto(SHARE_TEST_URL);
     await expect(page.getByTestId('share-feed')).toHaveAttribute('aria-busy', 'false', {
       timeout: 15_000,

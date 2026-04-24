@@ -9,14 +9,14 @@
  * Note: QR decoding is done via canvas image data + jsqr library.
  * This spec ONLY uses the chromium project.
  *
- * Deferred: test.fail until backend share link creation is available.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
 
 test.describe('Share link — QR code', () => {
 
-  test.fail('QR code encodes the share URL and is followable', async ({ browser }) => {
+  test('QR code encodes the share URL and is followable', async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
 

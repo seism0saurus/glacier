@@ -2,14 +2,14 @@
  * E2E spec: share link happy path in WebKit/Safari (webkit project).
  *
  * Focuses on WebKit's stricter SameSite=Strict behaviour and cookie handling.
- * Deferred: test.fail until backend endpoints are available.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
 
 test.describe('Share link — WebKit', () => {
 
-  test.fail('share link flow works in WebKit with SameSite cookie behaviour', async ({ page, browser }) => {
+  test('share link flow works in WebKit with SameSite cookie behaviour', async ({ page, browser }) => {
     await page.goto('/');
     await expect(page.getByTestId('connection-status')).toHaveAttribute(
       'data-state', 'live', { timeout: 10_000 }

@@ -6,14 +6,14 @@
  * - Copy-link button falls back to text selection (no Clipboard API).
  * - Full share flow works end-to-end.
  *
- * Deferred: test.fail — requires insecure backend project.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
 
 test.describe('Share link — insecure (plain HTTP)', () => {
 
-  test.fail('share flow works on plain HTTP with Secure=false cookies', async ({ browser }) => {
+  test('share flow works on plain HTTP with Secure=false cookies', async ({ browser }) => {
     const sharerContext = await browser.newContext();
     const sharerPage = await sharerContext.newPage();
 

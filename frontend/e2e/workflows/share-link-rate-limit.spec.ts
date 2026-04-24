@@ -4,14 +4,14 @@
  * Simulates a polling-abuse scenario: viewer sends many rapid requests
  * until a 429 is received, then verifies the i18n'd snackbar/message.
  *
- * Deferred: test.fail — requires backend rate limiting + viewer polling endpoint.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
 
 test.describe('Share link — rate limiting', () => {
 
-  test.fail('viewer receives i18n snackbar on 429 from polling endpoint', async ({ page }) => {
+  test('viewer receives i18n snackbar on 429 from polling endpoint', async ({ page }) => {
     // Navigate to a known share link (pre-seeded in the test environment)
     const shareUrl = process.env['SHARE_TEST_URL'] || '/share/test-share-id';
     await page.goto(shareUrl);

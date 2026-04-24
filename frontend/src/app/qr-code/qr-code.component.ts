@@ -11,6 +11,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import * as QRCode from 'qrcode';
 
 /**
  * Small QR badge for the main wall.
@@ -109,25 +110,22 @@ export class QrCodeComponent implements AfterViewInit, OnChanges {
   /**
    * Renders the QR code to the canvas using the `qrcode` package.
    * Called after view init and when `url` changes.
+   *
+   * The qrcode package is statically imported (not lazy-loaded) because this
+   * component lives in the main eager module (ADR-SHARE-01). A dynamic import
+   * would break Karma's webpack chunk resolution without any bundle-size benefit.
    */
   private renderQr(): void {
     if (!this.url || !this.canvasRef?.nativeElement) {
       return;
     }
 
-    // Dynamic import to keep initial bundle small and allow testing without the package
-    import('qrcode').then((QRCode) => {
-      if (this.canvasRef?.nativeElement && this.url) {
-        QRCode.toCanvas(this.canvasRef.nativeElement, this.url, {
-          width: 40,
-          margin: 1,
-          errorCorrectionLevel: 'M',
-        }).catch((err: unknown) => {
-          console.error('QR code render failed', err);
-        });
-      }
-    }).catch((err) => {
-      console.error('QR code library load failed', err);
+    QRCode.toCanvas(this.canvasRef.nativeElement, this.url, {
+      width: 40,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    }).catch((err: unknown) => {
+      console.error('QR code render failed', err);
     });
   }
 }

@@ -9,7 +9,7 @@
  * - A fresh toot arrives via live WS relay → viewer sees it.
  * - Viewer fallback poll returns 404 (killswitch rule: cache suppressed).
  *
- * Deferred: test.fail — requires killswitch backend project + frontend endpoints.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
@@ -17,7 +17,7 @@ import { MastodonClient } from '../helper/mastodon-client';
 
 test.describe('Share link — killswitch mode', () => {
 
-  test.fail('catalog returns empty toots; live WS relay delivers new toot; polling returns 404', async ({ browser }) => {
+  test('catalog returns empty toots; live WS relay delivers new toot; polling returns 404', async ({ browser }) => {
     const mastodon = new MastodonClient(
       process.env['MASTODON_USER_API_URL'] ?? 'https://proxy',
       process.env['MASTODON_USER_ACCESS_TOKEN'] ?? '',

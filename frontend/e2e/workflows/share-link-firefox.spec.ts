@@ -2,14 +2,14 @@
  * E2E spec: share link happy path in Firefox (firefox project).
  *
  * Verifies cross-browser parity: cookie flags, STOMP, render identity.
- * Deferred: test.fail until backend endpoints are available.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
 
 test.describe('Share link — Firefox', () => {
 
-  test.fail('share link happy path works in Firefox', async ({ page, browser }) => {
+  test('share link happy path works in Firefox', async ({ page, browser }) => {
     await page.goto('/');
     await expect(page.getByTestId('connection-status')).toHaveAttribute(
       'data-state', 'live', { timeout: 10_000 }

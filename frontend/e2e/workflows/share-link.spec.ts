@@ -17,9 +17,7 @@
  * dockerized Mastodon stack — per CLAUDE.md "never shortcut by injecting
  * directly into the Spring app".
  *
- * Deferred: tests marked test.fail — backend share endpoints not yet
- * implemented (Phase 2 tdd-ddd-implementer and secure-tdd-implementer).
- * They will be un-failed in Round 2 once backend is ready.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect, BrowserContext, Page } from '@playwright/test';
@@ -29,8 +27,7 @@ const HASHTAG = 'glaciersharetest';
 
 test.describe('Share link — full round trip', () => {
 
-  // Deferred until backend is wired
-  test.fail(
+  test(
     'sharer creates share link, viewer opens it, both see toot, revoke shows expired',
     async ({ browser }) => {
       const mastodon = new MastodonClient(

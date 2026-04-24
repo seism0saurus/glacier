@@ -4,7 +4,7 @@
  * Simulates WebSocket unavailability: viewer switches to HTTP polling.
  * Toot posted via Mastodon should appear on readonly wall within poll interval.
  *
- * Deferred: test.fail — requires backend polling endpoint.
+ * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
 import { test, expect } from '@playwright/test';
@@ -12,7 +12,7 @@ import { MastodonClient } from '../helper/mastodon-client';
 
 test.describe('Share link — fallback polling', () => {
 
-  test.fail('viewer receives toots via HTTP polling when WS is unavailable', async ({ browser }) => {
+  test('viewer receives toots via HTTP polling when WS is unavailable', async ({ browser }) => {
     const mastodon = new MastodonClient(
       process.env['MASTODON_USER_API_URL'] ?? 'https://proxy',
       process.env['MASTODON_USER_ACCESS_TOKEN'] ?? '',
