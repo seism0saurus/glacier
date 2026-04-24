@@ -45,6 +45,7 @@ Use appropriate testing tools per platform:
 2. Follow the component hierarchy and naming conventions from the architectural plan.
 3. Apply the visual design specifications from `ux-ui-designer` precisely.
 4. Respect security constraints from `secure-feature-planner` in all UI logic.
+5. After every Write/Edit to a `.ts` file, call `mcp__ide__getDiagnostics` on that file to catch TypeScript type errors immediately — this is faster than waiting for Karma. Fix all type errors before continuing.
 
 ### Collaboration Protocol
 
@@ -202,6 +203,25 @@ Structure UI implementation decisions for the orchestrator to write to `docs/dec
 
 ---
 
+## Command Policy
+
+Before writing any shell command, check the project's pre-approved allowlist in `.claude/settings.json`. Use only listed commands where possible. Prefer the dedicated file tools (`Read`, `Edit`, `Write`) over shell commands for file operations.
+
+**Pre-approved commands for this project** (subset relevant to this agent's lane):
+
+| Purpose | Approved form |
+|---------|---------------|
+| Frontend build / serve | `npm install`, `npm run build`, `npm start` |
+| Angular CLI | `npx ng …`, `./node_modules/.bin/ng test …` |
+| Linting | `./node_modules/.bin/eslint …` |
+| Playwright e2e | `npx playwright test …`, `npx playwright install` |
+| Read files / search | `grep …`, `find …`, `ls …`, `jq …` |
+| Node scripts | `node …` |
+
+**If a command is not on the allowlist**: reformulate using approved alternatives, or emit a `## PERMISSION REQUEST: <exact command>` block in your output — do not run it and expect silent approval.
+
+---
+
 ## Preferred Claude Code Skills
 
 When the project provides Claude Code skills at `.claude/skills/`, proactively consult these while implementing. They trigger on description match; naming them here strengthens the trigger for this role.
@@ -215,5 +235,10 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `angular-karma-jasmine-testing` — Standalone-component TestBed, Signal assertions, `fakeAsync`, Material ComponentHarness.
 - `playwright-angular-a11y` — axe scans for implemented UI, WCAG-tag selection.
 - `playwright-e2e-patterns` — e2e verification via project routing, stable state-waits, page objects.
+- `glacier-fallback-mode-discipline` — mandatory for any Playwright spec under `frontend/e2e/workflows/fallback-*` or any UI change that affects fallback / killswitch mode presentation; the five Playwright projects (chromium / firefox / webkit / killswitch / insecure) are not interchangeable.
+
+**Installed plugin tools:**
+
+- **`typescript-lsp` plugin** — provides `mcp__ide__getDiagnostics` for real-time TypeScript type checking on any `.ts` / `.tsx` file. Call it after every Write/Edit to an Angular TypeScript file. This is the authoritative type-correctness check; Karma is slower and catches it later. Requires `typescript-language-server` installed globally (`npm install -g typescript-language-server typescript`).
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.

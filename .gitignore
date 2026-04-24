@@ -17,3 +17,5 @@
 /infrastructure/dynamic.yml
 /test-results
 /.claude/agent-memory/
+/.claude/worktrees/
+/.claude/settings.local.json

@@ -207,6 +207,24 @@ Structure significant implementation decisions for the orchestrator to write to 
 
 ---
 
+## Command Policy
+
+Before writing any shell command, check the project's pre-approved allowlist in `.claude/settings.json`. Use only listed commands where possible. Prefer the dedicated file tools (`Read`, `Edit`, `Write`) over shell commands for file operations.
+
+**Pre-approved commands for this project** (subset relevant to this agent's lane):
+
+| Purpose | Approved form |
+|---------|---------------|
+| Backend build / test | `./mvnw clean package`, `./mvnw verify`, `./mvnw -Dtest=ClassName test`, `./mvnw -Dit.test=ClassName verify` |
+| Read files / search | `grep …`, `find …`, `ls …`, `awk …`, `jq …`, `wc …`, `sort …` |
+| Process output | `sed …`, `xargs …` |
+| Frontend build | `npm install`, `npm run build`, `npx ng …` |
+| Kotlin / Java version check | `java -version` |
+
+**If a command is not on the allowlist**: reformulate using approved alternatives (e.g. `grep` instead of a custom script), or emit a `## PERMISSION REQUEST: <exact command>` block in your output — do not run it and expect silent approval.
+
+---
+
 ## Preferred Claude Code Skills
 
 When the project provides Claude Code skills at `.claude/skills/`, proactively consult these while implementing. They trigger on description match; naming them here strengthens the trigger for this role.
@@ -221,5 +239,7 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `angular-karma-jasmine-testing` — Standalone-component TestBed, Signal assertions, `fakeAsync`, Material ComponentHarness (if touching frontend tests).
 - `angular-reactive-forms-ux` — `NonNullableFormBuilder`, `updateOn` UX choice, error-display timing (if touching Angular forms).
 - `angular-i18n-localize` — project-specific i18n conventions (explicit `@@id` patterns).
+- `glacier-fallback-mode-discipline` — mandatory for any change touching streaming (`WebSocketConfiguration`, `SubscriptionManagerImpl`), fallback path (`FallbackController`, `FallbackRateLimiter`, `*AuthGuard`), cache, or rate limiting; all four modes (live / fallback / killswitch / insecure) must stay correct.
+- `glacier-structured-logging-logback` — D-13 / SR-8 sensitive-data rules: `cookie`, `authorization`, wallId, and tokens must never reach the JSON encoder; route auth-failure and rate-limit events through the AUDIT logger; use `LogScrubber`.
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.

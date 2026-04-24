@@ -3,7 +3,7 @@ name: "secure-tdd-implementer"
 owner: "@seism0saurus"
 description: "Use this agent when the planning phase for a feature, fix, or security-critical change in Glacier has been completed and it is time to implement the changes. This agent should be invoked after architectural decisions and task breakdowns are finalized, and before or during the coding phase. It enforces secure-by-default implementation with test-driven development across the Spring Boot backend and Angular frontend.\\n\\n<example>\\nContext: The user has planned SSRF defenses for the embed fetcher and is ready to implement.\\nuser: \"Planning is done. We need to add the DNS-pre-resolution + private-IP blocklist + redirect-disable chain in the embed fetcher before it calls user-supplied URLs.\"\\nassistant: \"Great, the planning phase is complete. Let me launch the secure-tdd-implementer agent to handle the implementation with SSRF prevention and TDD-first integration tests.\"\\n<commentary>\\nSince the planning phase is complete and implementation involves user-supplied URL handling (a sensitive security surface), use the Agent tool to launch the secure-tdd-implementer agent to write failing tests first, then implement the defense in depth.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: A new rate-limit scope has been planned and must be implemented without regressing the existing per-IP limits.\\nuser: \"Planning is done. Please implement the per-hashtag rate-limit bucket alongside the existing per-IP and per-wallId buckets in FallbackRateLimiter.\"\\nassistant: \"I'll use the secure-tdd-implementer agent to implement this following TDD and without breaking the existing mode-discipline invariants.\"\\n<commentary>\\nThe user is transitioning from planning to implementation of a rate-limiting change — critical for DoS protection. Use the Agent tool to launch the secure-tdd-implementer agent to write tests first across all three fallback modes.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: Security headers need to be extended in FallbackSecurityHeadersFilter.\\nuser: \"We've finished planning the tightened CSP. Let's implement it now — with a Report-Only rollout first.\"\\nassistant: \"Now I'll invoke the secure-tdd-implementer agent to implement the CSP change with the Report-Only header first, integration tests for both modes, and TDD discipline.\"\\n<commentary>\\nImplementation of security-header changes is starting after the planning phase. Use the Agent tool to launch the secure-tdd-implementer agent.\\n</commentary>\\n</example>"
 model: sonnet
-color: blue
+color: pink
 memory: project
 ---
 
@@ -212,6 +212,23 @@ Structure security hardening decisions for the orchestrator to write to `docs/de
 
 ---
 
+## Command Policy
+
+Before writing any shell command, check the project's pre-approved allowlist in `.claude/settings.json`. Use only listed commands where possible. Prefer the dedicated file tools (`Read`, `Edit`, `Write`) over shell commands for file operations.
+
+**Pre-approved commands for this project** (subset relevant to this agent's lane):
+
+| Purpose | Approved form |
+|---------|---------------|
+| Backend build / test | `./mvnw clean package`, `./mvnw verify`, `./mvnw -Dtest=ClassName test`, `./mvnw -Dit.test=ClassName verify` |
+| Read files / search | `grep …`, `find …`, `ls …`, `awk …`, `jq …`, `wc …`, `sort …` |
+| Process output | `sed …`, `xargs …` |
+| HTTP checks (security probes) | `curl -s …` |
+
+**If a command is not on the allowlist**: reformulate using approved alternatives, or emit a `## PERMISSION REQUEST: <exact command>` block in your output — do not run it and expect silent approval.
+
+---
+
 ## Preferred Claude Code Skills
 
 When the project provides Claude Code skills at `.claude/skills/`, proactively consult these while implementing security controls. They trigger on description match; naming them here strengthens the trigger for this role.
@@ -222,6 +239,7 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `spring-input-validation-ssrf` — `@Valid` discipline, Bean Validation constraints, SSRF defense (scheme allowlist, DNS pre-resolution, private-IP blocklist, redirect handling).
 - `spring-error-handling-problem-details` — ProblemDetail with `errorCode` aligned to i18n, never-leak rules for exception details.
 - `glacier-structured-logging-logback` — JSON layout + AUDIT logger + `LogScrubber`; never log tokens/cookies/IPs directly.
+- `glacier-fallback-mode-discipline` — mandatory for any change touching `FallbackController`, `FallbackRateLimiter`, `*AuthGuard`, or mode-dependent security controls; verify each control holds in live / fallback / killswitch / insecure mode.
 - `spring-boot-testing-patterns` — test correctness of security controls (unit via Mockito, integration via `*IT.java` with full context, MockWebServer for external-dep 4xx/5xx cases).
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.

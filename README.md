@@ -11,10 +11,11 @@ Glacier ist still **BETA**. You can use it, but there could be some minor errors
 
 Glacier is **planned and approved by a human maintainer**. Architecture decisions, feature scope, security requirements, UX direction, and acceptance criteria are authored and signed off by the maintainer before any code is written. **AI coding assistants help with the implementation**: they draft code, tests, and documentation within the bounds of an approved plan, and their output is reviewed by the maintainer before it lands. Every design decision, every change of scope, and every acceptance disposition is recorded in `docs/decisions/` so the human-in-the-loop trail is auditable.
     
-    I, seism0saurus, am aware of the ethical and ecological problems of AI.
+    I, seism0saurus, am aware of the ethical and ecological problems of AI. Especially the inherent bias, concentration of power and ressource usage.
     My goal is to deliver great software for humans and to understand the mechanics behind it.
     But I also build this in my free time and have other responsibilities.
-    If you want to participate in the development, please make sure to use AI in a responsible way.
+    So after years of manually crafting software I experiment with agents, which discuss problems from different points of view.
+    If you want to participate in the development, please try to use AI as responsible as possible.
 
 ## Content
 
