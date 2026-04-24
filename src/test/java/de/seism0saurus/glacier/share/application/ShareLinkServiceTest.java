@@ -37,8 +37,12 @@ import static org.mockito.Mockito.when;
  * <p>Key scenarios covered:
  * <ul>
  *   <li>Create: happy path, per-sharer cap exceeded, per-IP cap exceeded.</li>
- *   <li>Resolve: ACTIVE → present, EXPIRED → empty, REVOKED → empty; constant-time
- *       branches for both "not found" and "not active" cases.</li>
+ *   <li>Resolve: ACTIVE → present, EXPIRED → empty, REVOKED → empty; both "not found"
+ *       and "not active" cases return {@link Optional#empty()} via structurally equivalent
+ *       code paths (no extra work on either branch). Timing invariance is enforced
+ *       structurally — measurement is in {@code ShareCatalogEndpointTimingIT}, not here,
+ *       because MockMvc mock-dispatch overhead makes nanosecond-precision in-process timing
+ *       assertions unreliable at the unit-test level.</li>
  *   <li>Revoke: matching wallId succeeds; non-matching wallId and unknown ID both throw
  *       {@link ShareLinkNotFoundOrNotAuthorisedException} with the same uniform shape
  *       (anti-enumeration).</li>
