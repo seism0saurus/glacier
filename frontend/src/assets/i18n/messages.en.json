@@ -76,5 +76,11 @@
   "connection.share.expired.label": "Link expired",
   "connection.share.expired.detail": "The share link has expired or been revoked.",
   "rate.limited.share.create": "Too many share links. Please try again later.",
-  "rate.limited.share.viewer": "Too many requests. Please wait a moment."
+  "rate.limited.share.viewer": "Too many requests. Please wait a moment.",
+  "share.skip.to-feed": "Skip to feed",
+  "share.skip.to-status": "Skip to status",
+  "share.wall.heading": "Wall feed",
+  "share.toot.poll.expired": "Ended",
+  "share.toot.poll.multiple": "Multiple choice",
+  "snackbar.dismiss": "Dismiss"
 }
