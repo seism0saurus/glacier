@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
+import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -34,7 +36,8 @@ public class WebSocketConfigurationTest {
                 .thenReturn(brokerRegistration);
         when(mockRegistry.setApplicationDestinationPrefixes("/glacier"))
                 .thenReturn(simpleBrokerRegistration);
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com", true);
+        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration(
+                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
 
         // Execute
         webSocketConfiguration.configureMessageBroker(mockRegistry);
@@ -57,7 +60,8 @@ public class WebSocketConfigurationTest {
         // Use vararg-safe stub: matches any number of origin strings
         // (main endpoint passes 3, share-view endpoint passes 4)
         when(registration.setAllowedOrigins(any(String[].class))).thenReturn(registration);
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com", true);
+        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration(
+                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
 
         // Execute
         webSocketConfiguration.registerStompEndpoints(registry);
@@ -78,7 +82,8 @@ public class WebSocketConfigurationTest {
         SimpleBrokerRegistration brokerRegistration = mock(SimpleBrokerRegistration.class);
         when(mockRegistry.enableSimpleBroker("/anotherTopic")).thenReturn(brokerRegistration);
 
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration("example.com", true);
+        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration(
+                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
 
         // Execute
         webSocketConfiguration.configureMessageBroker(mockRegistry);

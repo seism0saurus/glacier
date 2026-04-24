@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
+import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -69,7 +71,8 @@ class WebSocketConfigurationOriginTest {
      * passed to {@code StompWebSocketEndpointRegistration#setAllowedOrigins}.
      */
     private List<String> captureAllowedOrigins(String glacierDomain, boolean cookieSecure) {
-        WebSocketConfiguration config = new WebSocketConfiguration(glacierDomain, cookieSecure);
+        WebSocketConfiguration config = new WebSocketConfiguration(
+                glacierDomain, cookieSecure, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
 
         StompEndpointRegistry registry = mock(WebMvcStompEndpointRegistry.class);
         StompWebSocketEndpointRegistration registration = mock(StompWebSocketEndpointRegistration.class);
