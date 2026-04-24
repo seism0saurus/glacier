@@ -3,7 +3,7 @@ package de.seism0saurus.glacier.share.web;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.util.LogScrubber;
-import de.seism0saurus.glacier.webservice.messaging.ShareViewPrincipalHandler;
+import de.seism0saurus.glacier.webservice.messaging.ShareViewerPrincipal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.Message;
@@ -62,23 +62,25 @@ public class ShareViewTopicAuthInterceptor implements ChannelInterceptor {
         Principal user = accessor.getUser();
 
         if (user == null) {
-            return message; // let the upstream auth handle missing principal
+            // OWASP A07 / fail-closed: no identity → no permission to subscribe
+            AUDIT.info("viewer.subscribe.rejected reason=null_principal");
+            return null;
         }
 
-        String principalName = user.getName();
-
-        // If this is a viewer principal (sv_ prefix), enforce strict topic isolation
-        if (ShareViewPrincipalHandler.isValidShareViewerId(principalName)) {
-            return enforceViewerSubscriptionPolicy(message, accessor, principalName, destination);
+        // glacier-fallback-mode-discipline: only ShareViewerPrincipal sessions are
+        // subject to share-topic isolation; WallPrincipal sessions pass through to
+        // the existing sharer authorization.
+        if (!(user instanceof ShareViewerPrincipal viewerPrincipal)) {
+            return message;
         }
 
-        // Non-viewer principals are handled by existing authorization
-        return message;
+        String viewerId = viewerPrincipal.getName();
+        return enforceViewerSubscriptionPolicy(message, viewerPrincipal, viewerId, destination);
     }
 
     private Message<?> enforceViewerSubscriptionPolicy(
             Message<?> message,
-            StompHeaderAccessor accessor,
+            ShareViewerPrincipal viewerPrincipal,
             String viewerId,
             String destination) {
 
@@ -92,7 +94,7 @@ public class ShareViewTopicAuthInterceptor implements ChannelInterceptor {
         if (destination.startsWith(HASHTAG_TOPIC_PREFIX)) {
             AUDIT.info("viewer.subscribe.rejected reason=hashtag_topic_access viewerId-hash={}",
                     LogScrubber.hash8(viewerId));
-            return null; // reject — prevents wallId leakage
+            return null; // reject — prevents wallId leakage (SR-SHARE-02)
         }
 
         // Must subscribe to /topic/share/{shareLinkId}/...
@@ -107,10 +109,21 @@ public class ShareViewTopicAuthInterceptor implements ChannelInterceptor {
         int slashPos = afterPrefix.indexOf('/');
         String shareLinkIdStr = slashPos > 0 ? afterPrefix.substring(0, slashPos) : afterPrefix;
 
-        // Validate that the share link is ACTIVE
+        // SR-SHARE-06 / OWASP API1 (BOLA): validate the destination's share link ID
+        // against both the viewer's bound link and ACTIVE status. Both checks are
+        // required — without the bound-link check, a viewer for link A could subscribe
+        // to link B's topics if B is also ACTIVE.
         try {
-            ShareLinkId shareLinkId = ShareLinkId.fromUrlPath(shareLinkIdStr);
-            boolean active = shareLinkService.resolve(shareLinkId, Instant.now()).isPresent();
+            ShareLinkId destShareLinkId = ShareLinkId.fromUrlPath(shareLinkIdStr);
+
+            // Enforce that the destination link matches the viewer's own bound link (BOLA guard)
+            if (!destShareLinkId.equals(viewerPrincipal.boundShareLinkId())) {
+                AUDIT.info("viewer.subscribe.rejected reason=link_id_mismatch shareId-hash={} viewerId-hash={}",
+                        LogScrubber.hash8(shareLinkIdStr), LogScrubber.hash8(viewerId));
+                return null;
+            }
+
+            boolean active = shareLinkService.resolve(destShareLinkId, Instant.now()).isPresent();
             if (!active) {
                 AUDIT.info("viewer.subscribe.rejected reason=link_not_active shareId-hash={} viewerId-hash={}",
                         LogScrubber.hash8(shareLinkIdStr), LogScrubber.hash8(viewerId));
