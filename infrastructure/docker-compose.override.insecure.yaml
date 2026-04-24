@@ -14,6 +14,15 @@
 #     Secure cookie, meaning the 401 path cannot exercise the INSECURE flow
 #     honestly (secure-tdd-implementer gap item #3, D-09).
 #
+# Share-link insecure variant:
+#   - __Host- prefix is dropped and Secure flag is cleared on __Host-shareViewerId
+#     when glacier.cookie.secure=false (controlled by CookieNamingBean in
+#     secure-tdd-implementer lane).  This is triggered by COOKIE_SECURE=false below.
+#   - GLACIER_SHARE_HOST is kept as "share.proxy" because TLS routing via Traefik
+#     is still active; only the direct loopback port 8081 is plain HTTP.
+#     Share-link insecure specs that test the __Host- behaviour should navigate
+#     via http://host.docker.internal:8081 (loopback, no Traefik, no TLS).
+#
 # Usage (one-shot):
 #   cd infrastructure
 #   tar -xf infrastructure-content.tar.gz -C ./
@@ -39,7 +48,23 @@ services:
       # Allow the wallId cookie to be sent over plain HTTP in this test fixture.
       # Default is true; must be false here so the cookie is not silently dropped
       # by the browser on an http:// origin (D-09, COOKIE_SECURE property).
+      # Side-effect: CookieNamingBean drops __Host- prefix and Secure flag on
+      # __Host-shareViewerId as well (ADR-SHARE-09, decision: insecure variant).
       COOKIE_SECURE: "false"
+
+      # ── Share-link env vars — insecure variant ───────────────────────────────
+      # Identical values to docker-compose.yaml.  Cookie-naming behaviour for
+      # __Host-shareViewerId is controlled by COOKIE_SECURE=false above, not by
+      # any share-specific override.
+      GLACIER_SHARE_HOST: "share.proxy"
+      GLACIER_SHARE_IMGPROXY_HMAC_SECRET: "e2e-dummy-hmac-secret-not-for-production-use"
+      GLACIER_SHARE_MAX_ACTIVE_PER_SHARER: "3"
+      GLACIER_SHARE_MAX_ACTIVE_PER_IP: "10"
+      GLACIER_SHARE_MAX_VIEWERS_PER_LINK: "100"
+      GLACIER_SHARE_TTL: "P7D"
+      GLACIER_SHARE_SWEEP_INTERVAL_MS: "300000"
+      GLACIER_SHARE_IMGPROXY_POSITIVE_CACHE_SECONDS: "3600"
+      GLACIER_SHARE_IMGPROXY_NEGATIVE_CACHE_SECONDS: "60"
 
   playwright:
     # C-02: allows the playwright container (inside the Docker network) to reach

@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -36,7 +38,8 @@ import static org.mockito.Mockito.*;
  */
 class FallbackAtomicityIT {
 
-    private static final String PRINCIPAL = "wall-atomicity-test";
+    private static final PrincipalKey PRINCIPAL =
+            new PrincipalKey(PrincipalKind.WALL, "wall-atomicity-test");
     private static final String HASHTAG = "java";
     private static final int TOTAL_EVENTS = 50;
     private static final int FAILING_EVENTS = 10;

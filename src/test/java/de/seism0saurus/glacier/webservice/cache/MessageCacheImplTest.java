@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice.cache;
 
 import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -32,6 +34,11 @@ class MessageCacheImplTest {
         cache = new MessageCacheImpl(template, meterRegistry, 20, 10, 10000, true);
     }
 
+    /** Convenience factory: wraps a name string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String name) {
+        return new PrincipalKey(PrincipalKind.WALL, name);
+    }
+
     private CacheEntry partial(final EventType type, final String id) {
         return switch (type) {
             case CREATED -> new CacheEntry(EventType.CREATED, id, "https://ex.com/" + id + "/embed", null, 0L);
@@ -46,10 +53,10 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_created_callsConvertAndSendOnCreationDestination() {
-        cache.provisionHashtag("principal-A", "cats");
+        cache.provisionHashtag(wall("principal-A"), "cats");
         CacheEntry partial = partial(EventType.CREATED, "s1");
 
-        CacheEntry stored = cache.recordThenPublish("principal-A", "cats", partial);
+        CacheEntry stored = cache.recordThenPublish(wall("principal-A"), "cats", partial);
 
         assertThat(stored).isNotNull();
         assertThat(stored.sequence()).isEqualTo(1L);
@@ -59,9 +66,9 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_updated_callsConvertAndSendOnModificationDestination() {
-        cache.provisionHashtag("principal-A", "cats");
+        cache.provisionHashtag(wall("principal-A"), "cats");
 
-        cache.recordThenPublish("principal-A", "cats", partial(EventType.UPDATED, "s2"));
+        cache.recordThenPublish(wall("principal-A"), "cats", partial(EventType.UPDATED, "s2"));
 
         verify(template, times(1)).convertAndSend(
                 eq("/topic/hashtags/principal-A/cats/modification"), any(Object.class));
@@ -69,9 +76,9 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_deleted_callsConvertAndSendOnDeletionDestination() {
-        cache.provisionHashtag("principal-A", "cats");
+        cache.provisionHashtag(wall("principal-A"), "cats");
 
-        cache.recordThenPublish("principal-A", "cats", partial(EventType.DELETED, "s3"));
+        cache.recordThenPublish(wall("principal-A"), "cats", partial(EventType.DELETED, "s3"));
 
         verify(template, times(1)).convertAndSend(
                 eq("/topic/hashtags/principal-A/cats/deletion"), any(Object.class));
@@ -83,11 +90,11 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_multipleEvents_sequenceMonotonicallyIncreasing() {
-        cache.provisionHashtag("p", "java");
+        cache.provisionHashtag(wall("p"), "java");
 
-        CacheEntry e1 = cache.recordThenPublish("p", "java", partial(EventType.CREATED, "s1"));
-        CacheEntry e2 = cache.recordThenPublish("p", "java", partial(EventType.CREATED, "s2"));
-        CacheEntry e3 = cache.recordThenPublish("p", "java", partial(EventType.DELETED, "s3"));
+        CacheEntry e1 = cache.recordThenPublish(wall("p"), "java", partial(EventType.CREATED, "s1"));
+        CacheEntry e2 = cache.recordThenPublish(wall("p"), "java", partial(EventType.CREATED, "s2"));
+        CacheEntry e3 = cache.recordThenPublish(wall("p"), "java", partial(EventType.DELETED, "s3"));
 
         assertThat(e1.sequence()).isLessThan(e2.sequence());
         assertThat(e2.sequence()).isLessThan(e3.sequence());
@@ -99,7 +106,7 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_tupleNotProvisioned_isNoOpAndTemplateNeverCalled() {
-        CacheEntry result = cache.recordThenPublish("ghost-principal", "music", partial(EventType.CREATED, "s99"));
+        CacheEntry result = cache.recordThenPublish(wall("ghost-principal"), "music", partial(EventType.CREATED, "s99"));
 
         assertThat(result).isNull();
         verify(template, never()).convertAndSend(any(String.class), any(Object.class));
@@ -111,10 +118,10 @@ class MessageCacheImplTest {
 
     @Test
     void snapshot_returnsDefensiveCopy() {
-        cache.provisionHashtag("p", "java");
-        cache.recordThenPublish("p", "java", partial(EventType.CREATED, "s1"));
+        cache.provisionHashtag(wall("p"), "java");
+        cache.recordThenPublish(wall("p"), "java", partial(EventType.CREATED, "s1"));
 
-        Snapshot snap = cache.snapshot("p", "java", null);
+        Snapshot snap = cache.snapshot(wall("p"), "java", null);
 
         assertThat(snap.events()).hasSize(1);
         // Defensive copy: mutating the list should not affect the ring
@@ -128,14 +135,14 @@ class MessageCacheImplTest {
 
     @Test
     void snapshot_unknownPrincipal_throwsUnknownSubscriptionException() {
-        assertThatThrownBy(() -> cache.snapshot("nobody", "cats", null))
+        assertThatThrownBy(() -> cache.snapshot(wall("nobody"), "cats", null))
                 .isInstanceOf(UnknownSubscriptionException.class);
     }
 
     @Test
     void snapshot_unknownHashtag_throwsUnknownSubscriptionException() {
-        cache.provisionHashtag("p", "cats");
-        assertThatThrownBy(() -> cache.snapshot("p", "dogs", null))
+        cache.provisionHashtag(wall("p"), "cats");
+        assertThatThrownBy(() -> cache.snapshot(wall("p"), "dogs", null))
                 .isInstanceOf(UnknownSubscriptionException.class);
     }
 
@@ -145,9 +152,9 @@ class MessageCacheImplTest {
 
     @Test
     void provisionHashtag_calledTwiceForSameTuple_doesNotThrow() {
-        cache.provisionHashtag("p", "cats");
-        cache.provisionHashtag("p", "cats"); // idempotent — must not throw
-        assertThat(cache.isProvisioned("p", "cats")).isTrue();
+        cache.provisionHashtag(wall("p"), "cats");
+        cache.provisionHashtag(wall("p"), "cats"); // idempotent — must not throw
+        assertThat(cache.isProvisioned(wall("p"), "cats")).isTrue();
     }
 
     // -----------------------------------------------------------------
@@ -156,26 +163,26 @@ class MessageCacheImplTest {
 
     @Test
     void evictHashtag_removesOnlyThatHashtag() {
-        cache.provisionHashtag("p", "cats");
-        cache.provisionHashtag("p", "dogs");
+        cache.provisionHashtag(wall("p"), "cats");
+        cache.provisionHashtag(wall("p"), "dogs");
 
-        cache.evictHashtag("p", "cats");
+        cache.evictHashtag(wall("p"), "cats");
 
-        assertThat(cache.isProvisioned("p", "cats")).isFalse();
-        assertThat(cache.isProvisioned("p", "dogs")).isTrue();
+        assertThat(cache.isProvisioned(wall("p"), "cats")).isFalse();
+        assertThat(cache.isProvisioned(wall("p"), "dogs")).isTrue();
     }
 
     @Test
     void evictPrincipal_removesAllHashtagsForThatPrincipal() {
-        cache.provisionHashtag("p", "cats");
-        cache.provisionHashtag("p", "dogs");
-        cache.provisionHashtag("other", "birds");
+        cache.provisionHashtag(wall("p"), "cats");
+        cache.provisionHashtag(wall("p"), "dogs");
+        cache.provisionHashtag(wall("other"), "birds");
 
-        cache.evictPrincipal("p");
+        cache.evictPrincipal(wall("p"));
 
-        assertThat(cache.isProvisioned("p", "cats")).isFalse();
-        assertThat(cache.isProvisioned("p", "dogs")).isFalse();
-        assertThat(cache.isProvisioned("other", "birds")).isTrue();
+        assertThat(cache.isProvisioned(wall("p"), "cats")).isFalse();
+        assertThat(cache.isProvisioned(wall("p"), "dogs")).isFalse();
+        assertThat(cache.isProvisioned(wall("other"), "birds")).isTrue();
     }
 
     // -----------------------------------------------------------------
@@ -184,14 +191,14 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_convertAndSendThrows_cacheEntryIsPreserved() {
-        cache.provisionHashtag("p", "cats");
+        cache.provisionHashtag(wall("p"), "cats");
         doThrow(new RuntimeException("STOMP broker down"))
                 .when(template).convertAndSend(any(String.class), any(Object.class));
 
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s1"));
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s1"));
 
         // Entry is still in the ring — snapshot returns it
-        Snapshot snap = cache.snapshot("p", "cats", null);
+        Snapshot snap = cache.snapshot(wall("p"), "cats", null);
         assertThat(snap.events()).hasSize(1);
         assertThat(snap.events().getFirst().statusId()).isEqualTo("s1");
     }
@@ -202,12 +209,12 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_convertAndSendThrows_incrementsFailureCounter() {
-        cache.provisionHashtag("p", "cats");
+        cache.provisionHashtag(wall("p"), "cats");
         doThrow(new RuntimeException("broker error"))
                 .when(template).convertAndSend(any(String.class), any(Object.class));
 
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s1"));
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s2"));
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s1"));
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s2"));
 
         Counter counter = meterRegistry.counter("glacier.fallback.publish.failures");
         assertThat(counter.count()).isEqualTo(2.0);
@@ -215,8 +222,8 @@ class MessageCacheImplTest {
 
     @Test
     void recordThenPublish_successfulPublish_counterNotIncremented() {
-        cache.provisionHashtag("p", "cats");
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s1"));
+        cache.provisionHashtag(wall("p"), "cats");
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s1"));
 
         Counter counter = meterRegistry.counter("glacier.fallback.publish.failures");
         assertThat(counter.count()).isEqualTo(0.0);
@@ -239,16 +246,16 @@ class MessageCacheImplTest {
 
         assertThat(gauge.value()).isEqualTo(0.0);
 
-        cache.provisionHashtag("p1", "cats");
+        cache.provisionHashtag(wall("p1"), "cats");
         assertThat(gauge.value()).isEqualTo(1.0);
 
-        cache.provisionHashtag("p2", "dogs");
+        cache.provisionHashtag(wall("p2"), "dogs");
         assertThat(gauge.value()).isEqualTo(2.0);
 
-        cache.evictPrincipal("p1");
+        cache.evictPrincipal(wall("p1"));
         assertThat(gauge.value()).isEqualTo(1.0);
 
-        cache.evictPrincipal("p2");
+        cache.evictPrincipal(wall("p2"));
         assertThat(gauge.value()).isEqualTo(0.0);
     }
 
@@ -266,20 +273,20 @@ class MessageCacheImplTest {
 
         assertThat(gauge.value()).isEqualTo(0.0);
 
-        cache.provisionHashtag("p", "cats");
-        cache.provisionHashtag("p", "dogs");
+        cache.provisionHashtag(wall("p"), "cats");
+        cache.provisionHashtag(wall("p"), "dogs");
         // Provisioning alone does not add entries
         assertThat(gauge.value()).isEqualTo(0.0);
 
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s1"));
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s2"));
-        cache.recordThenPublish("p", "dogs", partial(EventType.CREATED, "s3"));
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s1"));
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s2"));
+        cache.recordThenPublish(wall("p"), "dogs", partial(EventType.CREATED, "s3"));
         assertThat(gauge.value()).isEqualTo(3.0);
 
-        cache.evictHashtag("p", "cats");
+        cache.evictHashtag(wall("p"), "cats");
         assertThat(gauge.value()).isEqualTo(1.0);
 
-        cache.evictPrincipal("p");
+        cache.evictPrincipal(wall("p"));
         assertThat(gauge.value()).isEqualTo(0.0);
     }
 
@@ -290,15 +297,15 @@ class MessageCacheImplTest {
     @Test
     void gauge_entriesTotal_staysBoundedAtRingCapacity() {
         Gauge gauge = meterRegistry.get("glacier.cache.entries.total").gauge();
-        cache.provisionHashtag("p", "cats");
+        cache.provisionHashtag(wall("p"), "cats");
 
         for (int i = 1; i <= 20; i++) {
-            cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s" + i));
+            cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s" + i));
         }
         assertThat(gauge.value()).isEqualTo(20.0);
 
         // One more append: oldest is evicted; ring stays at capacity
-        cache.recordThenPublish("p", "cats", partial(EventType.CREATED, "s21"));
+        cache.recordThenPublish(wall("p"), "cats", partial(EventType.CREATED, "s21"));
         assertThat(gauge.value()).isEqualTo(20.0);
     }
 
@@ -309,32 +316,32 @@ class MessageCacheImplTest {
     @Test
     void provisionHashtag_exceedsHashtagCapForPrincipal_throwsCacheCapacityException() {
         MessageCacheImpl smallCache = new MessageCacheImpl(template, meterRegistry, 20, 2, 10000, true);
-        smallCache.provisionHashtag("p", "h1");
-        smallCache.provisionHashtag("p", "h2");
+        smallCache.provisionHashtag(wall("p"), "h1");
+        smallCache.provisionHashtag(wall("p"), "h2");
 
-        assertThatThrownBy(() -> smallCache.provisionHashtag("p", "h3"))
+        assertThatThrownBy(() -> smallCache.provisionHashtag(wall("p"), "h3"))
                 .isInstanceOf(CacheCapacityException.class);
     }
 
     @Test
     void provisionHashtag_exceedsPrincipalCap_throwsCacheCapacityException() {
         MessageCacheImpl tinyCache = new MessageCacheImpl(template, meterRegistry, 20, 10, 2, true);
-        tinyCache.provisionHashtag("p1", "h1");
-        tinyCache.provisionHashtag("p2", "h1");
+        tinyCache.provisionHashtag(wall("p1"), "h1");
+        tinyCache.provisionHashtag(wall("p2"), "h1");
 
-        assertThatThrownBy(() -> tinyCache.provisionHashtag("p3", "h1"))
+        assertThatThrownBy(() -> tinyCache.provisionHashtag(wall("p3"), "h1"))
                 .isInstanceOf(CacheCapacityException.class);
     }
 
     @Test
     void provisionHashtag_idempotentReprovision_doesNotThrowEvenAtCap() {
         MessageCacheImpl smallCache = new MessageCacheImpl(template, meterRegistry, 20, 2, 10000, true);
-        smallCache.provisionHashtag("p", "h1");
-        smallCache.provisionHashtag("p", "h2");
+        smallCache.provisionHashtag(wall("p"), "h1");
+        smallCache.provisionHashtag(wall("p"), "h2");
 
         // Re-provisioning an existing tuple at cap must not throw
-        smallCache.provisionHashtag("p", "h1");
-        assertThat(smallCache.isProvisioned("p", "h1")).isTrue();
+        smallCache.provisionHashtag(wall("p"), "h1");
+        assertThat(smallCache.isProvisioned(wall("p"), "h1")).isTrue();
     }
 
     // -----------------------------------------------------------------
@@ -420,7 +427,7 @@ class MessageCacheImplTest {
         MessageCacheImpl killswitchedCache = new MessageCacheImpl(ksTemplate, ksRegistry, 20, 10, 10000, false);
 
         // Attempt recordThenPublish with killswitch off
-        CacheEntry result = killswitchedCache.recordThenPublish("principal-A", "cats", partial(EventType.CREATED, "s1"));
+        CacheEntry result = killswitchedCache.recordThenPublish(wall("principal-A"), "cats", partial(EventType.CREATED, "s1"));
 
         // Returns null — no stored ring entry
         assertThat(result).isNull();
@@ -448,7 +455,7 @@ class MessageCacheImplTest {
         SimpMessagingTemplate ksTemplate = mock(SimpMessagingTemplate.class);
         MessageCacheImpl killswitchedCache = new MessageCacheImpl(ksTemplate, ksRegistry, 20, 10, 10000, false);
 
-        CacheEntry result = killswitchedCache.recordThenPublish("principal-B", "dogs", partial(EventType.CREATED, "s2"));
+        CacheEntry result = killswitchedCache.recordThenPublish(wall("principal-B"), "dogs", partial(EventType.CREATED, "s2"));
 
         // No cache entry stored
         assertThat(result).isNull();
@@ -472,9 +479,9 @@ class MessageCacheImplTest {
         MeterRegistry ksRegistry = new SimpleMeterRegistry();
         MessageCacheImpl killswitchedCache = new MessageCacheImpl(template, ksRegistry, 20, 10, 10000, false);
 
-        killswitchedCache.provisionHashtag("principal-C", "news");
+        killswitchedCache.provisionHashtag(wall("principal-C"), "news");
 
-        assertThat(killswitchedCache.isProvisioned("principal-C", "news")).isFalse();
+        assertThat(killswitchedCache.isProvisioned(wall("principal-C"), "news")).isFalse();
         assertThat(ksRegistry.get("glacier.cache.principals.count").gauge().value()).isEqualTo(0.0);
     }
 }

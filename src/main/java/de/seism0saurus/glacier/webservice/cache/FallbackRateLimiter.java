@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,8 +55,8 @@ public class FallbackRateLimiter {
     // H-1: injected Clock — never call Instant.now() directly in this class or TokenBucket
     private final Clock clock;
 
-    /** Bucket map keyed by wallId. */
-    private final ConcurrentHashMap<String, TokenBucket> wallIdBuckets = new ConcurrentHashMap<>();
+    /** Bucket map keyed by PrincipalKey — prevents cross-namespace collision (ADR-SHARE-05). */
+    private final ConcurrentHashMap<PrincipalKey, TokenBucket> wallIdBuckets = new ConcurrentHashMap<>();
 
     /** Bucket map keyed by remote IP address. */
     private final ConcurrentHashMap<String, TokenBucket> ipBuckets = new ConcurrentHashMap<>();
@@ -98,18 +99,22 @@ public class FallbackRateLimiter {
     }
 
     /**
-     * Checks both axes (wallId and IP) and debits one token from each bucket if both pass.
+     * Checks both axes (principal and IP) and debits one token from each bucket if both pass.
      *
      * <p>If either axis is exhausted, neither bucket is debited (atomic double-check).
      * The more restrictive {@code Retry-After} is returned in the 429 response.
      *
-     * @param wallId   the authenticated principal (raw wallId)
-     * @param remoteIp the peer IP address (as resolved by the servlet container — honours
-     *                 {@code server.forward-headers-strategy})
+     * <p>Security: using {@link PrincipalKey} prevents cross-namespace bucket collision
+     * where a forged {@code WallPrincipal} with an {@code sv_}-prefixed name could
+     * overwrite a {@code ShareViewerPrincipal}'s bucket (ADR-SHARE-05, revised).
+     *
+     * @param principalKey the authenticated principal key (type-safe; see {@link PrincipalKey})
+     * @param remoteIp     the peer IP address (as resolved by the servlet container — honours
+     *                     {@code server.forward-headers-strategy})
      * @return a {@link RateLimitResult}; inspect {@link RateLimitResult#permitted()} before serving
      */
-    public RateLimitResult check(final String wallId, final String remoteIp) {
-        TokenBucket wBucket = wallIdBuckets.computeIfAbsent(wallId,
+    public RateLimitResult check(final PrincipalKey principalKey, final String remoteIp) {
+        TokenBucket wBucket = wallIdBuckets.computeIfAbsent(principalKey,
                 k -> new TokenBucket(perWallIdPerMinute, clock));
         TokenBucket iBucket = ipBuckets.computeIfAbsent(remoteIp,
                 k -> new TokenBucket(perIpPerMinute, clock));

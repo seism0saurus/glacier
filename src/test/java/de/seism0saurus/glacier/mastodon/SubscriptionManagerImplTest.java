@@ -2,6 +2,8 @@ package de.seism0saurus.glacier.mastodon;
 
 import de.seism0saurus.glacier.webservice.cache.CacheCapacityException;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -21,6 +23,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class SubscriptionManagerImplTest {
+
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
 
     @Mock
     private MastodonClient mastodonClient;
@@ -43,7 +50,7 @@ class SubscriptionManagerImplTest {
         String instance = "test-instance";
         String glacierDomain = "test-domain";
         String handle = "test-handle@test-instance";
-        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, messageCache, restTemplate);
+        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, messageCache, restTemplate, null);
     }
 
     @Test
@@ -310,7 +317,7 @@ class SubscriptionManagerImplTest {
 
         subscriptionManager.subscribeToHashtag(principal, hashtag);
 
-        verify(messageCache, times(1)).provisionHashtag(principal, hashtag);
+        verify(messageCache, times(1)).provisionHashtag(wall(principal), hashtag);
     }
 
     /**
@@ -321,7 +328,7 @@ class SubscriptionManagerImplTest {
         String principal = "user123";
         String hashtag = "TooMany";
         doThrow(new CacheCapacityException("cap exceeded"))
-                .when(messageCache).provisionHashtag(principal, hashtag);
+                .when(messageCache).provisionHashtag(wall(principal), hashtag);
 
         assertThrows(CacheCapacityException.class, () ->
                 subscriptionManager.subscribeToHashtag(principal, hashtag)
@@ -339,7 +346,7 @@ class SubscriptionManagerImplTest {
 
         subscriptionManager.terminateSubscription(principal, hashtag);
 
-        verify(messageCache, times(1)).evictHashtag(principal, hashtag);
+        verify(messageCache, times(1)).evictHashtag(wall(principal), hashtag);
     }
 
     /**
@@ -353,7 +360,7 @@ class SubscriptionManagerImplTest {
 
         subscriptionManager.terminateAllSubscriptions(principal);
 
-        verify(messageCache, times(1)).evictPrincipal(principal);
+        verify(messageCache, times(1)).evictPrincipal(wall(principal));
     }
 
     /**
@@ -373,6 +380,6 @@ class SubscriptionManagerImplTest {
         subscriptionManager.terminateAllSubscriptions(principal);
 
         // Assert: cache eviction is unconditional (ADR-05 memory-reclamation contract)
-        verify(messageCache, times(1)).evictPrincipal(principal);
+        verify(messageCache, times(1)).evictPrincipal(wall(principal));
     }
 }

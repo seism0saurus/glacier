@@ -3,6 +3,8 @@ package de.seism0saurus.glacier.webservice.cache;
 import de.seism0saurus.glacier.webservice.FallbackAuthGuard;
 import de.seism0saurus.glacier.webservice.FallbackController;
 import de.seism0saurus.glacier.webservice.FallbackControllerAdvice;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class FallbackControllerIT {
 
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -63,7 +70,7 @@ class FallbackControllerIT {
                 new CacheEntry(EventType.CREATED, "status-abc", "https://ex.com/abc/embed", null, 3L)
         );
         Snapshot snapshot = new Snapshot(entries, 3L, false);
-        when(messageCache.snapshot(eq("wall-test"), eq("java"), any())).thenReturn(snapshot);
+        when(messageCache.snapshot(eq(wall("wall-test")), eq("java"), any())).thenReturn(snapshot);
 
         mockMvc.perform(get("/rest/messages")
                         .param("hashtag", "java")
@@ -81,7 +88,7 @@ class FallbackControllerIT {
     @Test
     void getMessages_cursorAtHead_returns204() throws Exception {
         Snapshot empty = new Snapshot(List.of(), 3L, false);
-        when(messageCache.snapshot(eq("wall-test"), eq("java"), eq(3L))).thenReturn(empty);
+        when(messageCache.snapshot(eq(wall("wall-test")), eq("java"), eq(3L))).thenReturn(empty);
 
         mockMvc.perform(get("/rest/messages")
                         .param("hashtag", "java")

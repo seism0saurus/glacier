@@ -89,7 +89,7 @@ class RawWallIdLogHygieneTest {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
 
         // Act — constructor emits the INFO line
-        new StompCallback(subscriptionManager, messageCache, restTemplate,
+        new StompCallback(subscriptionManager, messageCache, null, restTemplate,
                 CANARY_UUID, "java", "glacier@example.com", "glacier.example.com");
 
         // Assert — no raw UUID in any log line
@@ -106,7 +106,7 @@ class RawWallIdLogHygieneTest {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
 
         // Trigger logEvent via a TechnicalEvent.Closed
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate,
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
                 CANARY_UUID, "java", "glacier@example.com", "glacier.example.com");
         // Reset appender after constructor — focus on logEvent logs
         stompCallbackAppender.list.clear();
@@ -133,7 +133,7 @@ class RawWallIdLogHygieneTest {
 
         SubscriptionManagerImpl manager = new SubscriptionManagerImpl(
                 "example.com", "glacier.example.com", "glacier@example.com",
-                client, messageCache, restTemplate);
+                client, messageCache, restTemplate, null);
 
         // Act
         manager.subscribeToHashtag(CANARY_UUID, "java");

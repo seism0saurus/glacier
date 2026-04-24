@@ -189,11 +189,13 @@ public class SubscriptionListener {
                 return;
             }
             LOGGER.info("Connection for principal-hash={} timed out. Terminating all subscriptions.", principalHash);
-            this.subscriptionManager.terminateAllSubscriptions(event.getUser().getName());
+            String principalName = event.getUser().getName();
+            this.subscriptionManager.terminateAllSubscriptions(principalName);
             // ADR-05 / D-11: also evict the message cache directly so that principals
             // that provisioned the cache without active Bigbone streaming subscriptions
             // (fallback-mode-only clients) are also cleaned up.  Idempotent if already evicted.
-            this.messageCache.evictPrincipal(event.getUser().getName());
+            // ADR-SHARE-05 (revised): wrap wallId in PrincipalKey to prevent cross-namespace collision.
+            this.messageCache.evictPrincipal(new PrincipalKey(PrincipalKind.WALL, principalName));
             this.disconnectTimer.remove(event.getUser().getName());
         });
         this.disconnectTimer.put(event.getUser().getName(), future);
