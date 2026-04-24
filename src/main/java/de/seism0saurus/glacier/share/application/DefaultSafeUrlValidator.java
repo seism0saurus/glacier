@@ -119,6 +119,41 @@ public class DefaultSafeUrlValidator implements SafeUrlValidator {
     }
 
     /**
+     * Resolves the given hostname to an {@link InetAddress} and verifies it is not in
+     * a blocked range (SSRF prevention).
+     *
+     * <p>This is the DNS-pinning helper used by {@code ShareImageProxyService.fetchInternal}
+     * to prevent TOCTOU DNS-rebinding attacks. The validated address is used as the actual
+     * request target so the JVM never performs a second DNS lookup for the same URL.
+     *
+     * <p>References: OWASP SSRF Prevention Cheat Sheet §DNS Pinning,
+     * {@code spring-input-validation-ssrf} skill, SR-SHARE-09, SSRF Finding 5.
+     *
+     * @param host the hostname to resolve and check
+     * @return a safe, non-private {@link InetAddress} for the host
+     * @throws java.net.UnknownHostException if the host cannot be resolved
+     * @throws IllegalArgumentException      if the resolved IP is in a blocked range
+     */
+    public static InetAddress resolveAndPin(final String host)
+            throws java.net.UnknownHostException {
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("Host must not be blank");
+        }
+        InetAddress[] addresses = InetAddress.getAllByName(host);
+        if (addresses == null || addresses.length == 0) {
+            throw new java.net.UnknownHostException("No addresses for host: " + host);
+        }
+        // Use the first resolved address — check blocklist on each
+        for (InetAddress addr : addresses) {
+            if (isBlockedAddress(addr)) {
+                throw new IllegalArgumentException(
+                        "SSRF-blocked resolved address for host: " + obfuscateHost(host));
+            }
+        }
+        return addresses[0];
+    }
+
+    /**
      * Returns true if the given IP address is in a blocked range.
      *
      * <p>Blocks: loopback, link-local, site-local (RFC1918), any-local,
@@ -128,7 +163,7 @@ public class DefaultSafeUrlValidator implements SafeUrlValidator {
      * <p>References: {@code spring-input-validation-ssrf} skill SSRF section,
      * NIST SP 800-53 SC-7.
      */
-    static boolean isBlockedAddress(final InetAddress addr) {
+    public static boolean isBlockedAddress(final InetAddress addr) {
         if (addr.isLoopbackAddress()) return true;       // 127/8, ::1
         if (addr.isLinkLocalAddress()) return true;      // 169.254/16, fe80::/10
         if (addr.isSiteLocalAddress()) return true;      // 10/8, 172.16/12, 192.168/16

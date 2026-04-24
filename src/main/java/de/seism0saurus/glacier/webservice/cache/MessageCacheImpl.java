@@ -1,6 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
 import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -57,7 +58,8 @@ public class MessageCacheImpl implements MessageCache {
      */
     private final boolean fallbackEnabled;
 
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, PerTagRing>> store;
+    /** Outer map keyed by PrincipalKey — prevents cross-namespace collision (ADR-SHARE-05). */
+    private final ConcurrentHashMap<PrincipalKey, ConcurrentHashMap<String, PerTagRing>> store;
 
     private final Counter publishFailureCounter;
 
@@ -98,6 +100,7 @@ public class MessageCacheImpl implements MessageCache {
         this.maxPrincipals = maxPrincipals;
         this.fallbackEnabled = fallbackEnabled;
         this.store = new ConcurrentHashMap<>();
+        // store is ConcurrentHashMap<PrincipalKey, ...> — prevents cross-namespace collision (ADR-SHARE-05)
         this.publishFailureCounter = meterRegistry.counter("glacier.fallback.publish.failures");
 
         // D-11 — operational visibility for the principal and entry-count caps.
@@ -118,47 +121,47 @@ public class MessageCacheImpl implements MessageCache {
     }
 
     @Override
-    public CacheEntry recordThenPublish(final String principal, final String hashtag, final CacheEntry partial) {
+    public CacheEntry recordThenPublish(final PrincipalKey key, final String hashtag, final CacheEntry partial) {
         // D-11 kill-switch: suppress cache write but preserve STOMP fan-out for live WS clients.
         // The destination and payload can be derived from the parameters without the ring.
         if (!fallbackEnabled) {
             LOGGER.debug("Kill-switch active — skipping cache write for principal-hash={} hashtag={}; " +
                     "STOMP fan-out preserved for live WS clients (D-11)",
-                    LogScrubber.hash8(principal), hashtag);
-            String destination = destinationFor(principal, hashtag, partial.type());
+                    LogScrubber.hash8(key.name()), hashtag);
+            String destination = destinationFor(key.name(), hashtag, partial.type());
             try {
                 simpMessagingTemplate.convertAndSend(destination, buildStompPayload(partial));
             } catch (Exception ex) {
                 LOGGER.warn("STOMP publish failed (kill-switch path) principal-hash={} hashtag={} statusId={} — " +
                         "no cache entry to preserve (D-11)",
-                        LogScrubber.hash8(principal), hashtag, partial.statusId());
+                        LogScrubber.hash8(key.name()), hashtag, partial.statusId());
                 publishFailureCounter.increment();
             }
             return null;
         }
 
-        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(principal);
+        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(key);
         if (principalRings == null) {
             LOGGER.warn("recordThenPublish called for un-provisioned principal-hash={} hashtag={} — dropping (SR-2.4)",
-                    LogScrubber.hash8(principal), hashtag);
+                    LogScrubber.hash8(key.name()), hashtag);
             return null;
         }
         PerTagRing ring = principalRings.get(hashtag);
         if (ring == null) {
             LOGGER.warn("recordThenPublish called for un-provisioned principal-hash={} hashtag={} — dropping (SR-2.4)",
-                    LogScrubber.hash8(principal), hashtag);
+                    LogScrubber.hash8(key.name()), hashtag);
             return null;
         }
 
         CacheEntry stored = ring.append(partial);
 
-        String destination = destinationFor(principal, hashtag, stored.type());
+        String destination = destinationFor(key.name(), hashtag, stored.type());
         try {
             simpMessagingTemplate.convertAndSend(destination, buildStompPayload(stored));
             LOGGER.info("Sending message to {} sequence={} statusId={}", destination, stored.sequence(), stored.statusId());
         } catch (Exception ex) {
             LOGGER.warn("STOMP publish failed principal-hash={} hashtag={} sequence={} statusId={} eventType={} — cache entry preserved (D-03)",
-                    LogScrubber.hash8(principal), hashtag, stored.sequence(), stored.statusId(), stored.type());
+                    LogScrubber.hash8(key.name()), hashtag, stored.sequence(), stored.statusId(), stored.type());
             publishFailureCounter.increment();
         }
 
@@ -166,38 +169,38 @@ public class MessageCacheImpl implements MessageCache {
     }
 
     @Override
-    public Snapshot snapshot(final String principal, final String hashtag, final Long since) {
-        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(principal);
+    public Snapshot snapshot(final PrincipalKey key, final String hashtag, final Long since) {
+        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(key);
         if (principalRings == null) {
             throw new UnknownSubscriptionException(
-                    "No subscription for principal-hash=" + LogScrubber.hash8(principal) + " hashtag=" + hashtag);
+                    "No subscription for principal-hash=" + LogScrubber.hash8(key.name()) + " hashtag=" + hashtag);
         }
         PerTagRing ring = principalRings.get(hashtag);
         if (ring == null) {
             throw new UnknownSubscriptionException(
-                    "No subscription for principal-hash=" + LogScrubber.hash8(principal) + " hashtag=" + hashtag);
+                    "No subscription for principal-hash=" + LogScrubber.hash8(key.name()) + " hashtag=" + hashtag);
         }
         return ring.snapshotSince(since);
     }
 
     @Override
-    public void provisionHashtag(final String principal, final String hashtag) {
+    public void provisionHashtag(final PrincipalKey key, final String hashtag) {
         // D-11 kill-switch: when fallback is disabled the cache write path is suppressed.
         // No ring is allocated, so no memory is consumed and gauges stay at zero.
         if (!fallbackEnabled) {
             LOGGER.debug("Kill-switch active — skipping provisionHashtag for principal-hash={} hashtag={} (D-11)",
-                    LogScrubber.hash8(principal), hashtag);
+                    LogScrubber.hash8(key.name()), hashtag);
             return;
         }
 
         // Idempotent: if already provisioned, return immediately
-        ConcurrentHashMap<String, PerTagRing> existing = store.get(principal);
+        ConcurrentHashMap<String, PerTagRing> existing = store.get(key);
         if (existing != null && existing.containsKey(hashtag)) {
             return;
         }
 
         // computeIfAbsent is atomic for the outer map
-        store.compute(principal, (p, rings) -> {
+        store.compute(key, (k, rings) -> {
             if (rings == null) {
                 // New principal — check principal cap first
                 if (store.size() >= maxPrincipals) {
@@ -211,7 +214,7 @@ public class MessageCacheImpl implements MessageCache {
             // Existing principal — check hashtag cap (idempotent re-provision is skipped above)
             if (!rings.containsKey(hashtag) && rings.size() >= maxHashtagsPerPrincipal) {
                 throw new CacheCapacityException(
-                        "Principal-hash=" + LogScrubber.hash8(principal)
+                        "Principal-hash=" + LogScrubber.hash8(key.name())
                                 + " has reached the maximum of " + maxHashtagsPerPrincipal + " hashtags");
             }
             rings.putIfAbsent(hashtag, new PerTagRing(ringCapacity));
@@ -220,25 +223,25 @@ public class MessageCacheImpl implements MessageCache {
     }
 
     @Override
-    public void evictHashtag(final String principal, final String hashtag) {
-        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(principal);
+    public void evictHashtag(final PrincipalKey key, final String hashtag) {
+        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(key);
         if (principalRings == null) {
             return;
         }
         principalRings.remove(hashtag);
         if (principalRings.isEmpty()) {
-            store.remove(principal, principalRings);
+            store.remove(key, principalRings);
         }
     }
 
     @Override
-    public void evictPrincipal(final String principal) {
-        store.remove(principal);
+    public void evictPrincipal(final PrincipalKey key) {
+        store.remove(key);
     }
 
     @Override
-    public boolean isProvisioned(final String principal, final String hashtag) {
-        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(principal);
+    public boolean isProvisioned(final PrincipalKey key, final String hashtag) {
+        ConcurrentHashMap<String, PerTagRing> principalRings = store.get(key);
         return principalRings != null && principalRings.containsKey(hashtag);
     }
 

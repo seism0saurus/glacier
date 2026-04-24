@@ -1,7 +1,10 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,18 +77,25 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     private final RestTemplate restTemplate;
 
+    /**
+     * Relay that fans toot events to viewer-scoped share topics (ADR-SHARE-04).
+     * May be null when the share feature is not active.
+     */
+    private final ShareViewStompRelay shareViewStompRelay;
+
     private final StreamingMethods streaming;
 
     /**
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
-     * client, message cache, and REST template.
+     * client, message cache, REST template, and share view relay.
      *
-     * @param instance      the Mastodon instance URL
-     * @param glacierDomain the domain for Glacier integration
-     * @param handle        the Mastodon user handle
-     * @param client        the Mastodon client used for API interactions
-     * @param messageCache  the ring-buffer cache for event storage and STOMP fan-out
-     * @param restTemplate  the REST template for making HTTP requests
+     * @param instance            the Mastodon instance URL
+     * @param glacierDomain       the domain for Glacier integration
+     * @param handle              the Mastodon user handle
+     * @param client              the Mastodon client used for API interactions
+     * @param messageCache        the ring-buffer cache for event storage and STOMP fan-out
+     * @param restTemplate        the REST template for making HTTP requests
+     * @param shareViewStompRelay relay for fan-out to share viewer topics (ADR-SHARE-04)
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
@@ -93,11 +103,13 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             @Value(value = "${mastodon.handle}") String handle,
             MastodonClient client,
             MessageCache messageCache,
-            RestTemplate restTemplate) {
+            RestTemplate restTemplate,
+            ShareViewStompRelay shareViewStompRelay) {
         this.glacierDomain = glacierDomain;
         this.handle = handle;
         this.restTemplate = restTemplate;
         this.messageCache = messageCache;
+        this.shareViewStompRelay = shareViewStompRelay;
         this.subscriptions = new HashMap<>();
         this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
@@ -129,12 +141,13 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         }
 
         // CacheCapacityException propagates to SubscriptionController — do not catch here (D-11)
-        messageCache.provisionHashtag(principal, hashtag);
+        // ADR-SHARE-05 (revised): wrap wallId in PrincipalKey to prevent cross-namespace collision
+        messageCache.provisionHashtag(new PrincipalKey(PrincipalKind.WALL, principal), hashtag);
 
         Future<?> future;
         LOGGER.debug("Submitting asynchronous future task...");
         future = executorService.submit(() -> {
-            StompCallback stompCallback = new StompCallback(this, messageCache, restTemplate, principal, hashtag, handle, glacierDomain);
+            StompCallback stompCallback = new StompCallback(this, messageCache, shareViewStompRelay, restTemplate, principal, hashtag, handle, glacierDomain);
             try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
                 // D-13/SR-8: log only hashed principal — never the raw wallId UUID
                 LOGGER.info("Asynchronous subscription for principal-hash={} with the hashtag={} started",
@@ -179,7 +192,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             this.subscriptions.put(principal, subscriptionsOfPrincipal);
         }
         subscription.cancel(true);
-        messageCache.evictHashtag(principal, hashtag);
+        messageCache.evictHashtag(new PrincipalKey(PrincipalKind.WALL, principal), hashtag);
     }
 
     /**
@@ -200,7 +213,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             futureMap.forEach((tag, future) -> future.cancel(true));
             this.subscriptions.remove(principal);
         }
-        messageCache.evictPrincipal(principal);
+        messageCache.evictPrincipal(new PrincipalKey(PrincipalKind.WALL, principal));
     }
 
     /**

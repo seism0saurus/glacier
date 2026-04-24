@@ -77,6 +77,12 @@ class ShareLinkControllerIT {
     @MockitoBean
     private FallbackRateLimiter rateLimiter;
 
+    @MockitoBean
+    private ShareCsrfGuard csrfGuard;
+
+    @MockitoBean
+    private ShareRateLimiter shareRateLimiter;
+
     // ---------------------------------------------------------------------------
     // POST /rest/share-links — happy path
     // ---------------------------------------------------------------------------
@@ -85,6 +91,8 @@ class ShareLinkControllerIT {
     void postShareLinks_happyPath_returns201WithBody() throws Exception {
         authenticateAs(WALL_ID);
         allowRateLimit();
+        allowCsrf();
+        allowShareRateLimit();
 
         ShareLinkId id = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         ShareLink link = ShareLink.create(id, WALL_ID, NOW, java.time.Duration.ofDays(7));
@@ -126,6 +134,8 @@ class ShareLinkControllerIT {
     void postShareLinks_capacityExceeded_returns429() throws Exception {
         authenticateAs(WALL_ID);
         allowRateLimit();
+        allowCsrf();
+        allowShareRateLimit();
         when(shareLinkService.create(any(), any(), any()))
                 .thenThrow(new CapacityExceededException("sharer cap exceeded"));
 
@@ -142,8 +152,9 @@ class ShareLinkControllerIT {
     @Test
     void postShareLinks_rateLimitExceeded_returns429() throws Exception {
         authenticateAs(WALL_ID);
-        when(rateLimiter.check(any(), any()))
-                .thenReturn(FallbackRateLimiter.RateLimitResult.rejected(30L));
+        allowCsrf();
+        when(shareRateLimiter.checkShareCreate(any(), any()))
+                .thenReturn(ShareRateLimiter.RateLimitResult.rejected(30L));
 
         mockMvc.perform(post("/rest/share-links")
                         .cookie(new Cookie("wallId", WALL_ID))
@@ -158,6 +169,7 @@ class ShareLinkControllerIT {
     @Test
     void deleteShareLink_happyPath_returns204() throws Exception {
         authenticateAs(WALL_ID);
+        allowCsrf();
         String linkId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
         mockMvc.perform(delete("/rest/share-links/{id}", linkId)
@@ -172,6 +184,7 @@ class ShareLinkControllerIT {
     @Test
     void deleteShareLink_notFound_returns404() throws Exception {
         authenticateAs(WALL_ID);
+        allowCsrf();
         String linkId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         doThrow(new ShareLinkNotFoundOrNotAuthorisedException("not found"))
                 .when(shareLinkService).revoke(any(ShareLinkId.class), eq(WALL_ID), any(Instant.class));
@@ -188,6 +201,7 @@ class ShareLinkControllerIT {
     @Test
     void deleteShareLink_wrongWallId_returns404SameAsNotFound() throws Exception {
         authenticateAs(WALL_ID);
+        allowCsrf();
         String linkId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         doThrow(new ShareLinkNotFoundOrNotAuthorisedException("not authorised"))
                 .when(shareLinkService).revoke(any(ShareLinkId.class), eq(WALL_ID), any(Instant.class));
@@ -243,5 +257,13 @@ class ShareLinkControllerIT {
 
     private void allowRateLimit() {
         when(rateLimiter.check(any(), any())).thenReturn(FallbackRateLimiter.RateLimitResult.allowed());
+    }
+
+    private void allowCsrf() {
+        when(csrfGuard.verify(any(HttpServletRequest.class))).thenReturn(true);
+    }
+
+    private void allowShareRateLimit() {
+        when(shareRateLimiter.checkShareCreate(any(), any())).thenReturn(ShareRateLimiter.RateLimitResult.allowed());
     }
 }

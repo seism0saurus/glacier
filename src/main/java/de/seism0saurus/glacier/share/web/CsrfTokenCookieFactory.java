@@ -43,8 +43,15 @@ public class CsrfTokenCookieFactory {
         String token = ENCODER.encodeToString(bytes);
 
         String cookieName = secureCookies ? ShareCsrfGuard.CSRF_COOKIE_SECURE : ShareCsrfGuard.CSRF_COOKIE_INSECURE;
+
+        // OWASP A05: __Host- prefix requires Path=/ (RFC 6265bis §4.1.3).
+        // In secure mode the cookie uses the __Host- prefix so Path MUST be /.
+        // In insecure mode (dev/test) we scope to /share.
+        // SR-SHARE-07, Finding 8.
+        String cookiePath = secureCookies ? "/" : "/share";
+
         Cookie cookie = new Cookie(cookieName, token);
-        cookie.setPath("/share");
+        cookie.setPath(cookiePath);
         cookie.setMaxAge(3600); // 1 hour — short-lived CSRF token
         cookie.setHttpOnly(false); // must be readable by JS for double-submit pattern
         // SameSite=Strict is the strongest — prevents cross-site requests entirely
@@ -57,7 +64,7 @@ public class CsrfTokenCookieFactory {
         // Set SameSite=Strict via Set-Cookie header manipulation
         response.addHeader("Set-Cookie",
                 cookieName + "=" + token
-                        + "; Path=/share"
+                        + "; Path=" + cookiePath
                         + "; SameSite=Strict"
                         + "; Max-Age=3600"
                         + (secureCookies ? "; Secure" : ""));

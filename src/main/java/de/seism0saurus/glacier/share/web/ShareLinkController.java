@@ -67,6 +67,8 @@ public class ShareLinkController {
     private final ShareLinkService shareLinkService;
     private final FallbackAuthGuard authGuard;
     private final FallbackRateLimiter rateLimiter;
+    private final ShareCsrfGuard csrfGuard;
+    private final ShareRateLimiter shareRateLimiter;
     private final String domain;
     private final Clock clock;
 
@@ -75,7 +77,9 @@ public class ShareLinkController {
      *
      * @param shareLinkService service for share-link lifecycle management
      * @param authGuard        cookie-based authentication guard (cookie-based in production)
-     * @param rateLimiter      two-axis rate limiter
+     * @param rateLimiter      general two-axis rate limiter (kept for backward compat)
+     * @param csrfGuard        CSRF guard for state-changing operations (SR-SHARE-05)
+     * @param shareRateLimiter share-specific six-axis rate limiter (SR-SHARE-12)
      * @param domain           the glacier domain for constructing readonly URLs
      *                         ({@code glacier.domain})
      * @param clock            injected clock for test determinism
@@ -84,11 +88,15 @@ public class ShareLinkController {
             final ShareLinkService shareLinkService,
             final FallbackAuthGuard authGuard,
             final FallbackRateLimiter rateLimiter,
+            final ShareCsrfGuard csrfGuard,
+            final ShareRateLimiter shareRateLimiter,
             @Value("${glacier.domain}") final String domain,
             final Clock clock) {
         this.shareLinkService = shareLinkService;
         this.authGuard = authGuard;
         this.rateLimiter = rateLimiter;
+        this.csrfGuard = csrfGuard;
+        this.shareRateLimiter = shareRateLimiter;
         this.domain = domain;
         this.clock = clock;
     }
@@ -117,6 +125,7 @@ public class ShareLinkController {
             @CookieValue(value = "wallId", required = false) final String rawWallId,
             final HttpServletRequest request) {
 
+        // Authentication first (SR-SHARE-01: fail before CSRF to avoid leaking info about CSRF state)
         FallbackAuthGuard.AuthResult auth = authGuard.authenticate(request, rawWallId);
         if (!auth.authenticated()) {
             LOGGER.debug("POST /rest/share-links auth failed wallId-hash8={}",
@@ -129,7 +138,16 @@ public class ShareLinkController {
         String principal = auth.principal();
         String remoteIp = request.getRemoteAddr();
 
-        FallbackRateLimiter.RateLimitResult rl = rateLimiter.check(principal, remoteIp);
+        // CSRF verification (SR-SHARE-05: double-submit cookie pattern)
+        // OWASP A01: CSRF tokens must be validated for all state-changing operations
+        if (!csrfGuard.verify(request)) {
+            AUDIT.info("share.csrf.fail endpoint=create wallId-hash8={}", LogScrubber.hash8(principal));
+            return ResponseEntity.status(403).body(Map.of("error", "csrf_validation_failed"));
+        }
+
+        // Use share-specific rate limiter (SR-SHARE-12) for share creation
+        // This applies the share.create.perMinutePerWallId and share.create.perMinutePerIp axes
+        ShareRateLimiter.RateLimitResult rl = shareRateLimiter.checkShareCreate(principal, remoteIp);
         if (!rl.permitted()) {
             LOGGER.debug("POST /rest/share-links rate limited wallId-hash8={} ip={}",
                     LogScrubber.hash8(principal), LogScrubber.maskIp(remoteIp));
@@ -182,6 +200,13 @@ public class ShareLinkController {
         }
 
         String principal = auth.principal();
+
+        // CSRF verification (SR-SHARE-05: double-submit cookie pattern)
+        // OWASP A01: CSRF tokens must be validated for all state-changing operations
+        if (!csrfGuard.verify(request)) {
+            AUDIT.info("share.csrf.fail endpoint=revoke wallId-hash8={}", LogScrubber.hash8(principal));
+            return ResponseEntity.status(403).body(Map.of("error", "csrf_validation_failed"));
+        }
 
         ShareLinkId id;
         try {

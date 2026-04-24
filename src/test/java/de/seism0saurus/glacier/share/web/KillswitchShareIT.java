@@ -94,4 +94,20 @@ class KillswitchShareIT {
                             .doesNotContain("java.lang.", "Exception", "at de.seism0saurus");
                 });
     }
+
+    /**
+     * Fix 7: GET /rest/share/{id}/messages in killswitch mode must return 404.
+     *
+     * <p>glacier-fallback-mode-discipline: when {@code glacier.fallback.enabled=false},
+     * the fallback polling endpoint must be completely disabled (404), not just rate-limited.
+     * This prevents clients from discovering that the endpoint exists in killswitch mode.
+     *
+     * <p>Security: SR-SHARE-13 (killswitch disables polling path).
+     */
+    @Test
+    void messagesEndpoint_withKillswitch_returns404() throws Exception {
+        mockMvc.perform(get("/rest/share/sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages")
+                        .param("hashtag", "cats"))
+                .andExpect(status().isNotFound());
+    }
 }

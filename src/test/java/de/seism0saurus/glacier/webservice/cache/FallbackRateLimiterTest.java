@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +18,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
+/** Helper to construct a WALL-kind PrincipalKey from a wallId string. */
 
 /**
  * Unit tests for {@link FallbackRateLimiter}.
@@ -36,6 +40,11 @@ class FallbackRateLimiterTest {
         limiter = new FallbackRateLimiter(30, 120, Clock.systemUTC());
     }
 
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
+
     // -------------------------------------------------------------------------
     // Per-wallId axis (30/min)
     // -------------------------------------------------------------------------
@@ -46,7 +55,7 @@ class FallbackRateLimiterTest {
         String ip = "10.0.0.1";
 
         for (int i = 0; i < 30; i++) {
-            assertThat(limiter.check(wallId, ip).permitted())
+            assertThat(limiter.check(wall(wallId), ip).permitted())
                     .as("request %d should be allowed", i + 1)
                     .isTrue();
         }
@@ -58,10 +67,10 @@ class FallbackRateLimiterTest {
         String ip = "10.0.0.2";
 
         for (int i = 0; i < 30; i++) {
-            limiter.check(wallId, ip);
+            limiter.check(wall(wallId), ip);
         }
 
-        FallbackRateLimiter.RateLimitResult result = limiter.check(wallId, ip);
+        FallbackRateLimiter.RateLimitResult result = limiter.check(wall(wallId), ip);
         assertThat(result.permitted()).isFalse();
         assertThat(result.retryAfterSeconds()).isGreaterThan(0L);
     }
@@ -72,10 +81,10 @@ class FallbackRateLimiterTest {
         String ip = "10.0.0.3";
 
         for (int i = 0; i < 30; i++) {
-            limiter.check(wallId, ip);
+            limiter.check(wall(wallId), ip);
         }
 
-        FallbackRateLimiter.RateLimitResult result = limiter.check(wallId, ip);
+        FallbackRateLimiter.RateLimitResult result = limiter.check(wall(wallId), ip);
         assertThat(result.retryAfterSeconds()).isGreaterThanOrEqualTo(1L);
         assertThat(result.retryAfterSeconds()).isLessThanOrEqualTo(62L); // +2s tolerance for window boundary
     }
@@ -92,7 +101,7 @@ class FallbackRateLimiterTest {
         for (int i = 0; i < 120; i++) {
             // Each "wallId" gets 30 requests before rotating
             String wallId = "wall-ip-test-" + String.format("%04d", (i / 30)) + "aaaaaaaaaaaaaaaaa";
-            assertThat(limiter.check(wallId, ip).permitted())
+            assertThat(limiter.check(wall(wallId), ip).permitted())
                     .as("request %d should be allowed (ip axis)", i + 1)
                     .isTrue();
         }
@@ -104,11 +113,11 @@ class FallbackRateLimiterTest {
         // Exhaust the IP bucket by spreading across 4 wallIds (30 each = 120 total)
         for (int i = 0; i < 120; i++) {
             String wallId = "wall-ip-exhaust-" + String.format("%02d", (i / 30)) + "aaaaaaaaaaaaaaa";
-            limiter.check(wallId, ip);
+            limiter.check(wall(wallId), ip);
         }
 
         // 121st with a fresh wallId — IP bucket exhausted
-        FallbackRateLimiter.RateLimitResult result = limiter.check("wall-ip-fresh-aaaaaaaaaaaaaaaaaa", ip);
+        FallbackRateLimiter.RateLimitResult result = limiter.check(wall("wall-ip-fresh-aaaaaaaaaaaaaaaaaa"), ip);
         assertThat(result.permitted()).isFalse();
     }
 
@@ -124,11 +133,11 @@ class FallbackRateLimiterTest {
 
         // Exhaust wallA
         for (int i = 0; i < 30; i++) {
-            limiter.check(wallA, ip);
+            limiter.check(wall(wallA), ip);
         }
 
         // wallB should still be at full capacity
-        assertThat(limiter.check(wallB, ip).permitted()).isTrue();
+        assertThat(limiter.check(wall(wallB), ip).permitted()).isTrue();
     }
 
     @Test
@@ -142,13 +151,13 @@ class FallbackRateLimiterTest {
 
         // Exhaust ipA
         for (int i = 0; i < 5; i++) {
-            smallLimiter.check(wallId, ipA);
+            smallLimiter.check(wall(wallId), ipA);
         }
-        assertThat(smallLimiter.check(wallId, ipA).permitted()).isFalse();
+        assertThat(smallLimiter.check(wall(wallId), ipA).permitted()).isFalse();
 
         // ipB should still be allowed (but wallId is exhausted, so use a fresh wallId)
         String freshWall = "wall-ip-iso-bbbbbbbbbbbbbbbbbbbbb1";
-        assertThat(smallLimiter.check(freshWall, ipB).permitted()).isTrue();
+        assertThat(smallLimiter.check(wall(freshWall), ipB).permitted()).isTrue();
     }
 
     // -------------------------------------------------------------------------
@@ -182,7 +191,7 @@ class FallbackRateLimiterTest {
         String ip = "10.4.0.1";
 
         // Create fresh buckets by making a request
-        limiter.check(wallId, ip);
+        limiter.check(wall(wallId), ip);
 
         int wallIdCountBefore = limiter.wallIdBucketCount();
         int ipCountBefore = limiter.ipBucketCount();
@@ -198,7 +207,7 @@ class FallbackRateLimiterTest {
     void evictStaleBuckets_unusedBuckets_evenNewlyCreated_areNotEvictedImmediately() {
         // This test verifies the eviction window logic — fresh buckets should survive one eviction call
         String wallId = "wall-evict-new-aaaaaaaaaaaaaaaaaaa";
-        limiter.check(wallId, "10.4.0.5");
+        limiter.check(wall(wallId), "10.4.0.5");
 
         // Evict — bucket was just created, should not be evicted
         limiter.evictStaleBuckets();
@@ -236,8 +245,8 @@ class FallbackRateLimiterTest {
         String activeIp    = "10.4.1.2";
 
         // Touch both buckets at t=0 so they are created with lastAccessedAt = t0
-        testLimiter.check(idleWallId, idleIp);
-        testLimiter.check(activeWallId, activeIp);
+        testLimiter.check(wall(idleWallId), idleIp);
+        testLimiter.check(wall(activeWallId), activeIp);
 
         // Advance clock past the 10-minute idle eviction threshold (t = 620 s) without
         // consuming from idleWallId — the idle bucket must be evicted; active must survive.
@@ -245,7 +254,7 @@ class FallbackRateLimiterTest {
         nowRef.set(Instant.parse("2024-01-01T00:10:20Z")); // +620 s > 600 s eviction window
 
         // Touch the active bucket at the new time so its lastAccessedAt is recent (not idle)
-        testLimiter.check(activeWallId, activeIp);
+        testLimiter.check(wall(activeWallId), activeIp);
 
         // Act
         testLimiter.evictStaleBuckets();
@@ -255,7 +264,7 @@ class FallbackRateLimiterTest {
                 .as("only the active wallId bucket should survive")
                 .isEqualTo(1);
         // Verify the surviving bucket is indeed the active one (indirect: active bucket allows requests)
-        assertThat(testLimiter.check(activeWallId, activeIp).permitted()).isTrue();
+        assertThat(testLimiter.check(wall(activeWallId), activeIp).permitted()).isTrue();
     }
 
     /**
@@ -283,14 +292,14 @@ class FallbackRateLimiterTest {
         String liveIp      = "10.4.0.10";
 
         // Create both buckets at t=0 — lastAccessedAt is set via tryConsume() in check()
-        testLimiter.check(staleWallId, staleIp);
-        testLimiter.check(liveWallId, liveIp);
+        testLimiter.check(wall(staleWallId), staleIp);
+        testLimiter.check(wall(liveWallId), liveIp);
 
         // Advance clock by 11 minutes — stale bucket is now beyond the 10-min eviction window
         nowRef.set(Instant.parse("2024-02-01T12:11:00Z")); // +11 min
 
         // Touch the live bucket at the new time so its lastAccessedAt is recent
-        testLimiter.check(liveWallId, liveIp);
+        testLimiter.check(wall(liveWallId), liveIp);
 
         assertThat(testLimiter.wallIdBucketCount()).isGreaterThanOrEqualTo(2);
 
@@ -358,7 +367,7 @@ class FallbackRateLimiterTest {
             futures.add(pool.submit(() -> {
                 try {
                     barrier.await(); // release all threads simultaneously
-                    FallbackRateLimiter.RateLimitResult r = stressLimiter.check(wallId, ip);
+                    FallbackRateLimiter.RateLimitResult r = stressLimiter.check(wall(wallId), ip);
                     if (r.permitted()) {
                         allowed.incrementAndGet();
                     } else {

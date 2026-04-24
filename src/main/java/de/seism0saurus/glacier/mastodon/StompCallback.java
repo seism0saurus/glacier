@@ -2,10 +2,13 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.cache.CacheEntry;
 import de.seism0saurus.glacier.webservice.cache.EventType;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -52,14 +55,27 @@ public class StompCallback implements WebSocketCallback {
     private final MessageCache messageCache;
 
     /**
+     * Relay that fans toot events to viewer-scoped share topics (ADR-SHARE-04).
+     * May be null if no share links are active — null-safe call sites use it only when non-null.
+     */
+    private final ShareViewStompRelay shareViewStompRelay;
+
+    /**
      * The REST template is needed to check the headers of the URLs of the toots for X-FRAME headers.
      */
     private final RestTemplate restTemplate;
 
     /**
      * The principal aka wallId of the subscription this callback.
+     * Stored as raw String for STOMP destination construction and logging only.
      */
     private final String principal;
+
+    /**
+     * PrincipalKey wrapping the wallId — used for MessageCache lookups to prevent
+     * cross-namespace collision (ADR-SHARE-05, revised).
+     */
+    private final PrincipalKey principalKey;
 
     /**
      * This variable represents the hashtag of subscription of this callback.
@@ -80,16 +96,18 @@ public class StompCallback implements WebSocketCallback {
      * {@code SimpMessagingTemplate} parameter; the template is now owned by
      * {@link MessageCache} (D-03).
      *
-     * @param subscriptionManager the manager to call when a stream failure requires restart
-     * @param messageCache        the cache that records events and publishes them over STOMP
-     * @param restTemplate        the template used to inspect embed headers of toot URLs
-     * @param principal           the wallId associated with the subscription
-     * @param hashtag             the hashtag to subscribe to
-     * @param handle              the bot's full Mastodon handle, used for the opt-in check
-     * @param glacierDomain       the glacier domain for iframe-loadability checks
+     * @param subscriptionManager  the manager to call when a stream failure requires restart
+     * @param messageCache         the cache that records events and publishes them over STOMP
+     * @param shareViewStompRelay  the relay that fans events to viewer share topics (may be null)
+     * @param restTemplate         the template used to inspect embed headers of toot URLs
+     * @param principal            the wallId associated with the subscription
+     * @param hashtag              the hashtag to subscribe to
+     * @param handle               the bot's full Mastodon handle, used for the opt-in check
+     * @param glacierDomain        the glacier domain for iframe-loadability checks
      */
     public StompCallback(final SubscriptionManager subscriptionManager,
                          final MessageCache messageCache,
+                         final ShareViewStompRelay shareViewStompRelay,
                          final RestTemplate restTemplate,
                          final String principal,
                          final String hashtag,
@@ -97,8 +115,12 @@ public class StompCallback implements WebSocketCallback {
                          final String glacierDomain) {
         this.subscriptionManager = subscriptionManager;
         this.messageCache = messageCache;
+        this.shareViewStompRelay = shareViewStompRelay;
         this.restTemplate = restTemplate;
         this.principal = principal;
+        // ADR-SHARE-05 (revised): wrap raw wallId in PrincipalKey to prevent cross-namespace
+        // collision in MessageCache lookups. StompCallback is always called for a wall principal.
+        this.principalKey = new PrincipalKey(PrincipalKind.WALL, principal);
         this.hashtag = hashtag;
         this.shortHandle = getShortHandle(handle);
         this.glacierDomain = glacierDomain;
@@ -203,7 +225,12 @@ public class StompCallback implements WebSocketCallback {
                     }
                     partial = new CacheEntry(EventType.UPDATED, payload.getId(), payload.getUrl() + "/embed", editedAt, 0L);
                 }
-                messageCache.recordThenPublish(principal, hashtag, partial);
+                CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+                // ADR-SHARE-04: relay to viewer share topics after successful cache write
+                if (shareViewStompRelay != null && stored != null) {
+                    String eventType = StatusCreatedMessage.class.equals(statusMessageClass) ? "creation" : "modification";
+                    shareViewStompRelay.relayTootEvent(principal, hashtag, eventType, stored);
+                }
                 LOGGER.info("Sending message to {}", destination);
             } else {
                 LOGGER.info("No opt in. Ignoring");
@@ -304,7 +331,11 @@ public class StompCallback implements WebSocketCallback {
         }
         if (isLoadable(httpHeaders, glacierDomain)) {
             CacheEntry partial = new CacheEntry(EventType.CREATED, status.getId(), status.getUrl() + "/embed", null, 0L);
-            messageCache.recordThenPublish(principal, hashtag, partial);
+            CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+            // ADR-SHARE-04: relay to viewer share topics after successful cache write
+            if (shareViewStompRelay != null && stored != null) {
+                shareViewStompRelay.relayTootEvent(principal, hashtag, "creation", stored);
+            }
         }
     }
 
@@ -317,7 +348,11 @@ public class StompCallback implements WebSocketCallback {
     private void processStatusEditedEvent(final Status status, final String destination) {
         logEvent("got a StatusEdited event");
         CacheEntry partial = new CacheEntry(EventType.UPDATED, status.getId(), status.getUrl() + "/embed", null, 0L);
-        messageCache.recordThenPublish(principal, hashtag, partial);
+        CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+        // ADR-SHARE-04: relay to viewer share topics
+        if (shareViewStompRelay != null && stored != null) {
+            shareViewStompRelay.relayTootEvent(principal, hashtag, "modification", stored);
+        }
     }
 
     /**
@@ -329,7 +364,11 @@ public class StompCallback implements WebSocketCallback {
     private void procesStatusDeletedEvent(final String statusId, final String destination) {
         logEvent("got a StatusDeleted event");
         CacheEntry partial = new CacheEntry(EventType.DELETED, statusId, null, null, 0L);
-        messageCache.recordThenPublish(principal, hashtag, partial);
+        CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+        // ADR-SHARE-04: relay to viewer share topics
+        if (shareViewStompRelay != null && stored != null) {
+            shareViewStompRelay.relayTootEvent(principal, hashtag, "deletion", stored);
+        }
     }
 
     /**

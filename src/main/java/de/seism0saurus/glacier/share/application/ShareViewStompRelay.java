@@ -3,14 +3,22 @@ package de.seism0saurus.glacier.share.application;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.cache.Snapshot;
+import de.seism0saurus.glacier.webservice.cache.UnknownSubscriptionException;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Relays sharer STOMP toot events to viewer-scoped share topics.
@@ -47,12 +55,22 @@ public class ShareViewStompRelay {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final ShareLinkService shareLinkService;
+    private final MessageCache messageCache;
 
     public ShareViewStompRelay(
-            final SimpMessagingTemplate messagingTemplate,
-            final ShareLinkService shareLinkService) {
+            // @Lazy on both SimpMessagingTemplate and ShareLinkService breaks the mutual
+            // circular dependency:
+            //   shareViewStompRelay ↔ shareLinkServiceImpl (direct cycle via constructor params 0 and 1)
+            //   shareViewStompRelay → SimpMessagingTemplate → WebSocketConfig →
+            //     ShareViewTopicAuthInterceptor → shareLinkServiceImpl → shareViewStompRelay
+            // All three dependencies are used only at runtime (publish/relay/revoke), never at startup.
+            @Lazy final SimpMessagingTemplate messagingTemplate,
+            @Lazy final ShareLinkService shareLinkService,
+            // @Lazy on MessageCache prevents a secondary cycle via the same chain.
+            @Lazy final MessageCache messageCache) {
         this.messagingTemplate = messagingTemplate;
         this.shareLinkService = shareLinkService;
+        this.messageCache = messageCache;
     }
 
     /**
@@ -101,6 +119,61 @@ public class ShareViewStompRelay {
                 log.warn("share.relay.publish_failed shareId-hash={} reason={}",
                         LogScrubber.hash8(link.id().value()), e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Returns recent messages for the given share link and hashtag from the in-memory ring buffer.
+     *
+     * <p>This method provides the backing data for the fallback polling endpoint
+     * {@code GET /rest/share/{id}/messages?hashtag=...&since=...}. It looks up the
+     * sharer's wallId from the active share link, then queries the message cache
+     * for events newer than {@code since}.
+     *
+     * <p>The sharer's wallId is used server-side to query the cache; it is NEVER
+     * returned to callers (SR-SHARE-02).
+     *
+     * @param shareLinkId the active share link ID
+     * @param hashtag     the hashtag to fetch events for
+     * @param since       sequence cursor (events with sequence &gt; since are returned);
+     *                    {@code null} returns all cached events
+     * @param now         the current time (for active-link resolution)
+     * @return list of {@link CacheEntry} objects, empty if none found or link not active
+     */
+    public List<CacheEntry> getRecentMessages(
+            final ShareLinkId shareLinkId,
+            final String hashtag,
+            final Long since,
+            final Instant now) {
+
+        // Resolve the active share link to find the sharer's wallId (server-side only)
+        List<ShareLink> activeLinks;
+        try {
+            // We search all active links for the sharer to find the one with this ID
+            // The shareLinkId must be active; if not, return empty (viewer should get 404)
+            Optional<ShareLink> matchingLink = shareLinkService.resolve(shareLinkId, now);
+            if (matchingLink.isEmpty()) {
+                return List.of();
+            }
+
+            // Use the sharer's wallId to query the message cache.
+            // ADR-SHARE-05 (revised): wrap wallId in PrincipalKey(WALL) to prevent
+            // cross-namespace collision in MessageCacheImpl's PrincipalKey-keyed map.
+            String sharerWallId = matchingLink.get().sharerWallId();
+            PrincipalKey sharerKey = new PrincipalKey(PrincipalKind.WALL, sharerWallId);
+
+            try {
+                Snapshot snapshot = messageCache.snapshot(sharerKey, hashtag, since);
+                return snapshot.events();
+            } catch (UnknownSubscriptionException e) {
+                log.debug("share.relay.snapshot_miss shareId-hash={} hashtag={} reason={}",
+                        LogScrubber.hash8(shareLinkId.value()), hashtag, e.getMessage());
+                return List.of();
+            }
+        } catch (Exception e) {
+            log.warn("share.relay.getRecentMessages_failed shareId-hash={} hashtag={} reason={}",
+                    LogScrubber.hash8(shareLinkId.value()), hashtag, e.getMessage());
+            return List.of();
         }
     }
 

@@ -21,14 +21,11 @@ public record ShareCatalogResponse(
     public static final String STATE_ACTIVE = "active";
 
     /**
-     * Creates a response for a known but non-ACTIVE link.
-     * Anti-enumeration: returns 200 with state, not 404 (SR-SHARE-01).
+     * Creates a response for an ACTIVE link.
+     *
+     * <p>Anti-enumeration invariant (SR-SHARE-01): unknown and inactive share IDs both return
+     * 404 (not this method). This factory is only called for confirmed-active links.
      */
-    public static ShareCatalogResponse inactive(String shareId, String state) {
-        return new ShareCatalogResponse(shareId, List.of(), null, state);
-    }
-
-    /** Creates a response for an ACTIVE link. */
     public static ShareCatalogResponse active(String shareId, List<String> hashtags, Instant expiresAt) {
         return new ShareCatalogResponse(shareId, hashtags, expiresAt, STATE_ACTIVE);
     }

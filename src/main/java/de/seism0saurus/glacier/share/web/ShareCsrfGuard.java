@@ -37,7 +37,7 @@ public class ShareCsrfGuard {
     private static final Logger log = LoggerFactory.getLogger(ShareCsrfGuard.class);
 
     /** The CSRF token header name that clients must include. */
-    public static final String CSRF_HEADER = "X-Share-Csrf-Token";
+    public static final String CSRF_HEADER = "X-Share-CSRF";
 
     /** The CSRF cookie name. Uses __Host- prefix in secure mode (OWASP A05). */
     public static final String CSRF_COOKIE_SECURE = "__Host-shareCsrf";

@@ -1,8 +1,11 @@
 package de.seism0saurus.glacier.share.web;
 
 import de.seism0saurus.glacier.share.application.ShareLinkService;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -13,10 +16,15 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -53,6 +61,9 @@ class ShareViewControllerIT {
 
     @MockBean
     private ShareLinkService shareLinkService;
+
+    @MockBean
+    private ShareViewStompRelay shareViewStompRelay;
 
     // IDs must be >= 43 chars total (URL-safe base64 alphabet: [A-Za-z0-9_-]{43,256})
     // sv_ prefix (3 chars) + 40 URL-safe base64 chars = 43 chars minimum
@@ -157,6 +168,59 @@ class ShareViewControllerIT {
         // SR-SHARE-02: sharerWallId must never appear in response body
         String body = result.getResponse().getContentAsString();
         assertThat(body).doesNotContain(sharerWallId);
+    }
+
+    /**
+     * Fix 7: GET /rest/share/{id}/messages happy-path — returns CacheEntry list as JSON array.
+     *
+     * <p>Security: SR-SHARE-12 (rate limiting), SR-SHARE-02 (no wallId in response),
+     * glacier-fallback-mode-discipline (fallback.enabled=true in this test).
+     */
+    @Test
+    void messagesEndpoint_happyPath_returnsCacheEntries() throws Exception {
+        ShareLink activeLink = mockActiveShareLink(VALID_SHARE_ID);
+        when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
+                .thenReturn(Optional.of(activeLink));
+
+        CacheEntry entry = new CacheEntry(EventType.CREATED, "status-001",
+                "https://example.com/status/1/embed", null, 1L);
+        when(shareViewStompRelay.getRecentMessages(
+                any(ShareLinkId.class), eq("cats"), isNull(), any(Instant.class)))
+                .thenReturn(List.of(entry));
+
+        MvcResult result = mockMvc.perform(get("/rest/share/{id}/messages", VALID_SHARE_ID)
+                        .param("hashtag", "cats")
+                        .cookie(new jakarta.servlet.http.Cookie("shareViewerId",
+                                "sv_" + "V".repeat(40))))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        // SR-SHARE-02: sharerWallId must not appear in the response
+        assertThat(body).doesNotContain("sharer-wall-id-internal-only");
+        // Response must contain the statusId from the cache entry
+        assertThat(body).contains("status-001");
+    }
+
+    /**
+     * Fix 7: GET /rest/share/{id}/messages in killswitch mode (fallback.enabled=false) → 404.
+     *
+     * <p>Security: glacier-fallback-mode-discipline — killswitch must return 404, not data.
+     * Configured via separate SpringBootTest with fallback.enabled=false.
+     */
+    @Test
+    void messagesEndpoint_unknownShareId_returns404() throws Exception {
+        // Unknown share ID → relay cannot resolve → 404 (anti-enumeration SR-SHARE-01)
+        when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
+                .thenReturn(Optional.empty());
+        when(shareViewStompRelay.getRecentMessages(
+                any(ShareLinkId.class), anyString(), any(), any(Instant.class)))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/rest/share/{id}/messages", UNKNOWN_SHARE_ID)
+                        .param("hashtag", "cats"))
+                .andExpect(status().isNotFound());
     }
 
     // -----------------------------------------------------------------------

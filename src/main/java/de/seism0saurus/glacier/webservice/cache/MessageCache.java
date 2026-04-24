@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+
 /**
  * Central coordination point for the HTTP fallback cache.
  *
@@ -27,64 +29,67 @@ public interface MessageCache {
      *
      * <p>If the tuple is not provisioned this method is a no-op (SR-2.4 defense-in-depth).
      *
-     * @param principal the wallId that owns the subscription
-     * @param hashtag   the subscribed hashtag
-     * @param partial   a {@link CacheEntry} without a sequence number (sequence is ignored)
+     * <p>Security: {@link PrincipalKey} prevents cross-namespace bucket collision
+     * (ADR-SHARE-05, revised; NIST SP 800-53 AC-3).
+     *
+     * @param key     the principal key (type-discriminated, prevents namespace collision)
+     * @param hashtag the subscribed hashtag
+     * @param partial a {@link CacheEntry} without a sequence number (sequence is ignored)
      * @return the persisted entry with the assigned sequence number; may be {@code null}
      *         if the tuple was not provisioned
      */
-    CacheEntry recordThenPublish(String principal, String hashtag, CacheEntry partial);
+    CacheEntry recordThenPublish(PrincipalKey key, String hashtag, CacheEntry partial);
 
     /**
-     * Returns a snapshot of all events in the ring for {@code (principal, hashtag)}
+     * Returns a snapshot of all events in the ring for {@code (key, hashtag)}
      * that are newer than {@code since}.
      *
-     * @param principal the wallId that owns the subscription
-     * @param hashtag   the subscribed hashtag
-     * @param since     the client's last-seen sequence number; {@code null} means
-     *                  "return everything"
+     * @param key     the principal key (type-discriminated)
+     * @param hashtag the subscribed hashtag
+     * @param since   the client's last-seen sequence number; {@code null} means
+     *                "return everything"
      * @return a {@link Snapshot} with a defensive copy of matching entries,
      *         the current head sequence, and a gap flag
-     * @throws UnknownSubscriptionException when the {@code (principal, hashtag)} tuple
+     * @throws UnknownSubscriptionException when the {@code (key, hashtag)} tuple
      *                                      has not been provisioned or has been evicted
      */
-    Snapshot snapshot(String principal, String hashtag, Long since);
+    Snapshot snapshot(PrincipalKey key, String hashtag, Long since);
 
     /**
-     * Allocates a ring for {@code (principal, hashtag)} if one does not already exist
+     * Allocates a ring for {@code (key, hashtag)} if one does not already exist
      * (idempotent re-provision is a no-op).
      *
-     * @param principal the wallId that owns the subscription
-     * @param hashtag   the subscribed hashtag
+     * @param key     the principal key (type-discriminated)
+     * @param hashtag the subscribed hashtag
      * @throws CacheCapacityException when adding this tuple would exceed
      *                                {@code glacier.cache.maxHashtagsPerPrincipal}
      *                                or {@code glacier.cache.maxPrincipals} (D-11)
      */
-    void provisionHashtag(String principal, String hashtag);
+    void provisionHashtag(PrincipalKey key, String hashtag);
 
     /**
-     * Removes the ring for {@code (principal, hashtag)}.
+     * Removes the ring for {@code (key, hashtag)}.
      *
      * <p>Subsequent calls to {@link #recordThenPublish} for this tuple will be no-ops.
      *
-     * @param principal the wallId that owns the subscription
-     * @param hashtag   the subscribed hashtag
+     * @param key     the principal key (type-discriminated)
+     * @param hashtag the subscribed hashtag
      */
-    void evictHashtag(String principal, String hashtag);
+    void evictHashtag(PrincipalKey key, String hashtag);
 
     /**
-     * Removes all rings owned by {@code principal}.
+     * Removes all rings owned by {@code key}.
      *
-     * @param principal the wallId whose subscriptions are all being torn down
+     * @param key the principal key whose subscriptions are all being torn down
      */
-    void evictPrincipal(String principal);
+    void evictPrincipal(PrincipalKey key);
 
     /**
-     * Returns {@code true} when the {@code (principal, hashtag)} tuple has an active ring.
+     * Returns {@code true} when the {@code (key, hashtag)} tuple has an active ring.
      *
-     * @param principal the wallId to check
-     * @param hashtag   the hashtag to check
+     * @param key     the principal key to check
+     * @param hashtag the hashtag to check
      * @return {@code true} iff the tuple is provisioned
      */
-    boolean isProvisioned(String principal, String hashtag);
+    boolean isProvisioned(PrincipalKey key, String hashtag);
 }

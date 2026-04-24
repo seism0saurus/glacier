@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.webservice.cache.*;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,11 @@ class FallbackControllerTest {
     private FallbackAuthGuard authGuard;
     private FallbackRateLimiter rateLimiter;
     private MockMvc mockMvc;
+
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
 
     @BeforeEach
     void setup() {
@@ -61,7 +68,7 @@ class FallbackControllerTest {
                 new CacheEntry(EventType.DELETED, "s2", null, null, 2L)
         );
         Snapshot snapshot = new Snapshot(entries, 2L, false);
-        when(messageCache.snapshot(eq("wall-1"), eq("cats"), isNull())).thenReturn(snapshot);
+        when(messageCache.snapshot(eq(wall("wall-1")), eq("cats"), isNull())).thenReturn(snapshot);
 
         mockMvc.perform(get("/rest/messages")
                         .param("hashtag", "cats")
@@ -85,7 +92,7 @@ class FallbackControllerTest {
     @Test
     void getMessages_cursorAtHead_returns204NoBody() throws Exception {
         Snapshot snapshot = new Snapshot(List.of(), 5L, false);
-        when(messageCache.snapshot(eq("wall-1"), eq("cats"), eq(5L))).thenReturn(snapshot);
+        when(messageCache.snapshot(eq(wall("wall-1")), eq("cats"), eq(5L))).thenReturn(snapshot);
 
         mockMvc.perform(get("/rest/messages")
                         .param("hashtag", "cats")
@@ -221,7 +228,7 @@ class FallbackControllerTest {
         when(messageCache.snapshot(any(), any(), any())).thenReturn(snapshot);
         when(authGuard.authenticate(any(HttpServletRequest.class), eq("cookie-value")))
                 .thenReturn(new FallbackAuthGuard.AuthResult(true, "wall-from-cookie"));
-        when(messageCache.snapshot(eq("wall-from-cookie"), any(), any())).thenReturn(snapshot);
+        when(messageCache.snapshot(eq(wall("wall-from-cookie")), any(), any())).thenReturn(snapshot);
 
         mockMvc.perform(get("/rest/messages")
                         .param("hashtag", "cats")
@@ -240,7 +247,7 @@ class FallbackControllerTest {
                 new CacheEntry(EventType.CREATED, "s5", "https://ex.com/s5/embed", null, 5L)
         );
         Snapshot gapSnapshot = new Snapshot(entries, 5L, true);
-        when(messageCache.snapshot(eq("wall-1"), eq("cats"), any())).thenReturn(gapSnapshot);
+        when(messageCache.snapshot(eq(wall("wall-1")), eq("cats"), any())).thenReturn(gapSnapshot);
 
         mockMvc.perform(get("/rest/messages")
                         .param("hashtag", "cats")

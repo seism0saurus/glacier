@@ -64,8 +64,14 @@ public class ShareViewerCookieFactory {
                 ? ShareViewPrincipalHandler.COOKIE_NAME_SECURE
                 : ShareViewPrincipalHandler.COOKIE_NAME_INSECURE;
 
+        // OWASP A05: __Host- prefix requires Path=/ (RFC 6265bis §4.1.3).
+        // In secure mode the cookie uses the __Host- prefix so Path MUST be /.
+        // In insecure mode (dev/test) we scope to /share to reduce cookie blast radius.
+        // SR-SHARE-07, Finding 8.
+        String cookiePath = secureCookies ? "/" : "/share";
+
         Cookie cookie = new Cookie(cookieName, viewerId);
-        cookie.setPath("/share");
+        cookie.setPath(cookiePath);
         cookie.setMaxAge(maxAge);
         cookie.setHttpOnly(true);
         if (secureCookies) {
@@ -75,7 +81,7 @@ public class ShareViewerCookieFactory {
         // SameSite=Lax via Set-Cookie header (Cookie API doesn't support SameSite directly)
         response.addHeader("Set-Cookie",
                 cookieName + "=" + viewerId
-                        + "; Path=/share"
+                        + "; Path=" + cookiePath
                         + "; HttpOnly"
                         + "; SameSite=Lax"
                         + "; Max-Age=" + maxAge

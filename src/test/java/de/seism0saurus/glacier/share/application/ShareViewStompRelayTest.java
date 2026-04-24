@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.share.application;
 
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,6 +31,7 @@ class ShareViewStompRelayTest {
 
     private SimpMessagingTemplate mockTemplate;
     private ShareLinkService mockShareLinkService;
+    private MessageCache mockMessageCache;
     private ShareViewStompRelay relay;
 
     private static final String WALL_ID = "test-wall-id";
@@ -43,7 +45,8 @@ class ShareViewStompRelayTest {
     void setUp() {
         mockTemplate = mock(SimpMessagingTemplate.class);
         mockShareLinkService = mock(ShareLinkService.class);
-        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService);
+        mockMessageCache = mock(MessageCache.class);
+        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache);
     }
 
     // -----------------------------------------------------------------------

@@ -44,12 +44,15 @@ public class ShareImageProxyController {
 
     private final ShareImageProxyUrlBuilder urlBuilder;
     private final ShareImageProxyService proxyService;
+    private final ShareRateLimiter shareRateLimiter;
 
     public ShareImageProxyController(
             final ShareImageProxyUrlBuilder urlBuilder,
-            final ShareImageProxyService proxyService) {
+            final ShareImageProxyService proxyService,
+            final ShareRateLimiter shareRateLimiter) {
         this.urlBuilder = urlBuilder;
         this.proxyService = proxyService;
+        this.shareRateLimiter = shareRateLimiter;
     }
 
     /**
@@ -62,6 +65,17 @@ public class ShareImageProxyController {
     public ResponseEntity<byte[]> proxyImage(
             @RequestParam(name = "u", required = false) String signedToken,
             HttpServletRequest request) {
+
+        // Rate limiting (SR-SHARE-12): per-IP limit to prevent image scraping
+        // OWASP API4: Lack of Resources & Rate Limiting
+        String remoteIp = request.getRemoteAddr();
+        ShareRateLimiter.RateLimitResult rl = shareRateLimiter.checkImgProxy(remoteIp);
+        if (!rl.permitted()) {
+            AUDIT.info("share.proxy.ratelimit remoteIp={}", LogScrubber.maskIp(remoteIp));
+            return ResponseEntity.status(429)
+                    .header("Retry-After", String.valueOf(rl.retryAfterSeconds()))
+                    .build();
+        }
 
         if (signedToken == null || signedToken.isBlank()) {
             return ResponseEntity.badRequest().build();

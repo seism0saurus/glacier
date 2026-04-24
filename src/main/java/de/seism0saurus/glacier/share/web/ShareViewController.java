@@ -1,13 +1,16 @@
 package de.seism0saurus.glacier.share.web;
 
 import de.seism0saurus.glacier.share.application.ShareLinkService;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
-import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.messaging.ShareViewPrincipalHandler;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -54,16 +58,22 @@ public class ShareViewController {
     private final ShareLinkService shareLinkService;
     private final ShareViewerCookieFactory cookieFactory;
     private final CsrfTokenCookieFactory csrfTokenCookieFactory;
+    private final ShareRateLimiter shareRateLimiter;
+    private final ShareViewStompRelay shareViewStompRelay;
     private final boolean fallbackEnabled;
 
     public ShareViewController(
             final ShareLinkService shareLinkService,
             final ShareViewerCookieFactory cookieFactory,
             final CsrfTokenCookieFactory csrfTokenCookieFactory,
+            final ShareRateLimiter shareRateLimiter,
+            final ShareViewStompRelay shareViewStompRelay,
             @Value("${glacier.fallback.enabled:true}") final boolean fallbackEnabled) {
         this.shareLinkService = shareLinkService;
         this.cookieFactory = cookieFactory;
         this.csrfTokenCookieFactory = csrfTokenCookieFactory;
+        this.shareRateLimiter = shareRateLimiter;
+        this.shareViewStompRelay = shareViewStompRelay;
         this.fallbackEnabled = fallbackEnabled;
     }
 
@@ -85,6 +95,19 @@ public class ShareViewController {
         // Manually extract viewer cookie to support both __Host- and non-Host- names
         // depending on glacier.cookie.secure mode
         String rawViewerId = extractViewerCookie(request);
+
+        // Rate limiting (SR-SHARE-12): per-viewer + per-IP to prevent fallback polling abuse
+        // OWASP API4: Lack of Resources & Rate Limiting
+        String remoteIp = request.getRemoteAddr();
+        String viewerIdForRateLimit = rawViewerId != null ? rawViewerId : remoteIp;
+        ShareRateLimiter.RateLimitResult rl = shareRateLimiter.checkShareFallback(viewerIdForRateLimit, remoteIp);
+        if (!rl.permitted()) {
+            AUDIT.info("share.catalog.ratelimit shareId-hash={} viewerId-hash={}",
+                    LogScrubber.hash8(shareId), LogScrubber.hash8(viewerIdForRateLimit));
+            return ResponseEntity.status(429)
+                    .header("Retry-After", String.valueOf(rl.retryAfterSeconds()))
+                    .build();
+        }
 
         // Resolve the share link
         ShareLinkId linkId;
@@ -136,13 +159,118 @@ public class ShareViewController {
      *
      * <p>This endpoint is rate-limited (handled by infrastructure layer).
      * The token is stored in the {@code __Host-shareCsrf} cookie and must be echoed
-     * in the {@code X-Share-Csrf-Token} header for state-changing requests.
+     * in the {@code X-Share-CSRF} header for state-changing requests.
+     *
+     * <p>The token is also returned in the JSON body as {@code {"token": "<value>"}} so
+     * that non-cookie-capable clients or tests can extract it directly.
+     *
+     * @return 200 OK with body {@code {"token": "<value>"}}
      */
     @GetMapping(value = "/rest/share-csrf", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> issueCsrfToken(HttpServletResponse response) {
-        csrfTokenCookieFactory.issueCsrfToken(response);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Map<String, String>> issueCsrfToken(
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        // Rate limiting (SR-SHARE-12): per-IP to prevent CSRF token farming
+        // OWASP API4: Lack of Resources & Rate Limiting
+        String remoteIp = request.getRemoteAddr();
+        ShareRateLimiter.RateLimitResult rl = shareRateLimiter.checkCsrfIssuance(remoteIp);
+        if (!rl.permitted()) {
+            return ResponseEntity.status(429)
+                    .header("Retry-After", String.valueOf(rl.retryAfterSeconds()))
+                    .build();
+        }
+
+        String token = csrfTokenCookieFactory.issueCsrfToken(response);
+        return ResponseEntity.ok(Map.of("token", token));
     }
+
+    /**
+     * Fallback polling endpoint for viewers whose network blocks WebSocket/STOMP.
+     *
+     * <p>Returns cached toot events for the given share link and hashtag, filtered
+     * by the {@code since} sequence cursor. This mirrors the main fallback endpoint
+     * {@code GET /rest/messages} but is scoped to an active share link instead of a wallId.
+     *
+     * <p>Processing order (fail-fast):
+     * <ol>
+     *   <li>Kill-switch check ({@code glacier.fallback.enabled=false}) → 404</li>
+     *   <li>Rate limiting per viewer + per IP → 429 with {@code Retry-After}</li>
+     *   <li>Share link validation (unknown / expired / revoked) → 404 (anti-enumeration SR-SHARE-01)</li>
+     *   <li>Cache lookup via {@link ShareViewStompRelay#getRecentMessages} → 200 list</li>
+     * </ol>
+     *
+     * <p>The sharer's wallId is used server-side only and is NEVER returned in the response (SR-SHARE-02).
+     *
+     * <p>Security: SR-SHARE-01 (anti-enumeration), SR-SHARE-02 (wallId non-disclosure),
+     * SR-SHARE-12 (rate limiting), SR-SHARE-13 (killswitch), OWASP API4.
+     *
+     * @param shareId  the share link ID (URL path variable, validated against SHARE_ID_PATTERN)
+     * @param hashtag  the hashtag to fetch events for (validated against HASHTAG_PATTERN)
+     * @param since    sequence cursor — events with sequence &gt; since are returned; null returns all
+     * @param request  the raw servlet request (for IP and viewer cookie extraction)
+     * @param response the HTTP response (for viewer cookie refresh)
+     * @return 200 with a JSON array of {@link CacheEntry} objects, or an error response
+     */
+    @GetMapping(value = "/rest/share/{shareId}/messages", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<CacheEntry>> getMessages(
+            @PathVariable @Pattern(regexp = SHARE_ID_PATTERN) String shareId,
+            @RequestParam("hashtag") @Pattern(regexp = HASHTAG_PATTERN) String hashtag,
+            @RequestParam(value = "since", required = false)
+            @Min(value = 0, message = "invalid_cursor")
+            @Max(value = Long.MAX_VALUE / 2, message = "invalid_cursor")
+            Long since,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+
+        // glacier-fallback-mode-discipline: killswitch disables the entire polling path
+        // (SR-SHARE-13). Return 404 — same as the main FallbackController killswitch behavior.
+        if (!fallbackEnabled) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // Rate limiting (SR-SHARE-12): per-viewer + per-IP — same check as catalog endpoint
+        String rawViewerId = extractViewerCookie(request);
+        String remoteIp = request.getRemoteAddr();
+        String viewerIdForRateLimit = rawViewerId != null ? rawViewerId : remoteIp;
+        ShareRateLimiter.RateLimitResult rl = shareRateLimiter.checkShareFallback(viewerIdForRateLimit, remoteIp);
+        if (!rl.permitted()) {
+            AUDIT.info("share.messages.ratelimit shareId-hash={} viewerId-hash={}",
+                    LogScrubber.hash8(shareId), LogScrubber.hash8(viewerIdForRateLimit));
+            return ResponseEntity.status(429)
+                    .header("Retry-After", String.valueOf(rl.retryAfterSeconds()))
+                    .build();
+        }
+
+        // Resolve the share link — 404 for unknown / expired (anti-enumeration SR-SHARE-01)
+        ShareLinkId linkId;
+        try {
+            linkId = ShareLinkId.fromUrlPath(shareId);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Instant now = Instant.now();
+        Optional<ShareLink> linkOpt = shareLinkService.resolve(linkId, now);
+        if (linkOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // Refresh viewer cookie lifetime on successful resolution
+        ShareLink link = linkOpt.get();
+        if (rawViewerId != null && ShareViewPrincipalHandler.isValidShareViewerId(rawViewerId)) {
+            cookieFactory.refresh(response, rawViewerId, link.expiresAt());
+        }
+
+        // Fetch from ring buffer via relay — sharerWallId is resolved server-side (SR-SHARE-02)
+        List<CacheEntry> events = shareViewStompRelay.getRecentMessages(linkId, hashtag, since, now);
+        log.debug("share.messages.served shareId-hash={} hashtag={} count={}",
+                LogScrubber.hash8(shareId), hashtag, events.size());
+
+        return ResponseEntity.ok(events);
+    }
+
+    /** Validation pattern for the {@code hashtag} parameter — same as {@link de.seism0saurus.glacier.webservice.FallbackController#HASHTAG_PATTERN}. */
+    private static final String HASHTAG_PATTERN = "^[\\p{L}\\p{N}_]{1,50}$";
 
     // -----------------------------------------------------------------------
     // Private helpers

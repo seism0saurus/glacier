@@ -33,7 +33,7 @@ class ShareCsrfGuardTest {
     @Test
     void allowsRequestWithMatchingOriginAndToken() {
         when(request.getHeader("Origin")).thenReturn("https://glacier.example.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         setupCookieToken(TOKEN);
 
         assertThat(guard.verify(request)).isTrue();
@@ -42,7 +42,7 @@ class ShareCsrfGuardTest {
     @Test
     void rejectsWhenOriginMismatch() {
         when(request.getHeader("Origin")).thenReturn("https://evil.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         setupCookieToken(TOKEN);
 
         assertThat(guard.verify(request)).isFalse();
@@ -51,7 +51,7 @@ class ShareCsrfGuardTest {
     @Test
     void rejectsWhenOriginMissing() {
         when(request.getHeader("Origin")).thenReturn(null);
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         setupCookieToken(TOKEN);
 
         assertThat(guard.verify(request)).isFalse();
@@ -60,7 +60,7 @@ class ShareCsrfGuardTest {
     @Test
     void rejectsWhenHeaderTokenMissing() {
         when(request.getHeader("Origin")).thenReturn("https://glacier.example.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(null);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(null);
         setupCookieToken(TOKEN);
 
         assertThat(guard.verify(request)).isFalse();
@@ -69,7 +69,7 @@ class ShareCsrfGuardTest {
     @Test
     void rejectsWhenCookieTokenMissing() {
         when(request.getHeader("Origin")).thenReturn("https://glacier.example.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         when(request.getCookies()).thenReturn(null);
 
         assertThat(guard.verify(request)).isFalse();
@@ -78,7 +78,7 @@ class ShareCsrfGuardTest {
     @Test
     void rejectsWhenTokensMismatch() {
         when(request.getHeader("Origin")).thenReturn("https://glacier.example.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         setupCookieToken("different-token-32chars-minimum!!");
 
         assertThat(guard.verify(request)).isFalse();
@@ -88,7 +88,7 @@ class ShareCsrfGuardTest {
     void rejectsWhenOriginHasDifferentPort() {
         // scheme+host+port must all match
         when(request.getHeader("Origin")).thenReturn("https://glacier.example.com:8443");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         setupCookieToken(TOKEN);
 
         assertThat(guard.verify(request)).isFalse();
@@ -97,7 +97,7 @@ class ShareCsrfGuardTest {
     @Test
     void rejectsHttpOriginWhenDomainExpectsHttps() {
         when(request.getHeader("Origin")).thenReturn("http://glacier.example.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         setupCookieToken(TOKEN);
 
         assertThat(guard.verify(request)).isFalse();
@@ -107,7 +107,7 @@ class ShareCsrfGuardTest {
     void allowsHttpOriginInInsecureMode() {
         ShareCsrfGuard insecureGuard = new ShareCsrfGuard(DOMAIN, false);
         when(request.getHeader("Origin")).thenReturn("http://glacier.example.com");
-        when(request.getHeader("X-Share-Csrf-Token")).thenReturn(TOKEN);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         // In insecure mode the cookie name is 'shareCsrf' (no __Host- prefix)
         Cookie cookie = new Cookie("shareCsrf", TOKEN);
         when(request.getCookies()).thenReturn(new Cookie[]{cookie});

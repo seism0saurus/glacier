@@ -49,27 +49,31 @@ public class ShareLinkServiceImpl implements ShareLinkService {
     private final SecureRandomTokenGenerator tokenGenerator;
     private final ShareLinkLifetimePolicy lifetimePolicy;
     private final ShareLinkCapPolicy capPolicy;
+    private final ShareViewStompRelay shareViewStompRelay;
     private final Clock clock;
 
     /**
      * Constructs the service with all required collaborators.
      *
-     * @param repository      persistence for {@link ShareLink} aggregates
-     * @param tokenGenerator  cryptographically strong ID generator
-     * @param lifetimePolicy  TTL and sweep configuration
-     * @param capPolicy       per-sharer and per-IP caps
-     * @param clock           injected clock for time operations (use {@link Clock#fixed} in tests)
+     * @param repository          persistence for {@link ShareLink} aggregates
+     * @param tokenGenerator      cryptographically strong ID generator
+     * @param lifetimePolicy      TTL and sweep configuration
+     * @param capPolicy           per-sharer and per-IP caps
+     * @param shareViewStompRelay relay used to push revocation control messages to viewers
+     * @param clock               injected clock for time operations (use {@link Clock#fixed} in tests)
      */
     public ShareLinkServiceImpl(
             final ShareLinkRepository repository,
             final SecureRandomTokenGenerator tokenGenerator,
             final ShareLinkLifetimePolicy lifetimePolicy,
             final ShareLinkCapPolicy capPolicy,
+            final ShareViewStompRelay shareViewStompRelay,
             final Clock clock) {
         this.repository = repository;
         this.tokenGenerator = tokenGenerator;
         this.lifetimePolicy = lifetimePolicy;
         this.capPolicy = capPolicy;
+        this.shareViewStompRelay = shareViewStompRelay;
         this.clock = clock;
     }
 
@@ -150,6 +154,12 @@ public class ShareLinkServiceImpl implements ShareLinkService {
         repository.markRevoked(id, now);
         AUDIT.info("share.link.revoked shareId-hash8={} wallId-hash8={} outcome=revoked",
                 id.hash8(), LogScrubber.hash8(callerWallId));
+
+        // ADR-SHARE-08: push revocation control message to viewers via STOMP
+        // Viewers must disconnect within the SLA window after receiving the revoked message
+        if (shareViewStompRelay != null) {
+            shareViewStompRelay.pushRevocation(id);
+        }
     }
 
     @Override

@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -28,7 +30,8 @@ import static org.mockito.Mockito.mock;
  */
 class MessageCacheSubscriptionLifecycleIT {
 
-    private static final String PRINCIPAL = "lifecycle-test-wall";
+    private static final PrincipalKey PRINCIPAL =
+            new PrincipalKey(PrincipalKind.WALL, "lifecycle-test-wall");
     private static final String HASHTAG = "kotlin";
 
     @Test

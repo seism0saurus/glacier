@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.webservice.cache.*;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -43,6 +45,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class RateLimitHeaderTrustIT {
 
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -61,7 +68,7 @@ class RateLimitHeaderTrustIT {
         String wallId = "wall-rl-trust-aaaaaaaaaaaaaaaaaaaaaa";
         AtomicReference<String> capturedIp = new AtomicReference<>();
 
-        when(rateLimiter.check(eq(wallId), anyString())).thenAnswer(inv -> {
+        when(rateLimiter.check(eq(wall(wallId)), anyString())).thenAnswer(inv -> {
             capturedIp.set(inv.getArgument(1, String.class));
             return FallbackRateLimiter.RateLimitResult.allowed();
         });
@@ -89,7 +96,7 @@ class RateLimitHeaderTrustIT {
         String wallId = "wall-rl-trust-bbbbbbbbbbbbbbbbbbbbbbb";
         AtomicReference<String> capturedIp = new AtomicReference<>();
 
-        when(rateLimiter.check(eq(wallId), anyString())).thenAnswer(inv -> {
+        when(rateLimiter.check(eq(wall(wallId)), anyString())).thenAnswer(inv -> {
             capturedIp.set(inv.getArgument(1, String.class));
             return FallbackRateLimiter.RateLimitResult.allowed();
         });
@@ -115,11 +122,11 @@ class RateLimitHeaderTrustIT {
     @Test
     void noneMode_rateLimiterAlwaysCalledWithBothAxes() throws Exception {
         String wallId = "wall-rl-trust-ccccccccccccccccccccccc";
-        AtomicReference<String> capturedWallId = new AtomicReference<>();
+        AtomicReference<PrincipalKey> capturedKey = new AtomicReference<>();
         AtomicReference<String> capturedIp = new AtomicReference<>();
 
-        when(rateLimiter.check(anyString(), anyString())).thenAnswer(inv -> {
-            capturedWallId.set(inv.getArgument(0, String.class));
+        when(rateLimiter.check(any(PrincipalKey.class), anyString())).thenAnswer(inv -> {
+            capturedKey.set(inv.getArgument(0, PrincipalKey.class));
             capturedIp.set(inv.getArgument(1, String.class));
             return FallbackRateLimiter.RateLimitResult.allowed();
         });
@@ -131,7 +138,10 @@ class RateLimitHeaderTrustIT {
                         .cookie(new jakarta.servlet.http.Cookie("wallId", wallId)))
                 .andExpect(status().isNoContent());
 
-        assertThat(capturedWallId.get()).isEqualTo(wallId);
+        // Assert key name equals wallId and kind is WALL (compile-enforced namespace isolation)
+        assertThat(capturedKey.get()).isNotNull();
+        assertThat(capturedKey.get().name()).isEqualTo(wallId);
+        assertThat(capturedKey.get().kind()).isEqualTo(PrincipalKind.WALL);
         assertThat(capturedIp.get()).isNotNull().isNotBlank();
     }
 }

@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import de.seism0saurus.glacier.webservice.cache.CacheEntry;
 import de.seism0saurus.glacier.webservice.cache.EventType;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
 import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
@@ -56,6 +58,11 @@ import static org.mockito.Mockito.*;
  * {@link MessageCache#recordThenPublish} instead of {@code SimpMessagingTemplate.convertAndSend}.
  */
 public class StompCallbackTest {
+
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
 
     /**
      * The SubscriptionManager interface represents a manager that handles subscriptions for hashtags on Mastodon.
@@ -116,7 +123,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -125,7 +132,7 @@ public class StompCallbackTest {
 
         // Verify — updated per Phase 1 D-03
         ArgumentCaptor<CacheEntry> entryCaptor = ArgumentCaptor.forClass(CacheEntry.class);
-        verify(messageCache).recordThenPublish(eq(principal), eq(hashtag), entryCaptor.capture());
+        verify(messageCache).recordThenPublish(eq(wall(principal)), eq(hashtag), entryCaptor.capture());
         CacheEntry partial = entryCaptor.getValue();
         assertThat(partial.type()).isEqualTo(EventType.CREATED);
         assertThat(partial.statusId()).isEqualTo("12345");
@@ -142,7 +149,7 @@ public class StompCallbackTest {
 
         // Execute
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
+                new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
         );
 
         // Verify
@@ -159,7 +166,7 @@ public class StompCallbackTest {
 
         // Execute
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
+                new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
         );
 
         // Verify
@@ -175,7 +182,7 @@ public class StompCallbackTest {
         String handle = "peter.kropotkin@localhost";
 
         // Execute
-        StompCallback stompCallback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
+        StompCallback stompCallback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
 
         // Get the private field 'shortHandle' using reflection
         Field shortHandleField = StompCallback.class.getDeclaredField("shortHandle");
@@ -195,7 +202,7 @@ public class StompCallbackTest {
         String handle = "@peter.kropotkin@localhost";
 
         // Execute
-        StompCallback stompCallback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
+        StompCallback stompCallback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
 
         // Get the private field 'shortHandle' using reflection
         Field shortHandleField = StompCallback.class.getDeclaredField("shortHandle");
@@ -225,7 +232,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
         ParsedStreamEvent.StatusEdited event = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -234,7 +241,7 @@ public class StompCallbackTest {
 
         // Verify — updated per Phase 1 D-03
         ArgumentCaptor<CacheEntry> captor = ArgumentCaptor.forClass(CacheEntry.class);
-        verify(messageCache).recordThenPublish(eq(principal), eq(hashtag), captor.capture());
+        verify(messageCache).recordThenPublish(eq(wall(principal)), eq(hashtag), captor.capture());
         assertThat(captor.getValue().type()).isEqualTo(EventType.UPDATED);
     }
 
@@ -248,7 +255,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
         ParsedStreamEvent.StatusDeleted event = new ParsedStreamEvent.StatusDeleted("12345");
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -257,7 +264,7 @@ public class StompCallbackTest {
 
         // Verify — updated per Phase 1 D-03
         ArgumentCaptor<CacheEntry> captor = ArgumentCaptor.forClass(CacheEntry.class);
-        verify(messageCache).recordThenPublish(eq(principal), eq(hashtag), captor.capture());
+        verify(messageCache).recordThenPublish(eq(wall(principal)), eq(hashtag), captor.capture());
         CacheEntry partial = captor.getValue();
         assertThat(partial.type()).isEqualTo(EventType.DELETED);
         assertThat(partial.statusId()).isEqualTo("12345");
@@ -274,7 +281,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         String hashtag = "hashtag";
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
         Notification notification = new Notification();
         ParsedStreamEvent.NewNotification event = new ParsedStreamEvent.NewNotification(notification);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
@@ -306,7 +313,7 @@ public class StompCallbackTest {
 
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345" + "/embed")).thenReturn(headers);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -315,7 +322,7 @@ public class StompCallbackTest {
 
         // Verify — updated per Phase 1 D-03
         if (isLoadable) {
-            verify(messageCache, times(1)).recordThenPublish(eq(principal), eq(hashtag), any(CacheEntry.class));
+            verify(messageCache, times(1)).recordThenPublish(eq(wall(principal)), eq(hashtag), any(CacheEntry.class));
         } else {
             verify(messageCache, times(0)).recordThenPublish(any(), any(), any());
         }
@@ -368,7 +375,7 @@ public class StompCallbackTest {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Open mockEvent = mock(TechnicalEvent.Open.class);
 
         // Execute
@@ -387,7 +394,7 @@ public class StompCallbackTest {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Closing mockEvent = mock(TechnicalEvent.Closing.class);
 
         // Execute
@@ -406,7 +413,7 @@ public class StompCallbackTest {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Closed mockEvent = mock(TechnicalEvent.Closed.class);
 
         // Execute
@@ -425,7 +432,7 @@ public class StompCallbackTest {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent mockEvent = mock(TechnicalEvent.class);
 
         // Execute
@@ -448,7 +455,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("DENY", null);
         when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -481,7 +488,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -512,7 +519,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -545,7 +552,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders("https://example.com/4567" + "/embed")).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -574,7 +581,7 @@ public class StompCallbackTest {
     @Test
     public void onEvent_EventGenericMessage_DeleteIsHandled() throws JsonProcessingException {
         // Setup
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -600,7 +607,7 @@ public class StompCallbackTest {
     @Test
     public void onEvent_EventGenericMessage_StatusDeleteIsHandled() throws JsonProcessingException {
         // Setup
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -624,7 +631,7 @@ public class StompCallbackTest {
     public void onEvent_UnrelatedGenericMessageEvent_isIgnored() throws JsonProcessingException {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -651,7 +658,7 @@ public class StompCallbackTest {
     public void onEvent_EventGenericMessageWithInvalidContent_handlesExceptionGracefully() {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         when(mockEvent.getText()).thenReturn("not a json");
@@ -672,7 +679,7 @@ public class StompCallbackTest {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         WebSocketEvent mockEvent = mock(WebSocketEvent.class);
 
         // Execute
@@ -691,7 +698,7 @@ public class StompCallbackTest {
         // Setup
         TestLogAppender logAppender = getTestLogAppender();
         String errorMessage = "Error Message";
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Failure mockEvent = mock(TechnicalEvent.Failure.class);
         Throwable mockException = mock(Throwable.class);
         when(mockEvent.getError()).thenReturn(mockException);
@@ -724,7 +731,7 @@ public class StompCallbackTest {
         HttpHeaders denyHeader = getHeaders("DENY", null);
         when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(denyHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, principal, hashtag, "glacier@example.com", "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -779,7 +786,7 @@ public class StompCallbackTest {
         HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
         when(restTemplate.headForHeaders(anyString())).thenReturn(allowHeader);
 
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
@@ -828,7 +835,7 @@ public class StompCallbackTest {
                 .thenThrow(new ResourceAccessException("Read timed out"));
 
         StompCallback callback = new StompCallback(
-                subscriptionManager, messageCache, restTemplate,
+                subscriptionManager, messageCache, null, restTemplate,
                 UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
@@ -852,7 +859,7 @@ public class StompCallbackTest {
                 .thenThrow(new ResourceAccessException("Read timed out"));
 
         StompCallback callback = new StompCallback(
-                subscriptionManager, messageCache, restTemplate,
+                subscriptionManager, messageCache, null, restTemplate,
                 UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
         ObjectMapper mapper = new ObjectMapper();

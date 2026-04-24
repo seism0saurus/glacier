@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.webservice.cache.*;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +51,11 @@ class FallbackSecurityIT {
 
     @MockBean
     private FallbackRateLimiter rateLimiter;
+
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
 
     @BeforeEach
     void setupRateLimiter() {
@@ -103,7 +110,7 @@ class FallbackSecurityIT {
         // Principal A (wall-aaaa…) tries to read principal B's subscription
         // → UnknownSubscriptionException → same 400 body as "never existed"
         String principalA = "wall-aaaaaaaaaaaaaaaaaaaaaaaaaaaa1";
-        when(messageCache.snapshot(eq(principalA), eq("java"), any()))
+        when(messageCache.snapshot(eq(wall(principalA)), eq("java"), any()))
                 .thenThrow(new UnknownSubscriptionException("not yours"));
 
         mockMvc.perform(get("/rest/messages")
@@ -176,7 +183,7 @@ class FallbackSecurityIT {
     @Test
     void getMessages_rateLimitExceeded_returns429WithRetryAfter() throws Exception {
         String wallId = "wall-rl-ddddddddddddddddddddddddddd";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.rejected(45L));
 
         mockMvc.perform(get("/rest/messages")
@@ -191,7 +198,7 @@ class FallbackSecurityIT {
     void getMessages_429_noStateChange() throws Exception {
         // 429 must not trigger cache eviction or mode flip — cache is not touched
         String wallId = "wall-rl-eeeeeeeeeeeeeeeeeeeeeeeeeee";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.rejected(30L));
 
         mockMvc.perform(get("/rest/messages")
@@ -212,12 +219,12 @@ class FallbackSecurityIT {
     @Test
     void getMessages_200_hasAllSecurityHeaders() throws Exception {
         String wallId = "wall-hdr-ffffffffffffffffffffffffffffff";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.allowed());
 
         List<CacheEntry> entries = List.of(
                 new CacheEntry(EventType.CREATED, "s1", "https://ex.com/s1/embed", null, 1L));
-        when(messageCache.snapshot(eq(wallId), eq("java"), any()))
+        when(messageCache.snapshot(eq(wall(wallId)), eq("java"), any()))
                 .thenReturn(new Snapshot(entries, 1L, false));
 
         mockMvc.perform(get("/rest/messages")
@@ -235,9 +242,9 @@ class FallbackSecurityIT {
     @Test
     void getMessages_204_hasAllSecurityHeaders() throws Exception {
         String wallId = "wall-hdr-gggggggggggggggggggggggggggg";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.allowed());
-        when(messageCache.snapshot(eq(wallId), any(), any()))
+        when(messageCache.snapshot(eq(wall(wallId)), any(), any()))
                 .thenReturn(new Snapshot(List.of(), 5L, false));
 
         mockMvc.perform(get("/rest/messages")
@@ -255,7 +262,7 @@ class FallbackSecurityIT {
     @Test
     void getMessages_400_hasAllSecurityHeaders() throws Exception {
         String wallId = "wall-hdr-hhhhhhhhhhhhhhhhhhhhhhhhhhhh";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.allowed());
         when(messageCache.snapshot(any(), any(), any()))
                 .thenThrow(new UnknownSubscriptionException("not found"));
@@ -283,7 +290,7 @@ class FallbackSecurityIT {
     @Test
     void getMessages_429_hasAllSecurityHeaders() throws Exception {
         String wallId = "wall-hdr-iiiiiiiiiiiiiiiiiiiiiiiiiiii";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.rejected(30L));
 
         mockMvc.perform(get("/rest/messages")
@@ -337,9 +344,9 @@ class FallbackSecurityIT {
         // This is tested at unit level in FallbackControllerTest; here we just verify the
         // endpoint is reachable in normal (enabled=true) mode
         String wallId = "wall-ks-jjjjjjjjjjjjjjjjjjjjjjjjjjjj";
-        when(rateLimiter.check(eq(wallId), any()))
+        when(rateLimiter.check(eq(wall(wallId)), any()))
                 .thenReturn(FallbackRateLimiter.RateLimitResult.allowed());
-        when(messageCache.snapshot(eq(wallId), any(), any()))
+        when(messageCache.snapshot(eq(wall(wallId)), any(), any()))
                 .thenReturn(new Snapshot(List.of(), 0L, false));
 
         mockMvc.perform(get("/rest/messages")

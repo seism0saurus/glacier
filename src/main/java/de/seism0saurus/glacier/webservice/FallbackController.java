@@ -4,6 +4,8 @@ import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 import de.seism0saurus.glacier.webservice.cache.FallbackResponse;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.cache.UnknownSubscriptionException;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -152,10 +154,14 @@ public class FallbackController {
         }
 
         String principal = auth.principal();
+        // ADR-SHARE-05 (revised): wrap raw wallId string in PrincipalKey so FallbackRateLimiter
+        // and MessageCache use type-safe keys. The cookie-based auth guard always resolves to a
+        // WALL principal (viewer polling goes through ShareViewController, not here).
+        PrincipalKey principalKey = new PrincipalKey(PrincipalKind.WALL, principal);
 
         // SR-4 / D-10: two-axis rate limiting (per-wallId + per-IP)
         String remoteIp = request.getRemoteAddr();
-        FallbackRateLimiter.RateLimitResult rl = rateLimiter.check(principal, remoteIp);
+        FallbackRateLimiter.RateLimitResult rl = rateLimiter.check(principalKey, remoteIp);
         if (!rl.permitted()) {
             LOGGER.debug("Rate limit exceeded wallId-hash8={} ip={}",
                     LogScrubber.hash8(principal), LogScrubber.maskIp(remoteIp));
@@ -167,7 +173,7 @@ public class FallbackController {
         // At this point hashtag and since have already been validated by Bean Validation
         // (ConstraintViolationException → FallbackControllerAdvice → 400).
         try {
-            var snapshot = messageCache.snapshot(principal, hashtag, since);
+            var snapshot = messageCache.snapshot(principalKey, hashtag, since);
 
             if (snapshot.events().isEmpty() && !snapshot.gap()) {
                 return ResponseEntity.noContent().build();

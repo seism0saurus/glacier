@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,6 +67,11 @@ class MessageCacheDisconnectTimerIT {
     private static final String PRINCIPAL = "timer-eviction-test-principal";
     private static final String HASHTAG = "timertest";
 
+    /** Convenience factory: wraps a wallId string in a WALL PrincipalKey. */
+    private static PrincipalKey wall(String wallId) {
+        return new PrincipalKey(PrincipalKind.WALL, wallId);
+    }
+
     @Autowired
     private MessageCache messageCache;
 
@@ -91,8 +98,8 @@ class MessageCacheDisconnectTimerIT {
     @Test
     void sessionDisconnect_afterReconnectTimeout_evictsCacheForPrincipal() {
         // Arrange: provision the cache so there is something to evict
-        messageCache.provisionHashtag(PRINCIPAL, HASHTAG);
-        assertThat(messageCache.isProvisioned(PRINCIPAL, HASHTAG)).isTrue();
+        messageCache.provisionHashtag(wall(PRINCIPAL), HASHTAG);
+        assertThat(messageCache.isProvisioned(wall(PRINCIPAL), HASHTAG)).isTrue();
 
         // Act: simulate STOMP session disconnect by publishing the Spring WebSocket event
         // that SubscriptionListener listens to.  Use a real Principal so the event is
@@ -109,11 +116,11 @@ class MessageCacheDisconnectTimerIT {
                 .atMost(Duration.ofSeconds(5))
                 .pollInterval(Duration.ofMillis(100))
                 .untilAsserted(() ->
-                        assertThat(messageCache.isProvisioned(PRINCIPAL, HASHTAG)).isFalse()
+                        assertThat(messageCache.isProvisioned(wall(PRINCIPAL), HASHTAG)).isFalse()
                 );
 
         // Also verify that the HTTP snapshot path throws (end-to-end contract D-01/ADR-05)
-        assertThatThrownBy(() -> messageCache.snapshot(PRINCIPAL, HASHTAG, null))
+        assertThatThrownBy(() -> messageCache.snapshot(wall(PRINCIPAL), HASHTAG, null))
                 .isInstanceOf(UnknownSubscriptionException.class)
                 .hasMessageContaining(HASHTAG);
     }
@@ -129,8 +136,8 @@ class MessageCacheDisconnectTimerIT {
     void sessionDisconnect_thenReconnectWithinTimeout_cacheRemainsProvisioned() throws InterruptedException {
         // Arrange
         String gracePrincipal = "grace-window-principal";
-        messageCache.provisionHashtag(gracePrincipal, HASHTAG);
-        assertThat(messageCache.isProvisioned(gracePrincipal, HASHTAG)).isTrue();
+        messageCache.provisionHashtag(wall(gracePrincipal), HASHTAG);
+        assertThat(messageCache.isProvisioned(wall(gracePrincipal), HASHTAG)).isTrue();
 
         // Act: disconnect, then reconnect almost immediately (before the 500-ms timer fires)
         Principal principal = () -> gracePrincipal;
@@ -145,10 +152,10 @@ class MessageCacheDisconnectTimerIT {
 
         // Wait 1 s to confirm the timer was cancelled (if it had fired, cache would be empty)
         Thread.sleep(700);
-        assertThat(messageCache.isProvisioned(gracePrincipal, HASHTAG)).isTrue();
+        assertThat(messageCache.isProvisioned(wall(gracePrincipal), HASHTAG)).isTrue();
 
         // Cleanup to avoid leaking state across tests
-        messageCache.evictPrincipal(gracePrincipal);
+        messageCache.evictPrincipal(wall(gracePrincipal));
     }
 
     // -------------------------------------------------------------------------

@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.share.web;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import de.seism0saurus.glacier.share.application.DefaultSafeUrlValidator;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import de.seism0saurus.glacier.util.LogScrubber;
 import org.slf4j.Logger;
@@ -12,8 +13,11 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.HttpURLConnection;
+
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
@@ -60,11 +64,23 @@ public class ShareImageProxyService {
         this.urlValidator = urlValidator;
 
         // Hardened RestTemplate: no redirects, short timeouts (ADR-SHARE-07)
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        // SSRF Finding 4: setOutputStreaming(false) does NOT disable redirect following.
+        // We override prepareConnection to call setInstanceFollowRedirects(false) which
+        // is the correct HttpURLConnection API to disable redirect following.
+        // OWASP A10 (SSRF): redirect-based SSRF bypass prevention.
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
+            @Override
+            protected void prepareConnection(HttpURLConnection conn, String method)
+                    throws java.io.IOException {
+                // Disable redirect following BEFORE delegating to super, which may
+                // configure the connection further. instanceFollowRedirects takes
+                // precedence over the static followRedirects setting (JDK contract).
+                conn.setInstanceFollowRedirects(false);
+                super.prepareConnection(conn, method);
+            }
+        };
         factory.setConnectTimeout(3000);
         factory.setReadTimeout(5000);
-        // Disable redirect following — redirect-based SSRF bypass prevention
-        factory.setOutputStreaming(false);
         this.restTemplate = new RestTemplate(factory);
 
         // Positive cache: 10 000 entries × 1 h
@@ -127,9 +143,46 @@ public class ShareImageProxyService {
     }
 
     private Optional<ProxyResult> fetchInternal(URI uri) throws IOException {
-        // Execute HEAD first to check content-type without fetching body
-        // Then GET with bounded InputStream
-        return restTemplate.execute(uri, HttpMethod.GET, null, response -> {
+        // SSRF Finding 5: DNS pinning — resolve host once and pin to IP address.
+        // This prevents TOCTOU DNS-rebinding attacks where a valid hostname resolves
+        // to a public IP during validation but a private IP during the actual fetch.
+        // OWASP SSRF Prevention Cheat Sheet §DNS Pinning, SR-SHARE-09.
+        final URI requestUri;
+        try {
+            InetAddress addr = DefaultSafeUrlValidator.resolveAndPin(uri.getHost());
+
+            // Second-pass blocklist check on pinned address (defence-in-depth)
+            if (DefaultSafeUrlValidator.isBlockedAddress(addr)) {
+                AUDIT.info("share.proxy.fetch_blocked reason=ssrf_pinned_second_pass url-hash={}",
+                        LogScrubber.hash8(uri.toString()));
+                return Optional.empty();
+            }
+
+            // Build URI targeting the numeric IP; preserve the original host as Host header
+            int port = uri.getPort() < 0
+                    ? ("https".equals(uri.getScheme()) ? 443 : 80)
+                    : uri.getPort();
+            requestUri = new URI(uri.getScheme(), null, addr.getHostAddress(),
+                    port, uri.getPath(), uri.getQuery(), null);
+        } catch (IllegalArgumentException e) {
+            // resolveAndPin rejected the address (private/blocked)
+            AUDIT.info("share.proxy.fetch_blocked reason=dns_pin_blocked url-hash={}",
+                    LogScrubber.hash8(uri.toString()));
+            return Optional.empty();
+        } catch (java.net.UnknownHostException e) {
+            AUDIT.info("share.proxy.fetch_blocked reason=dns_unresolvable url-hash={}",
+                    LogScrubber.hash8(uri.toString()));
+            return Optional.empty();
+        } catch (java.net.URISyntaxException e) {
+            AUDIT.info("share.proxy.fetch_blocked reason=uri_build_failed url-hash={}",
+                    LogScrubber.hash8(uri.toString()));
+            return Optional.empty();
+        }
+
+        // Execute GET with bounded InputStream; include original Host header so SNI / vhosts work
+        return restTemplate.execute(requestUri, HttpMethod.GET,
+                httpRequest -> httpRequest.getHeaders().set("Host", uri.getHost()),
+                response -> {
             // Content-type check (SVG rejected)
             String contentType = response.getHeaders().getContentType() != null
                     ? response.getHeaders().getContentType().toString()
