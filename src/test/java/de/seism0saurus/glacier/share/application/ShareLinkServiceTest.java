@@ -69,7 +69,9 @@ class ShareLinkServiceTest {
         lifetimePolicy.setTtl(TTL);
         capPolicy = new ShareLinkCapPolicy();
         tokenGenerator = new SecureRandomTokenGenerator();
-        service = new ShareLinkServiceImpl(repository, tokenGenerator, lifetimePolicy, capPolicy, fixedClock);
+        // Pass null shareViewStompRelay — unit tests that do not test revocation notification
+        // use null to keep the dependency minimal (null-safe call site in revoke())
+        service = new ShareLinkServiceImpl(repository, tokenGenerator, lifetimePolicy, capPolicy, null, fixedClock);
     }
 
     // ---------------------------------------------------------------------------
