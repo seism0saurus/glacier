@@ -40,7 +40,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "glacier.operatorPhone=+1",
         "glacier.operatorMail=test@test.com",
         "glacier.operatorWebsite=test.com",
-        "glacier.share.imgproxy.hmacSecret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        "glacier.share.imgproxy.hmacSecret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        // High rate limits to prevent bucket exhaustion during CSRF tests
+        "glacier.share.ratelimit.create.perMinutePerWallId=10000",
+        "glacier.share.ratelimit.create.perMinutePerIp=10000",
+        "glacier.share.ratelimit.csrf.perMinutePerIp=10000",
+        "glacier.share.ratelimit.fallback.perMinutePerViewer=10000",
+        "glacier.share.ratelimit.fallback.perMinutePerIp=10000"
 })
 class ShareLinkCsrfIT {
 

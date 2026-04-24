@@ -187,4 +187,59 @@ class DefaultSafeUrlValidatorCorpusTest {
         Optional<URI> result = validator.validate("HTTPS://EXAMPLE.COM/path");
         assertThat(result).isPresent();
     }
+
+    // -----------------------------------------------------------------------
+    // resolveAndPin — DNS-pinning helper (SSRF Finding 5)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Verifies that {@link DefaultSafeUrlValidator#resolveAndPin(String)} throws
+     * {@link IllegalArgumentException} for {@code localhost} (resolves to 127.0.0.1,
+     * which is in the loopback block list).
+     *
+     * <p>This is the TOCTOU DNS-rebinding guard: even if the URL passes the initial
+     * {@link DefaultSafeUrlValidator#validate(String)} call, a second resolution at
+     * fetch time must also be rejected for loopback/private addresses.
+     *
+     * <p>Security: SSRF Finding 5, OWASP SSRF Prevention Cheat Sheet §DNS Pinning,
+     * SR-SHARE-09.
+     */
+    @Test
+    void resolveAndPin_localhost_throwsIllegalArgumentException() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> DefaultSafeUrlValidator.resolveAndPin("localhost"),
+                "resolveAndPin must reject localhost (resolves to 127.0.0.1, a loopback address)"
+        );
+    }
+
+    /**
+     * Verifies that {@link DefaultSafeUrlValidator#resolveAndPin(String)} throws
+     * {@link IllegalArgumentException} for a direct loopback IP string.
+     *
+     * <p>Security: defence-in-depth — direct IP literals must also be rejected.
+     */
+    @Test
+    void resolveAndPin_loopbackIp_throwsIllegalArgumentException() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> DefaultSafeUrlValidator.resolveAndPin("127.0.0.1"),
+                "resolveAndPin must reject 127.0.0.1"
+        );
+    }
+
+    /**
+     * Verifies that {@link DefaultSafeUrlValidator#resolveAndPin(String)} throws
+     * {@link IllegalArgumentException} for blank host input.
+     *
+     * <p>Security: null/blank host must be rejected defensively.
+     */
+    @Test
+    void resolveAndPin_blankHost_throwsIllegalArgumentException() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> DefaultSafeUrlValidator.resolveAndPin(""),
+                "resolveAndPin must reject blank host"
+        );
+    }
 }
