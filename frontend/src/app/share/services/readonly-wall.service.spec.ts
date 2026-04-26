@@ -8,6 +8,7 @@ import { Router } from '@angular/router';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { ReadonlyWallService } from './readonly-wall.service';
 import { ReadonlyTootView, ShareCatalog } from '../model/readonly-toot-view';
+import { PruneResult } from '../../model/wall-message';
 
 /**
  * Unit tests for ReadonlyWallService (viewer side).
@@ -319,6 +320,117 @@ describe('ReadonlyWallService', () => {
       expect(toots.length).toBe(1);
 
       discardPeriodicTasks();
+    }));
+  });
+
+  // ---- SR-PRUNE-09: Guard-rail — prune operations are no-ops ----
+
+  describe('SR-PRUNE-09: prune guard-rail', () => {
+    /**
+     * ReadonlyWallService is a viewer-only service for share links.
+     * It must never allow prune operations that could be triggered by
+     * WebSocket injection or other untrusted sources.
+     *
+     * pruneByHashtag and pruneByHashtags are explicit no-ops that return
+     * an empty PruneResult without modifying toot state.  This prevents
+     * an attacker from crafting STOMP termination frames that could clear
+     * the viewer's wall.
+     */
+
+    it('pruneByHashtag is a no-op and returns empty removed array', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      req.flush(mockCatalog);
+      tick();
+
+      // The service starts with one toot in the catalog
+      let currentToots: ReadonlyTootView[] = [];
+      service.toots$.subscribe((t) => (currentToots = t));
+      expect(currentToots.length).toBe(1);
+
+      // Call pruneByHashtag — must be a no-op
+      const result: PruneResult = service.pruneByHashtag('glacier');
+      expect(result.removed).toEqual([]);
+      // The remaining list contains the current toots (not modified)
+      expect(currentToots.length).toBe(1);
+    }));
+
+    it('pruneByHashtags is a no-op and returns empty removed array', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      req.flush(mockCatalog);
+      tick();
+
+      let currentToots: ReadonlyTootView[] = [];
+      service.toots$.subscribe((t) => (currentToots = t));
+      expect(currentToots.length).toBe(1);
+
+      const result: PruneResult = service.pruneByHashtags(['glacier', 'a11y']);
+      expect(result.removed).toEqual([]);
+      expect(currentToots.length).toBe(1);
+    }));
+
+    it('pruneByHashtag does not mutate toots$ observable', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      req.flush(mockCatalog);
+      tick();
+
+      const snapshotBefore: ReadonlyTootView[] = service.toots$.getValue();
+      service.pruneByHashtag('glacier');
+      const snapshotAfter: ReadonlyTootView[] = service.toots$.getValue();
+
+      // Same reference or same content — toots were not removed
+      expect(snapshotAfter.length).toBe(snapshotBefore.length);
+    }));
+
+    it('pruneByHashtags does not mutate toots$ observable', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      req.flush(mockCatalog);
+      tick();
+
+      const snapshotBefore: ReadonlyTootView[] = service.toots$.getValue();
+      service.pruneByHashtags(['glacier', 'a11y', 'foss']);
+      const snapshotAfter: ReadonlyTootView[] = service.toots$.getValue();
+
+      expect(snapshotAfter.length).toBe(snapshotBefore.length);
+    }));
+
+    it('hashtags[] on the service is set only from the catalog HTTP response, not from handleToot', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      req.flush(mockCatalog);
+      tick();
+
+      // Record the hashtags from catalog
+      const hashtagsAfterCatalog = [...service.hashtags];
+      expect(hashtagsAfterCatalog).toEqual(['glacier', 'a11y']);
+
+      // Calling handleToot with a toot that has a different hashtag reference
+      // must NOT modify service.hashtags
+      service.handleToot({
+        ...mockToot,
+        id: 'new-toot-99',
+        hashtags: [{ tag: 'injected', searchUrl: 'https://evil.example.com/injected' }],
+      });
+
+      // service.hashtags must remain unchanged
+      expect(service.hashtags).toEqual(hashtagsAfterCatalog);
+    }));
+
+    it('does not write to localStorage even when pruneByHashtag is called', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      req.flush(mockCatalog);
+      tick();
+
+      // Reset the spy counter (catalog load itself does not write localStorage)
+      (localStorage.setItem as jasmine.Spy).calls.reset();
+
+      service.pruneByHashtag('glacier');
+
+      expect(localStorage.setItem).not.toHaveBeenCalled();
     }));
   });
 });

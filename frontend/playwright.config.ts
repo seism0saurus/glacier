@@ -42,6 +42,7 @@ export default defineConfig({
         '**/fallback-insecure.spec.ts',
         '**/share-link-killswitch.spec.ts',
         '**/share-link-insecure.spec.ts',
+        '**/fallback-unsubscribe-prune.spec.ts',
       ],
     },
 
@@ -53,6 +54,7 @@ export default defineConfig({
         '**/fallback-insecure.spec.ts',
         '**/share-link-killswitch.spec.ts',
         '**/share-link-insecure.spec.ts',
+        '**/fallback-unsubscribe-prune.spec.ts',
       ],
       testMatch: ['**/share-link-firefox.spec.ts'],
     },
@@ -65,6 +67,7 @@ export default defineConfig({
         '**/fallback-insecure.spec.ts',
         '**/share-link-killswitch.spec.ts',
         '**/share-link-insecure.spec.ts',
+        '**/fallback-unsubscribe-prune.spec.ts',
       ],
       testMatch: ['**/share-link-webkit.spec.ts'],
     },
@@ -78,6 +81,7 @@ export default defineConfig({
       testMatch: [
         '**/fallback-killswitch.spec.ts',
         '**/share-link-killswitch.spec.ts',
+        '**/fallback-unsubscribe-prune.spec.ts',
       ],
     },
 
@@ -90,6 +94,7 @@ export default defineConfig({
       testMatch: [
         '**/fallback-insecure.spec.ts',
         '**/share-link-insecure.spec.ts',
+        '**/fallback-unsubscribe-prune.spec.ts',
       ],
     },
   ],

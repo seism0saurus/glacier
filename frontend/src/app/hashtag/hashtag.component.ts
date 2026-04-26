@@ -9,6 +9,7 @@ import {RxStompService} from "../rx-stomp.service";
 import {Message} from "@stomp/stompjs";
 import {SubscriptionAckMessage} from "../message-types/subscription-ack-message";
 import {Subscription} from "rxjs";
+import {normalizeHashtag} from "../util/hashtag";
 
 
 /**
@@ -55,6 +56,24 @@ export class HashtagComponent implements OnInit, OnDestroy {
   @ViewChild('hashtagInput') hashtagInput: ElementRef<HTMLInputElement>;
 
   private _ackSubscription?: Subscription;
+  private _settlingSubscription?: Subscription;
+
+  /**
+   * i18n labels for the settling spinner chip state (UX spec, chip.settling.*).
+   *
+   * These are resolved via $localize at component instantiation time so
+   * they reflect the correct locale from the runtime catalog.
+   */
+  readonly settlingAriaLabel: string = $localize`:chip.settling.aria@@chip.settling.aria:Synchronisiert, kurz warten`;
+  readonly settlingTooltip: string = $localize`:chip.settling.visual.tooltip@@chip.settling.visual.tooltip:Synchronisiert …`;
+
+  /**
+   * Set of currently settling hashtags (normalised).
+   *
+   * Populated by SubscriptionService.settlingHashtags$ and used by the
+   * template to show/hide the MatProgressSpinner in place of the chip label.
+   */
+  settlingHashtags: Set<string> = new Set();
 
   constructor(
     private subscriptionService: SubscriptionService,
@@ -90,10 +109,31 @@ export class HashtagComponent implements OnInit, OnDestroy {
           this._rollbackCapExceeded(data.hashtag, data.rejection.details);
         }
       });
+
+    // Subscribe to the settling hashtags set so the chip template can react
+    // and show the MatProgressSpinner during the recentlyTerminated guard window.
+    this._settlingSubscription = this.subscriptionService.settlingHashtags$.subscribe(
+      (settling: Set<string>) => {
+        this.settlingHashtags = settling;
+      }
+    );
   }
 
   ngOnDestroy(): void {
     this._ackSubscription?.unsubscribe();
+    this._settlingSubscription?.unsubscribe();
+  }
+
+  /**
+   * Returns true if the given hashtag is currently in the settling state
+   * (recentlyTerminated guard is active).
+   *
+   * Used by the template to conditionally show the MatProgressSpinner on the chip.
+   *
+   * @param tag - Raw hashtag string (as stored in this.hashtags[]).
+   */
+  isSettling(tag: string): boolean {
+    return this.settlingHashtags.has(normalizeHashtag(tag));
   }
 
   /**

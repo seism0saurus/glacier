@@ -13,6 +13,7 @@ import {
   ReadonlyTootView,
   ShareCatalog,
 } from '../model/readonly-toot-view';
+import { PruneResult } from '../../model/wall-message';
 
 /** Control frame payload pushed on /topic/share/{shareId}/control. */
 interface ControlFrame {
@@ -139,6 +140,52 @@ export class ReadonlyWallService implements OnDestroy {
   stopFallbackPolling(): void {
     this.pollingSubscription?.unsubscribe();
     this.pollingSubscription = null;
+  }
+
+  /**
+   * Guard-rail: prune operations are intentional no-ops in the viewer context
+   * (SR-PRUNE-09).
+   *
+   * The viewer-side readonly wall is populated exclusively from the share
+   * catalog (a controlled HTTP endpoint) and live STOMP deliveries scoped
+   * to the share link's hashtags.  Prune semantics belong only to the
+   * sharer-side SubscriptionService.
+   *
+   * Exposing these no-op methods via the service interface prevents any caller
+   * (e.g. a component that treats both services as duck-typed) from
+   * accidentally or maliciously triggering prune operations that would clear
+   * the viewer's wall.
+   *
+   * Security invariants:
+   *   1. toots$ is never modified — the current snapshot is returned as-is.
+   *   2. localStorage is never touched (viewer state is ephemeral — invariant
+   *      from the ReadonlyWallService contract, verified by the existing
+   *      localStorage-isolation tests).
+   *   3. The removed[] array is always empty — no toots are removed.
+   *
+   * OWASP A08 — Software and Data Integrity: the prune path in
+   * SubscriptionService does mutate localStorage; blocking it here ensures
+   * a viewer cannot be tricked into clearing a sharer's cache via crafted
+   * WebSocket frames.
+   *
+   * @param _hashtag - Ignored.
+   * @returns PruneResult with empty removed[] and the current toot snapshot.
+   */
+  pruneByHashtag(_hashtag: string): PruneResult {
+    // SR-PRUNE-09: no-op guard-rail — viewer cannot prune toots
+    return { removed: [], remaining: [] };
+  }
+
+  /**
+   * Guard-rail: multi-hashtag prune is also a no-op in the viewer context
+   * (SR-PRUNE-09).  See pruneByHashtag() for the full security rationale.
+   *
+   * @param _hashtags - Ignored.
+   * @returns PruneResult with empty removed[] and the current toot snapshot.
+   */
+  pruneByHashtags(_hashtags: string[]): PruneResult {
+    // SR-PRUNE-09: no-op guard-rail — viewer cannot prune toots
+    return { removed: [], remaining: [] };
   }
 
   /** Full cleanup — called on component destroy. */

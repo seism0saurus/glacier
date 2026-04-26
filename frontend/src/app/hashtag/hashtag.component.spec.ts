@@ -11,8 +11,11 @@ import {BrowserAnimationsModule} from "@angular/platform-browser/animations";
 import {provideHttpClient, withInterceptorsFromDi} from '@angular/common/http';
 import {MatSnackBar, MatSnackBarModule} from '@angular/material/snack-bar';
 import {RxStompService} from '../rx-stomp.service';
-import {Subject} from 'rxjs';
+import {BehaviorSubject, Subject} from 'rxjs';
 import {Message} from '@stomp/stompjs';
+import {MatProgressSpinner, MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MatTooltipModule} from '@angular/material/tooltip';
+import {By} from '@angular/platform-browser';
 
 describe('HashtagComponent', () => {
   let component: HashtagComponent;
@@ -20,12 +23,17 @@ describe('HashtagComponent', () => {
   let mockSubscriptionService: jasmine.SpyObj<SubscriptionService>;
   let stompMessageSubject: Subject<Message>;
   let mockRxStompService: jasmine.SpyObj<RxStompService>;
+  let settlingHashtagsSubject: BehaviorSubject<Set<string>>;
 
   beforeEach(() => {
     stompMessageSubject = new Subject<Message>();
-    mockSubscriptionService = jasmine.createSpyObj<SubscriptionService>([
-      'subscribeHashtag', 'unsubscribeHashtag', 'clearAllToots'
-    ]);
+    settlingHashtagsSubject = new BehaviorSubject<Set<string>>(new Set());
+    mockSubscriptionService = jasmine.createSpyObj<SubscriptionService>(
+      'SubscriptionService',
+      ['subscribeHashtag', 'unsubscribeHashtag', 'clearAllToots'],
+      // Expose settlingHashtags$ as a property on the spy object
+      {settlingHashtags$: settlingHashtagsSubject.asObservable()},
+    );
     mockRxStompService = jasmine.createSpyObj<RxStompService>(['watch', 'publish']);
     mockRxStompService.watch.and.returnValue(stompMessageSubject.asObservable() as any);
 
@@ -41,6 +49,8 @@ describe('HashtagComponent', () => {
         MatIcon,
         BrowserAnimationsModule,
         MatSnackBarModule,
+        MatProgressSpinnerModule,
+        MatTooltipModule,
       ],
       providers: [
         {provide: SubscriptionService, useValue: mockSubscriptionService},
@@ -259,6 +269,79 @@ describe('HashtagComponent', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Settling spinner — chip shows spinner during recentlyTerminated window
+  // -------------------------------------------------------------------------
+  describe('settling spinner (chip.settling.*)', () => {
+    it('should start with no settling hashtags', () => {
+      expect(component.settlingHashtags.size).toBe(0);
+    });
+
+    it('isSettling() should return false for non-settling hashtags', () => {
+      expect(component.isSettling('test')).toBeFalse();
+    });
+
+    it('should update settlingHashtags when settlingHashtags$ emits', () => {
+      // Arrange: add a hashtag chip
+      component.hashtags = ['glacier'];
+      fixture.detectChanges();
+
+      // Act: SubscriptionService signals that 'glacier' is settling
+      settlingHashtagsSubject.next(new Set(['glacier']));
+      fixture.detectChanges();
+
+      // Assert: isSettling returns true for the settling hashtag
+      expect(component.isSettling('glacier')).toBeTrue();
+    });
+
+    it('should return false for a hashtag that is no longer settling', () => {
+      // Arrange: initially settling
+      settlingHashtagsSubject.next(new Set(['glacier']));
+      fixture.detectChanges();
+      expect(component.isSettling('glacier')).toBeTrue();
+
+      // Act: guard window expired — empty set emitted
+      settlingHashtagsSubject.next(new Set());
+      fixture.detectChanges();
+
+      // Assert: no longer settling
+      expect(component.isSettling('glacier')).toBeFalse();
+    });
+
+    it('isSettling() should normalise the hashtag before checking', () => {
+      // The settlingHashtags set uses normalised keys (lowercase, no #).
+      // isSettling() must normalise the input tag before lookup.
+      settlingHashtagsSubject.next(new Set(['glacier']));
+      fixture.detectChanges();
+
+      // Raw tag with uppercase — should still match the normalised key
+      expect(component.isSettling('Glacier')).toBeTrue();
+      expect(component.isSettling('#Glacier')).toBeTrue();
+    });
+
+    it('should show progress spinner in chip when hashtag is settling', () => {
+      // Arrange: add a chip and signal settling
+      component.hashtags = ['spinnertest'];
+      fixture.detectChanges();
+      settlingHashtagsSubject.next(new Set(['spinnertest']));
+      fixture.detectChanges();
+
+      // Assert: mat-progress-spinner appears in the chip
+      const spinner = fixture.debugElement.query(By.directive(MatProgressSpinner));
+      expect(spinner).not.toBeNull();
+    });
+
+    it('should not show progress spinner when hashtag is not settling', () => {
+      // Arrange: chip present, not settling
+      component.hashtags = ['nospinner'];
+      fixture.detectChanges();
+
+      // Assert: no spinner
+      const spinner = fixture.debugElement.query(By.directive(MatProgressSpinner));
+      expect(spinner).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // i18n catalog completeness — regression guard for missing @@id keys (FIX B)
   // -------------------------------------------------------------------------
   describe('i18n catalog completeness (messages.en.json)', () => {
@@ -275,6 +358,8 @@ describe('HashtagComponent', () => {
       'cap.reached.snackbar',
       'cap.reached.snackbar.no.limit',  // FIX B: was missing before this PR
       'gap.snackbar.dismiss',
+      'chip.settling.aria',
+      'chip.settling.visual.tooltip',
     ] as const;
 
     for (const key of REQUIRED_CATALOG_KEYS) {

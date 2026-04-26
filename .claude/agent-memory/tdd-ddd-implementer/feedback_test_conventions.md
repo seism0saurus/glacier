@@ -34,3 +34,15 @@ During multi-agent pipeline runs, peer-lane agents write test files for APIs not
 ## SimpleMeterRegistry for isolated unit tests
 
 When a test class creates multiple `MessageCacheImpl` instances that need separate Micrometer registries, create a `new SimpleMeterRegistry()` per instance (not per class). Reusing the same registry across instances triggers `IllegalArgumentException: Gauge with name X already registered`.
+
+## Angular: don't double-spy localStorage in nested describes
+
+If a `beforeEach` in an outer `describe` block already spies on `localStorage.getItem`, inner `it` blocks must NOT spy on it again — Karma throws `spyOn: getItem has already been spied upon`. Hoist the spy configuration to the `beforeEach` or use `getItem.and.callFake` conditionally.
+
+## Angular fakeAsync: tick(0) after tick(debounceMs) is needed for deferred textContent sets
+
+When `_flush()` calls `setTimeout(() => liveRegion.textContent = text, 0)`, `tick(250)` fires the debounce but the `setTimeout(0)` requires an additional `tick(0)` to execute in `fakeAsync` tests. Write `tick(250); tick(0)` in sequence to observe the final DOM state.
+
+## Angular: WallMessage replaces SafeMessage in MessageQueue
+
+The hashtag-prune feature (Phase 2, 2026-04-24) replaced `SafeMessage` with `WallMessage` (adds `hashtags: string[]`). The `MessageQueue` now uses a v:2 envelope `{ v: 2, items: WallMessage[] }` in localStorage. Any test that constructs queue items directly must use `WallMessage` (with `hashtags`). The persist format changed: no longer a flat array — now a versioned envelope.

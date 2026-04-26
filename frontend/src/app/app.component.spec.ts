@@ -16,6 +16,13 @@ import {MatInputModule} from "@angular/material/input";
 import {ResourceUrlSanitizerPipe} from "./wall/resource-url-sanitizer.pipe";
 import {MatGridList, MatGridTile} from "@angular/material/grid-list";
 import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import {MigrationBannerComponent} from "./migration-banner/migration-banner.component";
+import {MatCardModule} from "@angular/material/card";
+import {MatButtonModule} from "@angular/material/button";
+import {NgIf} from "@angular/common";
+import {MatProgressSpinnerModule} from "@angular/material/progress-spinner";
+import {MatTooltipModule} from "@angular/material/tooltip";
+import {MatSnackBarModule} from "@angular/material/snack-bar";
 
 describe('AppComponent', () => {
   beforeEach(() => TestBed.configureTestingModule({
@@ -25,7 +32,8 @@ describe('AppComponent', () => {
         HeaderComponent,
         HashtagComponent,
         FooterComponent,
-        TootComponent
+        TootComponent,
+        MigrationBannerComponent,
     ],
     imports: [BrowserModule,
         FormsModule,
@@ -42,7 +50,14 @@ describe('AppComponent', () => {
         MatChipRemove,
         ResourceUrlSanitizerPipe,
         MatGridList,
-        MatGridTile],
+        MatGridTile,
+        MatCardModule,
+        MatButtonModule,
+        NgIf,
+        MatProgressSpinnerModule,
+        MatTooltipModule,
+        MatSnackBarModule,
+    ],
     providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
 }));
 

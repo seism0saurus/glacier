@@ -1,14 +1,61 @@
-<div id="toots">
+<!--
+  Live region — sibling to role="feed", NOT nested inside it.
+
+  WAI-ARIA authoring practice: role="status" with aria-live="polite" and
+  aria-atomic="true" so that screen readers announce the full replacement
+  text each time WallAnnouncerService flushes a coalesced prune event.
+
+  FIX-2: The #liveRegion template reference variable has been removed.
+  WallAnnouncerService no longer receives a DOM element reference — it emits
+  on announcements$ instead. WallComponent subscribes and assigns to
+  announceText, so Angular change detection is the sole writer to this node.
+  This eliminates the dual-write race (direct textContent mutation vs. Angular
+  template binding) that was silencing screen-reader announcements.
+
+  The .sr-only utility class visually hides the element while keeping it
+  accessible to assistive technologies (see wall.component.css).
+-->
+<div
+  role="status"
+  aria-live="polite"
+  aria-atomic="true"
+  class="sr-only"
+>{{ announceText }}</div>
+
+<!--
+  Main toot feed.
+
+  role="feed" is the ARIA landmark for a dynamically-updating list of articles
+  (WAI-ARIA 1.1 §5.3.2).  Each toot is wrapped in role="article" so screen
+  readers can treat it as an independent, self-contained unit.
+
+  aria-label is i18n-tagged with @@wall.heading so it resolves correctly via
+  the runtime catalog (angular-i18n-localize skill).
+
+  @pruneLeave triggers the 150 ms opacity fade-out when a toot is removed.
+  The prefers-reduced-motion override in wall.component.css suppresses the
+  animation for users who have requested reduced motion.
+-->
+<div
+  id="toots"
+  role="feed"
+  i18n-aria-label="@@wall.heading"
+  aria-label="Pinnwand"
+>
   <!--suppress HtmlUnknownTag -->
   <mat-grid-list cols="{{columns}}" gutterSize="0px" rowHeight="{{rowHeight}}px">
-      <mat-grid-tile *ngFor='let n of [].constructor(columns); let i = index'
-        [colspan]="1"
-        [rowspan]="1"
-        id="column-{{i}}"
-      >
-        <div class="column-of-toots">
-          <app-toot *ngFor='let toot of getTootsForColumn(i); trackBy: trackToot' [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id"></app-toot>
-        </div>
-      </mat-grid-tile>
+    <mat-grid-tile *ngFor='let n of [].constructor(columns); let i = index'
+      [colspan]="1"
+      [rowspan]="1"
+      id="column-{{i}}"
+    >
+      <div class="column-of-toots">
+        @for (toot of getTootsForColumn(i); track toot.id) {
+          <article role="article" [@pruneLeave]>
+            <app-toot [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id"></app-toot>
+          </article>
+        }
+      </div>
+    </mat-grid-tile>
   </mat-grid-list>
 </div>

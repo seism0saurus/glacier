@@ -13,7 +13,33 @@
           [aria-description]="'press enter to edit hashtag ' + tag"
           [id]="'hashtag-' + tag"
         >
-          {{tag}}
+          <!--
+            Settling state: while the recentlyTerminated guard is active for this
+            hashtag (just removed, guard window not yet expired), show a small
+            progress spinner instead of the tag label.
+
+            The spinner signals to the user that the backend is still processing
+            the termination.  Once the guard TTL expires, the chip is removed
+            from the DOM entirely by the parent list.
+
+            aria-label on the spinner wrapper and MatTooltip are i18n-tagged per
+            the UX spec (chip.settling.aria and chip.settling.visual.tooltip).
+          -->
+          @if (isSettling(tag)) {
+            <span
+              class="settling-chip-label"
+              [attr.aria-label]="settlingAriaLabel"
+              [matTooltip]="settlingTooltip"
+            >
+              <mat-progress-spinner
+                mode="indeterminate"
+                [diameter]="16"
+                aria-hidden="true"
+              ></mat-progress-spinner>
+            </span>
+          } @else {
+            {{tag}}
+          }
           <mat-icon matChipRemove [attr.aria-label]="'remove hashtag ' + tag" svgIcon="cancel_icon"></mat-icon>
         </mat-chip-row>
       }

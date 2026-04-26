@@ -82,5 +82,13 @@
   "share.wall.heading": "Wall feed",
   "share.toot.poll.expired": "Ended",
   "share.toot.poll.multiple": "Multiple choice",
-  "snackbar.dismiss": "Dismiss"
+  "snackbar.dismiss": "Dismiss",
+  "wall.heading": "Wall",
+  "wall.prune.announce.single": "{count, plural, =1 {One post removed.} other {# posts removed.}}",
+  "wall.prune.announce.cancelAll": "All subscriptions ended. Wall is empty.",
+  "wall.migration.banner.heading": "Wall refreshed",
+  "wall.migration.banner.body": "The wall was updated to a new format and cleared. New posts will appear as Mastodon delivers them.",
+  "wall.migration.banner.dismiss.aria": "Dismiss notice",
+  "chip.settling.aria": "Syncing, one moment",
+  "chip.settling.visual.tooltip": "Syncing…"
 }

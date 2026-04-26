@@ -5,24 +5,29 @@ import {RxStompService} from './rx-stomp.service';
 import {Observable, of, BehaviorSubject} from 'rxjs';
 import {Message} from "@stomp/stompjs";
 import {TerminationAckMessage} from "./message-types/termination-ack-message";
-import {SafeMessage} from "./message-types/safe-message";
+import {WallMessage} from "./model/wall-message";
+import {WallAnnouncerService} from "./services/wall-announcer.service";
 
 describe('SubscriptionService', () => {
   let service: SubscriptionService;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
+  let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
 
   beforeEach(() => {
-    const spy = jasmine.createSpyObj('RxStompService', ['publish', 'watch']);
-    spy.watch.and.returnValue(new Observable<Message>());
+    const stompSpy = jasmine.createSpyObj('RxStompService', ['publish', 'watch']);
+    stompSpy.watch.and.returnValue(new Observable<Message>());
+    const announcerSpy = jasmine.createSpyObj('WallAnnouncerService', ['announce', 'setLiveRegion', 'setMessages']);
 
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
-        {provide: RxStompService, useValue: spy},
+        {provide: RxStompService, useValue: stompSpy},
+        {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
     });
     service = TestBed.inject(SubscriptionService);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
+    wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
 
     // Reset spies to ensure no state carried over between tests
     rxStompServiceSpy.publish.calls.reset();
@@ -38,26 +43,27 @@ describe('SubscriptionService', () => {
         return JSON.stringify(['hashtag1', 'hashtag2']);
       }
       if (key === 'messageQueue') {
-        return JSON.stringify([
-          {id: '1', url: 'https://example.com/message1'},
-          {id: '2', url: 'https://example.com/message2'},
-        ]);
+        // v:2 envelope format
+        return JSON.stringify({
+          v: 2,
+          items: [
+            {id: '1', url: 'https://example.com/message1', hashtags: ['hashtag1']},
+            {id: '2', url: 'https://example.com/message2', hashtags: ['hashtag2']},
+          ],
+        });
       }
       return JSON.stringify([]);
     });
 
-    // Mock für MessageQueue.restore()
-    const mockMessages: SafeMessage[] = [
-      {id: '1', url: 'https://example.com/message1'},
-      {id: '2', url: 'https://example.com/message2'},
+    const mockMessages: WallMessage[] = [
+      {id: '1', url: 'https://example.com/message1', hashtags: ['hashtag1']},
+      {id: '2', url: 'https://example.com/message2', hashtags: ['hashtag2']},
     ];
 
-    // Methode aufrufen
     service.getCreatedEvents().subscribe((messages) => {
-      expect(messages).toEqual(mockMessages); // Erwartet die wiederhergestellten Nachrichten
+      expect(messages).toEqual(mockMessages);
     });
 
-    // Assertions
     expect(localStorage.getItem).toHaveBeenCalledWith('messageQueue');
   });
 
@@ -239,13 +245,13 @@ describe('SubscriptionService', () => {
       },
     } as any);
 
-    service.subscribeToStatusCreatedMessages(destination);
+    service.subscribeToStatusCreatedMessages(destination, 'testHashtag');
 
     expect(rxStompServiceSpy.watch).toHaveBeenCalledWith(destination);
   });
 
 
-  it('should enqueue received StatusCreatedMessage into the receivedMessages queue', () => {
+  it('should enqueue received StatusCreatedMessage into the receivedMessages queue as a WallMessage', () => {
     const destination = '/topic/test-destination';
     const testMessage = {
       body: JSON.stringify({id: "1", url: 'test-content'}),
@@ -258,9 +264,13 @@ describe('SubscriptionService', () => {
     } as any);
     const enqueueSpy = spyOn(service['receivedMessages'], 'enqueue');
 
-    service.subscribeToStatusCreatedMessages(destination);
+    service.subscribeToStatusCreatedMessages(destination, 'testHashtag');
 
-    expect(enqueueSpy).toHaveBeenCalledWith({id: "1", url: 'test-content'});
+    expect(enqueueSpy).toHaveBeenCalledWith(jasmine.objectContaining({
+      id: '1',
+      url: 'test-content',
+      hashtags: ['testhashtag'],
+    }));
   });
 
   it('should remove all entries in the subscriptions object when terminateAllSubscriptions is called', () => {
@@ -290,7 +300,7 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
 
     const hashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(hashtags).toContain('exampleHashtag');
@@ -311,7 +321,7 @@ describe('SubscriptionService', () => {
     }));
     const consoleErrorSpy = spyOn(console, 'error');
 
-    service = new SubscriptionService(rxStompServiceSpy);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
 
     expect(consoleErrorSpy).toHaveBeenCalledWith('Could not subscribe to topic', 'testHashtag');
   });
@@ -330,7 +340,7 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
 
     expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/creation');
     expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/modification');
@@ -429,22 +439,26 @@ describe('SubscriptionService', () => {
 describe('SubscriptionService: terminateAllSubscriptions', () => {
   let service: SubscriptionService;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
+  let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
 
   beforeEach(() => {
     const spy = jasmine.createSpyObj('RxStompService', ['watch', 'publish']);
     spy.watch.and.callFake(() =>
       of({body: JSON.stringify({subscribed: true, hashtag: 'hashtag1', principal: 'user'})})
     );
+    const announcerSpy = jasmine.createSpyObj('WallAnnouncerService', ['announce', 'setLiveRegion', 'setMessages']);
 
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
         {provide: RxStompService, useValue: spy},
+        {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
     });
 
     service = TestBed.inject(SubscriptionService);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
+    wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
 
     // Set up mock subscriptions and hashtags
     service['hashtags'] = ['hashtag1', 'hashtag2'];
@@ -490,8 +504,8 @@ describe('MessageQueue', () => {
   });
 
   describe('enqueue()', () => {
-    it('should add a message to the storage array', () => {
-      const message = {id: '1', content: 'Test Message', url: 'https://example.com'};
+    it('should add a WallMessage to the storage array', () => {
+      const message: WallMessage = {id: '1', url: 'https://example.com', hashtags: ['test']};
 
       messageQueue.enqueue(message);
 
@@ -499,13 +513,13 @@ describe('MessageQueue', () => {
       expect(messageQueue['storage'][0]).toEqual(message);
       expect(localStorage.setItem).toHaveBeenCalledWith(
         'messageQueue',
-        JSON.stringify([message])
+        jasmine.any(String)
       );
     });
 
     it('should append messages to the array in order', () => {
-      const message1 = {id: '1', content: 'First Message', url: 'https://example.com/first'};
-      const message2 = {id: '2', content: 'Second Message', url: 'https://example.com/second'};
+      const message1: WallMessage = {id: '1', url: 'https://example.com/first', hashtags: ['first']};
+      const message2: WallMessage = {id: '2', url: 'https://example.com/second', hashtags: ['second']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);
@@ -519,10 +533,10 @@ describe('MessageQueue', () => {
     it('should remove oldest message, if queue limit is reached', () => {
       messageQueue = new MessageQueue(3);
 
-      const message1 = {id: '1', content: 'First Message', url: 'https://example.com/first'};
-      const message2 = {id: '2', content: 'Second Message', url: 'https://example.com/second'};
-      const message3 = {id: '3', content: 'Third Message', url: 'https://example.com/third'};
-      const message4 = {id: '4', content: 'Fourth Message', url: 'https://example.com/fourth'};
+      const message1: WallMessage = {id: '1', url: 'https://example.com/first', hashtags: ['a']};
+      const message2: WallMessage = {id: '2', url: 'https://example.com/second', hashtags: ['a']};
+      const message3: WallMessage = {id: '3', url: 'https://example.com/third', hashtags: ['a']};
+      const message4: WallMessage = {id: '4', url: 'https://example.com/fourth', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);
@@ -539,8 +553,8 @@ describe('MessageQueue', () => {
 
   describe('dequeue()', () => {
     it('should remove and return the first message in the array', () => {
-      const message1 = {id: '1', content: 'First Message', url: 'https://example.com/first'};
-      const message2 = {id: '2', content: 'Second Message', url: 'https://example.com/second'};
+      const message1: WallMessage = {id: '1', url: 'https://example.com/first', hashtags: ['a']};
+      const message2: WallMessage = {id: '2', url: 'https://example.com/second', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);
@@ -560,9 +574,9 @@ describe('MessageQueue', () => {
     });
 
     it('shouldn`t have empty spaces after removal', () => {
-      const message1 = {id: '1', content: 'First Message', url: 'https://example.com/first'};
-      const message2 = {id: '2', content: 'Second Message', url: 'https://example.com/second'};
-      const message3 = {id: '3', content: 'Third Message', url: 'https://example.com/third'};
+      const message1: WallMessage = {id: '1', url: 'https://example.com/first', hashtags: ['a']};
+      const message2: WallMessage = {id: '2', url: 'https://example.com/second', hashtags: ['a']};
+      const message3: WallMessage = {id: '3', url: 'https://example.com/third', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);
@@ -579,8 +593,8 @@ describe('MessageQueue', () => {
 
   describe('clear()', () => {
     it('should remove all messages from the storage array', () => {
-      const message1 = {id: '1', content: 'First Message', url: ''};
-      const message2 = {id: '2', content: 'Second Message', url: ''};
+      const message1: WallMessage = {id: '1', url: '', hashtags: ['a']};
+      const message2: WallMessage = {id: '2', url: '', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);
@@ -590,7 +604,7 @@ describe('MessageQueue', () => {
       expect(messageQueue['storage'].length).toBe(0);
       expect(localStorage.setItem).toHaveBeenCalledWith(
         'messageQueue',
-        JSON.stringify([])
+        jasmine.any(String)
       );
     });
   });
@@ -602,7 +616,7 @@ describe('MessageQueue', () => {
     });
 
     it('should be 1 with one element', () => {
-      const message1 = {id: '1', content: 'First Message', url: ''};
+      const message1: WallMessage = {id: '1', url: '', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
 
@@ -611,8 +625,8 @@ describe('MessageQueue', () => {
     });
 
     it('should be 2 with two elements', () => {
-      const message1 = {id: '1', content: 'First Message', url: ''};
-      const message2 = {id: '2', content: 'Second Message', url: ''};
+      const message1: WallMessage = {id: '1', url: '', hashtags: ['a']};
+      const message2: WallMessage = {id: '2', url: '', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);
@@ -623,12 +637,12 @@ describe('MessageQueue', () => {
   });
 
   describe('toArray()', () => {
-    it('should return an empy array without elements', () => {
+    it('should return an empty array without elements', () => {
       expect(messageQueue.toArray()).toEqual([]);
     });
 
     it('should return an array with the same single element', () => {
-      const message1 = {id: '1', content: 'First Message', url: ''};
+      const message1: WallMessage = {id: '1', url: '', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
 
@@ -636,8 +650,8 @@ describe('MessageQueue', () => {
     });
 
     it('should return an array with the same elements', () => {
-      const message1 = {id: '1', content: 'First Message', url: ''};
-      const message2 = {id: '2', content: 'Second Message', url: ''};
+      const message1: WallMessage = {id: '1', url: '', hashtags: ['a']};
+      const message2: WallMessage = {id: '2', url: '', hashtags: ['a']};
 
       messageQueue.enqueue(message1);
       messageQueue.enqueue(message2);

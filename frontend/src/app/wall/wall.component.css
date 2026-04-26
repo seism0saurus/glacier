@@ -15,3 +15,55 @@
   flex-direction: column;
 }
 
+/**
+ * Visually hides an element while keeping it accessible to assistive
+ * technologies (screen readers, Braille displays, etc.).
+ *
+ * Applied to the role="status" aria-live="polite" live region so it does
+ * not take up layout space but is still part of the accessibility tree.
+ *
+ * Technique: position off-screen with overflow:hidden — avoids the
+ * visibility:hidden / display:none approach that removes the element from
+ * the accessibility tree entirely.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/**
+ * Keyframe for the toot removal fade-out animation (ADR-5 UX spec).
+ *
+ * Duration: 150 ms, ease-out — perceived as snappy but not jarring.
+ * Angular's @pruneLeave trigger applies the Angular animation on :leave;
+ * the ng-animating class is also present during the animation, which
+ * allows the keyframe to work in tandem with Angular's animation engine.
+ */
+@keyframes pruneLeave {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/**
+ * prefers-reduced-motion override (ADR-5 accessibility requirement).
+ *
+ * Users who have configured their OS-level "reduce motion" preference
+ * see toots removed instantly without animation.  This CSS rule overrides
+ * the @pruneLeave Angular animation by resetting animation properties.
+ *
+ * The :ng-animating selector targets elements currently being animated
+ * by Angular's animation engine.
+ */
+@media (prefers-reduced-motion: reduce) {
+  article[role="article"] {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,21 @@
+/**
+ * MigrationBannerComponent styles.
+ *
+ * The banner is placed between the header and the wall grid in the app layout.
+ * It uses a modest shadow and rounded corners from the Material card defaults.
+ * The dismiss button is pinned to the top-right corner of the header.
+ */
+
+.migration-banner {
+  margin: 8px 16px;
+}
+
+mat-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dismiss-button {
+  margin-left: auto;
+}

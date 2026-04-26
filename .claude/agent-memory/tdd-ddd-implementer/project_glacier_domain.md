@@ -36,3 +36,15 @@ Production `SubscriptionListener` now takes 3 args: `(SubscriptionManager, Messa
 These require `spring-boot-starter-actuator` and `micrometer-core` in pom.xml.
 
 **How to apply:** When writing tests with multiple `MessageCacheImpl` instances sharing the same `MeterRegistry`, use fresh `SimpleMeterRegistry` instances per test or you'll get duplicate-gauge registration errors.
+
+## Frontend WallMessage / prune-on-removal domain (2026-04-24)
+
+`WallMessage` replaces `SafeMessage` in `MessageQueue`. Carries `hashtags: string[]` for per-toot membership. Stored in localStorage as `{ v: 2, items: WallMessage[] }`. Key domain concepts:
+
+- `normalizeHashtag(s)` — canonical normalisation; strip '#', lowercase, trim. Lives in `frontend/src/app/util/hashtag.ts`. All equality checks route through here (SR-PRUNE-07).
+- `safeSetItem(key, value)` — quota-safe localStorage write. On QuotaExceededError: drop oldest half, retry once, log. Lives in `frontend/src/app/util/safe-storage.ts`.
+- `recentlyTerminated: Map<normalised, expiresAt>` — lives on `SubscriptionService`. Seeded at step 2 of the 4-step ack handler. Eviction sweep on each seed. Uses `Date.now()` (not `performance.now()`). TTL from `environment.prune.guardTtlMs` (default 10 000 ms).
+- 4-step ack handler: (1) RxStomp unsubscribe, (2) seed guard, (3) pruneByHashtag, (4) wallAnnouncerService.announce — all synchronous, same tick.
+- `WallAnnouncerService` — 250 ms debounce, cancelAll takes precedence over prune count. Writes to `role="status" aria-live="polite"` live region. Lives in `frontend/src/app/services/wall-announcer.service.ts`.
+- `SubscriptionService` constructor now requires `WallAnnouncerService` as second arg.
+- German is compile-time default locale; English catalog is `messages.en.json` loaded at runtime for `navigator.language.startsWith('en')`. No `messages.de.json` file exists — German strings are embedded in templates via `$localize`.

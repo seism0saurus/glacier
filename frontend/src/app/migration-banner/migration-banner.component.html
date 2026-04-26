@@ -1,0 +1,30 @@
+<!--
+  MigrationBannerComponent template (ADR-4).
+
+  role="alert" fires an assertive live-region announcement when the element
+  first appears in the DOM.  This is appropriate here because the user needs
+  to know their wall was reset — it is an important, time-sensitive notice.
+
+  The *ngIf directive is used (not @if) for consistency with the rest of the
+  non-standalone module declarations in this project.
+-->
+<mat-card role="alert" *ngIf="visible" class="migration-banner">
+  <mat-card-header>
+    <mat-card-title i18n="@@wall.migration.banner.heading">
+      Pinnwand aktualisiert
+    </mat-card-title>
+    <button
+      mat-icon-button
+      class="dismiss-button"
+      (click)="dismiss()"
+      [attr.aria-label]="dismissLabel"
+    >
+      <mat-icon aria-hidden="true">close</mat-icon>
+    </button>
+  </mat-card-header>
+  <mat-card-content>
+    <p i18n="@@wall.migration.banner.body">
+      Die Pinnwand wurde auf ein neues Format aktualisiert und geleert. Neue Beiträge erscheinen, sobald Mastodon sie liefert.
+    </p>
+  </mat-card-content>
+</mat-card>

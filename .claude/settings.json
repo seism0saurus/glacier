@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(sort *)",
+      "Bash(sed *)",
+      "Bash(xargs *)",
+      "Bash(jq *)",
+      "Bash(java -version)",
+      "Bash(./mvnw *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(./node_modules/.bin/ng test *)",
+      "Bash(./node_modules/.bin/eslint *)",
+      "Bash(npx playwright *)",
+      "Bash(docker compose *)",
+      "Bash(docker --version)",
+      "Bash(docker run *)",
+      "Bash(docker-compose version *)",
+      "Bash(yamllint *)",
+      "Bash(tar *)",
+      "Bash(bash push_version.sh *)",
+      "Bash(python3 *)",
+      "Bash(curl -s *)",
+      "WebFetch(domain:api.openai.com)",
+      "WebFetch(domain:owasp.org)",
+      "WebFetch(domain:tss-web.secodis.com)",
+      "Skill(update-config)"
+    ]
+  }
+}
