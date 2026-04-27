@@ -218,7 +218,7 @@ services:
 
   playwright:
     container_name: playwright
-    image: mcr.microsoft.com/playwright:v1.51.0
+    image: mcr.microsoft.com/playwright:v1.59.1
     networks:
       - mastodon
     volumes:
@@ -277,6 +277,10 @@ services:
       # Reaches the same glacier container via Traefik (port 443, TLS).
       # Traefik routes Host:share.proxy to glacier:8080 per dynamic.yml.
       GLACIER_SHARE_BASE_URL: "https://share.proxy"
+
+      # Path to Traefik's dynamic.yml inside this container.
+      # fallback.spec.ts and fallback-ux.spec.ts write WS-block rules here.
+      TRAEFIK_DYNAMIC_YML_PATH: "/repo/infrastructure/dynamic.yml"
 
       # Since the runner is not very fast, we wait a little bit longer,
       # if we want to test that something does not show up.

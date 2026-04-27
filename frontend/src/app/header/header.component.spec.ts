@@ -1,4 +1,5 @@
 import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {NO_ERRORS_SCHEMA} from '@angular/core';
 
 import {HeaderComponent} from './header.component';
 import {AnimationService} from "../animation.service";
@@ -12,6 +13,7 @@ describe('HeaderComponent', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       declarations: [HeaderComponent],
+      schemas: [NO_ERRORS_SCHEMA],
     });
     fixture = TestBed.createComponent(HeaderComponent);
     component = fixture.componentInstance;

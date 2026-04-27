@@ -23,9 +23,23 @@ import {NgIf} from "@angular/common";
 import {MatProgressSpinnerModule} from "@angular/material/progress-spinner";
 import {MatTooltipModule} from "@angular/material/tooltip";
 import {MatSnackBarModule} from "@angular/material/snack-bar";
+import {ConnectionStatusComponent} from "./connection-status/connection-status.component";
+import {FallbackService} from "./fallback/fallback.service";
+import {TransportMode} from "./fallback/transport-mode";
+import {BehaviorSubject, Subject} from "rxjs";
+import {MatMenuModule} from "@angular/material/menu";
+import {MatIconModule} from "@angular/material/icon";
 
 describe('AppComponent', () => {
-  beforeEach(() => TestBed.configureTestingModule({
+  beforeEach(() => {
+    const modeSubject = new BehaviorSubject<TransportMode>(TransportMode.WEBSOCKET);
+    const eventsSubject = new Subject<any>();
+    const fallbackServiceSpy = jasmine.createSpyObj<FallbackService>(
+      'FallbackService', [],
+      {transportMode$: modeSubject.asObservable(), events$: eventsSubject.asObservable()}
+    );
+
+    TestBed.configureTestingModule({
     declarations: [
         AppComponent,
         WallComponent,
@@ -34,6 +48,7 @@ describe('AppComponent', () => {
         FooterComponent,
         TootComponent,
         MigrationBannerComponent,
+        ConnectionStatusComponent,
     ],
     imports: [BrowserModule,
         FormsModule,
@@ -57,9 +72,16 @@ describe('AppComponent', () => {
         MatProgressSpinnerModule,
         MatTooltipModule,
         MatSnackBarModule,
+        MatMenuModule,
+        MatIconModule,
     ],
-    providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
-}));
+    providers: [
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+        {provide: FallbackService, useValue: fallbackServiceSpy},
+    ]
+  });
+  });
 
   it('should create the app', () => {
     const fixture = TestBed.createComponent(AppComponent);
