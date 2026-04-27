@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice.messaging.messages;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.*;
 
 /**
@@ -17,5 +18,6 @@ public class StatusUpdatedMessage extends StatusMessage {
 
     private String id;
     private String url;
+    @JsonAlias("edited_at")
     private String editedAt;
 }

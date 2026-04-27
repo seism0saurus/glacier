@@ -382,4 +382,40 @@ class SubscriptionManagerImplTest {
         // Assert: cache eviction is unconditional (ADR-05 memory-reclamation contract)
         verify(messageCache, times(1)).evictPrincipal(wall(principal));
     }
+
+    // -----------------------------------------------------------------------
+    // Priority 4 additions — subscription lifecycle gaps
+    // -----------------------------------------------------------------------
+
+    /**
+     * Two principals with overlapping subscriptions to the same hashtag must not interfere
+     * with each other: terminating one principal's subscription must leave the other's intact.
+     *
+     * <p>This test guards against a hypothetical concurrent-mutation bug where the internal
+     * {@code Map<principal, Map<hashtag, Future<?>>>} is shared across principals.
+     *
+     * <p>Arrange: both principals subscribe to the same hashtag.
+     * <p>Act:     terminate principalA's subscription.
+     * <p>Assert:  principalB's subscription remains active; principalA's is gone.
+     */
+    @Test
+    void subscribeAndTerminate_byDifferentPrincipals_doNotInterfere() {
+        String principalA = "principal-A-00000000";
+        String principalB = "principal-B-11111111";
+        String sharedHashtag = "sharedHashtag";
+
+        // Arrange — both principals subscribe to the same hashtag
+        subscriptionManager.subscribeToHashtag(principalA, sharedHashtag);
+        subscriptionManager.subscribeToHashtag(principalB, sharedHashtag);
+
+        assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principalA, sharedHashtag));
+        assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principalB, sharedHashtag));
+
+        // Act — terminate only principalA's subscription
+        subscriptionManager.terminateSubscription(principalA, sharedHashtag);
+
+        // Assert — principalA's subscription is gone, principalB's is intact
+        assertFalse(subscriptionManager.isHashtagSubscribedByPrincipal(principalA, sharedHashtag));
+        assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principalB, sharedHashtag));
+    }
 }

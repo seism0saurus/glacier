@@ -17,6 +17,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Default implementation of {@link ShareLinkService}.
@@ -44,6 +46,21 @@ public class ShareLinkServiceImpl implements ShareLinkService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ShareLinkServiceImpl.class);
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Per-sharer mutex map for the TOCTOU-sensitive check-then-act in {@link #create}.
+     *
+     * <p>R-2 (TOCTOU fix): the sequence {@code countActiveForSharer → save} is not atomic
+     * at the repository level.  Without a per-sharer lock, N concurrent threads can all
+     * observe "count < cap" and proceed to save, resulting in {@code N + count} active links
+     * instead of {@code cap}.
+     *
+     * <p>A per-sharer lock is preferred over a single global lock to avoid unnecessary
+     * contention between unrelated sharers.  The {@link ConcurrentHashMap#computeIfAbsent}
+     * call that creates a new lock is itself race-free (ConcurrentHashMap guarantees it).
+     */
+    // R-2 (TOCTOU): per-sharer lock prevents concurrent cap overshoot on single-JVM deployments
+    private final ConcurrentHashMap<String, ReentrantLock> sharerLocks = new ConcurrentHashMap<>();
 
     private final ShareLinkRepository repository;
     private final SecureRandomTokenGenerator tokenGenerator;
@@ -83,32 +100,44 @@ public class ShareLinkServiceImpl implements ShareLinkService {
 
     @Override
     public ShareLink create(final String sharerWallId, final String sharerIp, final Instant now) {
-        // Per-sharer cap check
-        int activeForSharer = repository.countActiveForSharer(sharerWallId, now);
-        if (activeForSharer >= capPolicy.getMaxActivePerSharer()) {
-            AUDIT.info("share.cap.exceeded axis=sharer wallId-hash8={} limit={} activeCount={}",
-                    LogScrubber.hash8(sharerWallId), capPolicy.getMaxActivePerSharer(), activeForSharer);
-            throw new CapacityExceededException(
-                    "sharer cap exceeded: " + activeForSharer + " >= " + capPolicy.getMaxActivePerSharer());
+        // R-2 (TOCTOU fix): acquire a per-sharer lock before the check-then-act sequence.
+        // Without this lock, concurrent callers can all pass the cap check and then all save,
+        // overshooting the cap by up to (N-1) links.
+        // The lock is per-sharer so unrelated sharers do not contend with each other.
+        ReentrantLock lock = sharerLocks.computeIfAbsent(sharerWallId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            // Per-sharer cap check — performed inside the lock to prevent TOCTOU (R-2)
+            int activeForSharer = repository.countActiveForSharer(sharerWallId, now);
+            if (activeForSharer >= capPolicy.getMaxActivePerSharer()) {
+                AUDIT.info("share.cap.exceeded axis=sharer wallId-hash8={} limit={} activeCount={}",
+                        LogScrubber.hash8(sharerWallId), capPolicy.getMaxActivePerSharer(), activeForSharer);
+                throw new CapacityExceededException(
+                        "sharer cap exceeded: " + activeForSharer + " >= " + capPolicy.getMaxActivePerSharer());
+            }
+
+            // Per-IP cap check — also inside the lock; while a different sharer from the same IP
+            // could still race (they would hold different locks), the IP cap is a secondary
+            // DoS-hardening control; the per-sharer cap is the primary integrity invariant.
+            int activeForIp = repository.countActiveForIp(sharerIp, now);
+            if (activeForIp >= capPolicy.getMaxActivePerIp()) {
+                AUDIT.info("share.cap.exceeded axis=ip ip={} limit={} activeCount={}",
+                        LogScrubber.maskIp(sharerIp), capPolicy.getMaxActivePerIp(), activeForIp);
+                throw new CapacityExceededException(
+                        "ip cap exceeded: " + activeForIp + " >= " + capPolicy.getMaxActivePerIp());
+            }
+
+            ShareLinkId id = tokenGenerator.generateShareLinkId();
+            ShareLink link = ShareLink.create(id, sharerWallId, sharerIp, now, lifetimePolicy.getTtl());
+            repository.save(link);
+
+            AUDIT.info("share.link.created shareId-hash8={} wallId-hash8={} expiresAt={} activeCount={}",
+                    id.hash8(), LogScrubber.hash8(sharerWallId), link.expiresAt(), activeForSharer + 1);
+
+            return link;
+        } finally {
+            lock.unlock();
         }
-
-        // Per-IP cap check
-        int activeForIp = repository.countActiveForIp(sharerIp, now);
-        if (activeForIp >= capPolicy.getMaxActivePerIp()) {
-            AUDIT.info("share.cap.exceeded axis=ip ip={} limit={} activeCount={}",
-                    LogScrubber.maskIp(sharerIp), capPolicy.getMaxActivePerIp(), activeForIp);
-            throw new CapacityExceededException(
-                    "ip cap exceeded: " + activeForIp + " >= " + capPolicy.getMaxActivePerIp());
-        }
-
-        ShareLinkId id = tokenGenerator.generateShareLinkId();
-        ShareLink link = ShareLink.create(id, sharerWallId, sharerIp, now, lifetimePolicy.getTtl());
-        repository.save(link);
-
-        AUDIT.info("share.link.created shareId-hash8={} wallId-hash8={} expiresAt={} activeCount={}",
-                id.hash8(), LogScrubber.hash8(sharerWallId), link.expiresAt(), activeForSharer + 1);
-
-        return link;
     }
 
     @Override

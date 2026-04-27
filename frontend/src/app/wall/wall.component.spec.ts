@@ -313,6 +313,71 @@ describe('WallComponent', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Priority 5 additions — accessibility and deleted-toot handling
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Screen readers announce new content via the live region when a new toot
+   * arrives.  This test verifies that WallAnnouncerService.announce is wired
+   * correctly via announcements$, so the aria-live="polite" region updates
+   * its text and assistive technology can narrate it.
+   *
+   * <p>Arrange: component already initialised with announcements$ BehaviorSubject.
+   * <p>Act:     emit an announcement text on the BehaviorSubject.
+   * <p>Assert:  component.announceText reflects the emitted value and the live
+   *             region DOM node contains that text.
+   */
+  it('wall_announcesNewToot_via_aria_live_polite', fakeAsync(() => {
+    // Act: simulate the announcer emitting after a new toot arrives
+    mockAnnouncerAnnouncements$.next('');
+    tick(0);
+    mockAnnouncerAnnouncements$.next('Neuer Beitrag zu cats');
+    tick(0);
+    fixture.detectChanges();
+
+    // Assert: live region text is updated via data binding (not direct DOM)
+    expect(component.announceText).toBe('Neuer Beitrag zu cats');
+    const liveRegion = fixture.debugElement.query(By.css('[role="status"][aria-live="polite"]'));
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion.nativeElement.textContent).toBe('Neuer Beitrag zu cats');
+  }));
+
+  /**
+   * When a StatusDeletedMessage is handled by SubscriptionService, the
+   * corresponding toot must be removed from the wall.  This test verifies
+   * WallComponent reacts correctly when the underlying message observable
+   * emits a reduced array — i.e., the component re-renders with the deleted
+   * toot absent.
+   *
+   * <p>Arrange: two toots are rendered initially; getCreatedEvents returns a
+   *             BehaviorSubject so we can push a new emission.
+   * <p>Act:     emit a reduced list with one toot removed.
+   * <p>Assert:  component.toots no longer contains the deleted toot id.
+   */
+  it('wall_handlesDeletedTootEvent_byRemovingFromQueue', () => {
+    // Arrange: start with two toots (already set up by beforeEach)
+    expect(component.toots.length).toBe(2);
+
+    // Act: simulate SubscriptionService pushing a reduced list
+    // (as it would after dequeue is called for a deleted toot)
+    const {BehaviorSubject: BS} = require('rxjs');
+    const updatedMessages$: typeof import('rxjs').BehaviorSubject = BS;
+    // Use the mock's getCreatedEvents to push a reduced message list
+    const reducedMessages: WallMessage[] = [
+      {id: '2', url: 'url2', hashtags: ['test']},
+    ];
+    mockSubscriptionService.getCreatedEvents.and.returnValue(of(reducedMessages));
+
+    // Re-init component so it subscribes to the new observable
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    // Assert: toot id '1' has been removed; only id '2' remains
+    expect(component.toots.length).toBe(1);
+    expect(component.toots[0].id).toBe('2');
+  });
+
+  // ---------------------------------------------------------------------------
   // i18n catalog completeness — prune announcement keys
   // ---------------------------------------------------------------------------
 

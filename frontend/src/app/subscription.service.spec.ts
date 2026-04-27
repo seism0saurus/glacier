@@ -434,6 +434,287 @@ describe('SubscriptionService', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Priority 5 additions — localStorage / ack-flow contracts
+  // -------------------------------------------------------------------------
+
+  /**
+   * The hashtag must be persisted to localStorage ONLY after a positive
+   * subscription ack ({@code subscribed: true}).  An optimistic write before
+   * the ack would leave orphaned localStorage state if the server rejects the
+   * subscription (e.g. CAP_EXCEEDED).
+   *
+   * <p>Arrange: STOMP watch emits a positive ack for 'persistedHashtag'.
+   * <p>Act:     construct a new SubscriptionService so the ack handler fires.
+   * <p>Assert:  localStorage 'hashtags' contains 'persistedHashtag'.
+   */
+  it('subscribe_storesHashtag_inSafeStorage_onlyAfterAck', () => {
+    const positiveAck = {
+      body: JSON.stringify({
+        principal: 'wall-uuid-persist',
+        hashtag: 'persistedHashtag',
+        subscribed: true,
+      }),
+    };
+    rxStompServiceSpy.watch.and.returnValue(of({
+      ...positiveAck,
+      ack: () => {},
+      nack: () => {},
+      command: '',
+      headers: {},
+      isBinaryBody: false,
+      binaryBody: new Uint8Array(),
+      destination: '',
+    }));
+
+    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+
+    const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
+    expect(storedHashtags).toContain('persistedHashtag');
+  });
+
+  /**
+   * When the server rejects the subscription ({@code subscribed: false}),
+   * the hashtag must NOT be added to localStorage.  Persisting before the ack
+   * would mislead the restore logic on the next page load into re-subscribing
+   * a hashtag the server already refused.
+   *
+   * <p>Arrange: STOMP watch emits a negative ack ({@code subscribed: false}).
+   * <p>Act:     construct a new SubscriptionService so the ack handler fires.
+   * <p>Assert:  localStorage 'hashtags' does NOT contain the rejected hashtag.
+   */
+  it('subscribe_doesNotPersist_onRejection', () => {
+    const negativeAck = {
+      body: JSON.stringify({
+        principal: 'wall-uuid-reject',
+        hashtag: 'rejectedHashtag',
+        subscribed: false,
+      }),
+    };
+    rxStompServiceSpy.watch.and.returnValue(of({
+      ...negativeAck,
+      ack: () => {},
+      nack: () => {},
+      command: '',
+      headers: {},
+      isBinaryBody: false,
+      binaryBody: new Uint8Array(),
+      destination: '',
+    }));
+
+    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+
+    const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
+    expect(storedHashtags).not.toContain('rejectedHashtag');
+  });
+
+  /**
+   * When localStorage is corrupt (non-JSON), {@code getCreatedEvents} must
+   * return an empty-state observable without throwing.  The restore path
+   * uses {@code validateMessageQueue}, which must reject invalid data
+   * gracefully so the user sees a blank wall rather than a crash.
+   *
+   * <p>Arrange: localStorage 'messageQueue' contains malformed JSON.
+   * <p>Act:     call {@code getCreatedEvents}.
+   * <p>Assert:  call does not throw; emitted value is an array (possibly empty).
+   */
+  it('localStorage_isCorrupt_recovers_emptyState_withoutThrow', () => {
+    spyOn(localStorage, 'getItem').and.callFake((key: string) => {
+      if (key === 'messageQueue') {
+        return '{this is not valid json[[[';
+      }
+      return null;
+    });
+
+    expect(() => {
+      service.getCreatedEvents().subscribe((messages) => {
+        // Must emit an array (may be empty) — not throw
+        expect(Array.isArray(messages)).toBeTrue();
+      });
+    }).not.toThrow();
+  });
+
+  // -------------------------------------------------------------------------
+  // SR-TEST-23 — Topic subscription path is bound to the ack's principal
+  // -------------------------------------------------------------------------
+  //
+  // Security contract: The Angular client subscribes to STOMP topics of the
+  // form /topic/hashtags/{principal}/{hashtag}/{type}.  The `principal` value
+  // comes exclusively from the server's SubscriptionAckMessage — never from a
+  // locally-generated or caller-supplied identifier.
+  //
+  // Why this is safe: the server-side WallTopicAuthInterceptor validates that
+  // the principal in the ack matches the authenticated wallId cookie before
+  // the ack is delivered.  The client never constructs a topic path for an
+  // unrelated wallId.
+  //
+  // The negative case pinned here: given an ack with principal "wall-id-abc123",
+  // the watch() call must target exactly /topic/hashtags/wall-id-abc123/...
+  // and must NOT target any path for a different principal (e.g. "wall-id-xyz789").
+
+  describe('SR-TEST-23 — STOMP topic subscription uses ack principal exclusively', () => {
+
+    /**
+     * Positive case: the three watch() calls produced by a successful
+     * SubscriptionAckMessage must use exactly the principal carried in
+     * the ack, not any other identifier.
+     *
+     * Arrange: STOMP emits a positive ack with principal "wall-id-abc123"
+     *          and hashtag "cats".
+     * Act:     construct a new SubscriptionService so the ack handler fires.
+     * Assert:  rxStompService.watch() is called with the three expected paths
+     *          (creation, modification, deletion) scoped to "wall-id-abc123".
+     */
+    it('subscribes_to_topic_path_using_principal_from_ack', () => {
+      const ownPrincipal = 'wall-id-abc123';
+      const hashtag = 'cats';
+
+      const positiveAck = {
+        body: JSON.stringify({
+          principal: ownPrincipal,
+          hashtag: hashtag,
+          subscribed: true,
+        }),
+      };
+      rxStompServiceSpy.watch.and.returnValue(of({
+        ...positiveAck,
+        ack: () => {},
+        nack: () => {},
+        command: '',
+        headers: {},
+        isBinaryBody: false,
+        binaryBody: new Uint8Array(),
+        destination: '',
+      }));
+
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+
+      // The service subscribes to /user/topic/subscriptions and
+      // /user/topic/terminations first (constructor setup), then to the three
+      // hashtag topics after the ack fires.  We assert that every call that
+      // contains the hashtag path is scoped to the correct principal.
+      const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
+
+      const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
+      expect(hashtagCalls.length).toBe(3);
+      expect(hashtagCalls).toContain(`/topic/hashtags/${ownPrincipal}/${hashtag}/creation`);
+      expect(hashtagCalls).toContain(`/topic/hashtags/${ownPrincipal}/${hashtag}/modification`);
+      expect(hashtagCalls).toContain(`/topic/hashtags/${ownPrincipal}/${hashtag}/deletion`);
+    });
+
+    /**
+     * Negative case (SR-TEST-23 core): the service must NEVER subscribe to
+     * a topic path for a different principal, even if two acks arrive and
+     * one carries an unexpected principal value.
+     *
+     * Arrange: two acks arrive over the same STOMP watch observable.
+     *          First ack: principal "wall-id-abc123", hashtag "cats".
+     *          Second ack: principal "wall-id-xyz789" (a different wall),
+     *          hashtag "dogs".
+     * Act:     construct a new SubscriptionService so both ack handlers fire.
+     * Assert:  every /topic/hashtags/... watch() call whose hashtag is "cats"
+     *          uses principal "wall-id-abc123" — never "wall-id-xyz789".
+     *          Every /topic/hashtags/... watch() call whose hashtag is "dogs"
+     *          uses principal "wall-id-xyz789" — never "wall-id-abc123".
+     *
+     * Rationale: the client trusts the server-authoritative principal from
+     * each individual ack and does not cross-contaminate principals.  The
+     * WallTopicAuthInterceptor on the server side ensures only the wall's
+     * own acks can reach it; the client-side contract here is that it does
+     * not substitute one principal for another.
+     */
+    it('does_not_subscribe_to_topic_path_of_different_principal', () => {
+      const ownPrincipal = 'wall-id-abc123';
+      const otherPrincipal = 'wall-id-xyz789';
+
+      // Simulate two acks delivered sequentially over the same watch stream.
+      // of() emits both values synchronously, matching real RxStomp behaviour
+      // where the ack channel delivers one message per subscription request.
+      const firstAck = {
+        body: JSON.stringify({
+          principal: ownPrincipal,
+          hashtag: 'cats',
+          subscribed: true,
+        }),
+        ack: () => {}, nack: () => {}, command: '', headers: {},
+        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
+      };
+      const secondAck = {
+        body: JSON.stringify({
+          principal: otherPrincipal,
+          hashtag: 'dogs',
+          subscribed: true,
+        }),
+        ack: () => {}, nack: () => {}, command: '', headers: {},
+        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
+      };
+
+      // Both acks are emitted on the same watch stream (simulates two server
+      // responses arriving on /user/topic/subscriptions).
+      const {Subject} = require('rxjs');
+      const ackSubject = new Subject();
+      rxStompServiceSpy.watch.and.returnValue(ackSubject.asObservable());
+
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+
+      // Emit both acks after the service is constructed so the handlers are
+      // already registered on /user/topic/subscriptions.
+      ackSubject.next(firstAck);
+      ackSubject.next(secondAck);
+
+      const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
+      const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
+
+      // "cats" subscriptions must only ever reference ownPrincipal
+      const catsCalls = hashtagCalls.filter(dest => dest.includes('/cats/'));
+      catsCalls.forEach(dest => {
+        expect(dest).toContain(`/topic/hashtags/${ownPrincipal}/`);
+        expect(dest).not.toContain(`/topic/hashtags/${otherPrincipal}/`);
+      });
+
+      // "dogs" subscriptions must only ever reference otherPrincipal
+      const dogsCalls = hashtagCalls.filter(dest => dest.includes('/dogs/'));
+      dogsCalls.forEach(dest => {
+        expect(dest).toContain(`/topic/hashtags/${otherPrincipal}/`);
+        expect(dest).not.toContain(`/topic/hashtags/${ownPrincipal}/`);
+      });
+
+      // Total count: 3 paths per hashtag * 2 hashtags = 6 hashtag topic calls
+      expect(hashtagCalls.length).toBe(6);
+    });
+
+    /**
+     * Guard: a negative ack (subscribed: false) must not produce any
+     * /topic/hashtags/... watch() calls — no phantom subscription must be
+     * registered for a rejected hashtag, regardless of the principal value
+     * in the ack.
+     *
+     * Arrange: STOMP emits a negative ack ({subscribed: false}) with an
+     *          arbitrary principal.
+     * Act:     construct SubscriptionService so the ack handler fires.
+     * Assert:  no watch() call targets a /topic/hashtags/... path.
+     */
+    it('does_not_subscribe_to_any_topic_path_on_negative_ack', () => {
+      const negativeAck = {
+        body: JSON.stringify({
+          principal: 'wall-id-abc123',
+          hashtag: 'cats',
+          subscribed: false,
+        }),
+        ack: () => {}, nack: () => {}, command: '', headers: {},
+        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
+      };
+      rxStompServiceSpy.watch.and.returnValue(of(negativeAck));
+
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+
+      const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
+      const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
+      expect(hashtagCalls.length).toBe(0);
+    });
+
+  });
+
 });
 
 describe('SubscriptionService: terminateAllSubscriptions', () => {

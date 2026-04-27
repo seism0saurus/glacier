@@ -1,14 +1,17 @@
 package de.seism0saurus.glacier.share.web;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.regex.Pattern;
 
 /**
  * Security headers filter for all {@code /share/*} and {@code /rest/share/*} routes.
@@ -33,9 +36,76 @@ import java.io.IOException;
 @Order(10) // run before application logic but after nonce filter
 public class ShareSecurityHeadersFilter extends OncePerRequestFilter {
 
+    /**
+     * Safe hostname pattern — allows hostnames like {@code glacier.events},
+     * {@code share.glacier.events}, {@code localhost:8080}.
+     *
+     * <p>Rejects any value that could inject extra directives into the CSP header
+     * (e.g. {@code evil.com; default-src *}).  Validated at startup via
+     * {@link #validateDomains()} (F-3, OWASP A05 Security Misconfiguration).
+     */
+    // OWASP A05 / F-3: reject operator misconfigurations before any request is served
+    static final Pattern SAFE_HOSTNAME_PATTERN = Pattern.compile(
+            "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$"
+    );
+
     private static final String SHARE_PATH_PREFIX = "/share";
     private static final String REST_SHARE_PATH_PREFIX = "/rest/share";
     private static final String SHARE_CSRF_PATH = "/rest/share-csrf";
+
+    /**
+     * The main glacier domain (e.g. {@code glacier.events}).
+     * Used to build the explicit {@code wss://{glacierDomain}} connect-src value (ADR-TEST-03).
+     */
+    private final String glacierDomain;
+
+    /**
+     * The share subdomain host (e.g. {@code share.glacier.events}).
+     * Used to build the explicit {@code wss://{shareHost}} connect-src value (ADR-TEST-03).
+     */
+    private final String shareHost;
+
+    /**
+     * Constructs the filter with the domain values needed for the explicit-host connect-src.
+     *
+     * @param glacierDomain the main glacier domain from {@code glacier.domain}
+     * @param shareHost     the share subdomain from {@code glacier.share.host}
+     */
+    public ShareSecurityHeadersFilter(
+            @Value("${glacier.domain}") String glacierDomain,
+            @Value("${glacier.share.host}") String shareHost) {
+        this.glacierDomain = glacierDomain;
+        this.shareHost = shareHost;
+    }
+
+    /**
+     * Validates {@code glacier.domain} and {@code glacier.share.host} at startup.
+     *
+     * <p>Rejects any value that does not match the safe-hostname pattern, preventing
+     * CSP header injection via operator misconfiguration.  Spring calls this method
+     * automatically after dependency injection (before the first request is served).
+     *
+     * <p>In unit tests, call this method explicitly after constructing the filter,
+     * since Spring's lifecycle hooks are not active in plain-unit-test contexts.
+     *
+     * <p>Security: F-3, OWASP A05 (Security Misconfiguration) — a mis-configured
+     * domain could inject extra CSP directives, weakening the policy for all share routes.
+     *
+     * @throws IllegalStateException if either domain value is not a valid hostname
+     */
+    @PostConstruct
+    void validateDomains() {
+        if (!SAFE_HOSTNAME_PATTERN.matcher(glacierDomain).matches()) {
+            throw new IllegalStateException(
+                    "glacier.domain is not a valid hostname: " + glacierDomain
+                            + ". Must match pattern: " + SAFE_HOSTNAME_PATTERN.pattern());
+        }
+        if (!SAFE_HOSTNAME_PATTERN.matcher(shareHost).matches()) {
+            throw new IllegalStateException(
+                    "glacier.share.host is not a valid hostname: " + shareHost
+                            + ". Must match pattern: " + SAFE_HOSTNAME_PATTERN.pattern());
+        }
+    }
 
     @Override
     protected void doFilterInternal(
@@ -68,7 +138,7 @@ public class ShareSecurityHeadersFilter extends OncePerRequestFilter {
      *   <li>{@code script-src 'self' 'nonce-{n}'} — Angular bundle from self + nonce for inline</li>
      *   <li>{@code style-src 'self' 'unsafe-inline'} — Angular Material requires inline styles</li>
      *   <li>{@code img-src 'self' data:} — proxy-signed images from self + data URIs for QR</li>
-     *   <li>{@code connect-src 'self' wss:} — STOMP WebSocket + REST API</li>
+     *   <li>{@code connect-src 'self' wss://{shareHost} wss://{glacierDomain}} — STOMP WebSocket (explicit hosts, ADR-TEST-03)</li>
      *   <li>{@code font-src 'self'} — Angular Material fonts</li>
      *   <li>{@code frame-ancestors 'none'} — no embedding (XFO: DENY backup)</li>
      *   <li>{@code base-uri 'none'} — prevent base-tag injection</li>
@@ -87,7 +157,7 @@ public class ShareSecurityHeadersFilter extends OncePerRequestFilter {
                         + "script-src 'self'" + nonceDirective + "; "
                         + "style-src 'self' 'unsafe-inline'; "
                         + "img-src 'self' data:; "
-                        + "connect-src 'self' wss:; "
+                        + "connect-src 'self' wss://" + shareHost + " wss://" + glacierDomain + "; "
                         + "font-src 'self'; "
                         + "frame-ancestors 'none'; "
                         + "base-uri 'none'; "

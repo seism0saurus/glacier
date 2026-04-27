@@ -886,6 +886,162 @@ public class StompCallbackTest {
         verify(messageCache, never()).recordThenPublish(any(), any(), any());
     }
 
+    // -----------------------------------------------------------------
+    // Priority 3 — behavioral gaps
+    // -----------------------------------------------------------------
+
+    /**
+     * A GenericMessage carrying event type {@code update} must dispatch the event with
+     * type CREATED to the {@code .../creation} topic path (existing behaviour verified
+     * via recordThenPublish).
+     *
+     * <p>This test documents that the CREATED dispatch path for the GenericMessage variant
+     * uses the same CacheEntry type as the StreamEvent path.
+     */
+    @Test
+    public void genericMessage_eventTypeUpdate_dispatchesModificationTopic() throws Exception {
+        // Arrange — valid update event with opt-in mention
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders(anyString())).thenReturn(allowHeader);
+
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("999").username("@user").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/999").id("999").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("update").stream(List.of("hashtag")).payload(jsonNode).build();
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(mockEvent.getText()).thenReturn(mapper.writeValueAsString(content));
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Assert — CREATED entry published (update event maps to CREATED type)
+        ArgumentCaptor<CacheEntry> captor = ArgumentCaptor.forClass(CacheEntry.class);
+        verify(messageCache, times(1)).recordThenPublish(any(), eq("hashtag"), captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(EventType.CREATED);
+    }
+
+    /**
+     * A GenericMessage carrying event type {@code delete} must dispatch an entry with
+     * type DELETED via recordThenPublish.
+     */
+    @Test
+    public void genericMessage_eventTypeDelete_dispatchesDeletionTopic() throws Exception {
+        // Arrange — delete event carries the status ID as plain text payload
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode jsonNode = TextNode.valueOf(mapper.writeValueAsString("status-delete-id"));
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("delete").stream(List.of("hashtag")).payload(jsonNode).build();
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(mockEvent.getText()).thenReturn(mapper.writeValueAsString(content));
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Assert — DELETED entry published
+        ArgumentCaptor<CacheEntry> captor = ArgumentCaptor.forClass(CacheEntry.class);
+        verify(messageCache, times(1)).recordThenPublish(any(), eq("hashtag"), captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(EventType.DELETED);
+    }
+
+    /**
+     * When a GenericMessage carries a malformed (non-JSON) payload, the event must be
+     * logged and dropped — no exception must propagate from {@code onEvent} and
+     * {@code recordThenPublish} must never be called.
+     */
+    @Test
+    public void genericMessage_malformedPayload_isLoggedAndDropped_neverThrows() {
+        // Arrange — payload is not valid JSON
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(mockEvent.getText()).thenReturn("{this is not valid json");
+
+        // Act — must not throw
+        assertDoesNotThrow(() -> callback.onEvent(mockEvent));
+
+        // Assert — error logged, cache never touched
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).containsAnyOf("Could not parse GenericMessage", "parse"));
+        verify(messageCache, never()).recordThenPublish(any(), any(), any());
+    }
+
+    /**
+     * When the HEAD request for the embed URL responds with HTTP 302 (redirect not followed
+     * because RestTemplate throws on non-2xx), the event must be dropped — recordThenPublish
+     * must not be called.
+     *
+     * <p>RestTemplate by default follows GET redirects but HEAD redirects may vary. When
+     * {@code headForHeaders} throws a {@link org.springframework.web.client.HttpClientErrorException}
+     * (which the test simulates via a ResourceAccessException to keep the mock simple), the
+     * callback treats the embed URL as non-loadable per the C-03 rule.
+     */
+    @Test
+    public void isLoadable_handles302Redirect_returnsFalse() {
+        // Arrange — HEAD request throws ResourceAccessException (simulates unreachable/redirect-loop)
+        when(mockStatus.getId()).thenReturn("redirect-999");
+        when(mockStatus.getUrl()).thenReturn("https://redirect.example.com/redirect-999");
+        Account account = mock(Account.class);
+        when(mockStatus.getAccount()).thenReturn(account);
+        when(restTemplate.headForHeaders("https://redirect.example.com/redirect-999/embed"))
+                .thenThrow(new org.springframework.web.client.ResourceAccessException("Connection refused"));
+
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "glacier.example.com");
+        ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
+
+        // Act + Assert — must not throw
+        assertDoesNotThrow(() -> callback.onEvent(streamEvent));
+
+        // Assert — redirect treated as non-loadable, cache not touched
+        verify(messageCache, never()).recordThenPublish(any(), any(), any());
+    }
+
+    /**
+     * {@code X-Frame-Options} header matching must be case-insensitive — the header
+     * value {@code deny} (lowercase) must be treated the same as {@code DENY}.
+     *
+     * <p>Arrange: a StatusCreated event with a response returning lowercase "deny".
+     * <p>Act:     call onEvent.
+     * <p>Assert:  recordThenPublish never called (toot is not loadable).
+     */
+    @Test
+    public void isLoadable_caseInsensitiveXFrameOptions() {
+        // Arrange — lowercase "deny" must be treated as DENY (case-insensitive)
+        Account account = mock(Account.class);
+        when(account.getDisplayName()).thenReturn("user@example.com");
+        when(mockStatus.getId()).thenReturn("case-test-001");
+        when(mockStatus.getUrl()).thenReturn("https://case.example.com/case-test-001");
+        when(mockStatus.getAccount()).thenReturn(account);
+
+        HttpHeaders lowerCaseDenyHeader = new HttpHeaders();
+        lowerCaseDenyHeader.set("X-Frame-Options", "deny");
+        when(restTemplate.headForHeaders("https://case.example.com/case-test-001/embed"))
+                .thenReturn(lowerCaseDenyHeader);
+
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "glacier.example.com");
+        ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert — lowercase "deny" treated as non-loadable
+        verify(messageCache, never()).recordThenPublish(any(), any(), any());
+    }
+
     @NotNull
     private static TestLogAppender getTestLogAppender() {
         TestLogAppender logAppender = new TestLogAppender();

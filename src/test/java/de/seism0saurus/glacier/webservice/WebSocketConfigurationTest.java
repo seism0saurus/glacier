@@ -2,8 +2,12 @@ package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
+import de.seism0saurus.glacier.webservice.messaging.WallTopicAuthInterceptor;
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.config.SimpleBrokerRegistration;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -11,6 +15,7 @@ import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRe
 import org.springframework.web.socket.config.annotation.WebMvcStompEndpointRegistry;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 /*
@@ -70,6 +75,35 @@ public class WebSocketConfigurationTest {
         // PrincipalHandler and ShareViewPrincipalHandler both extend DefaultHandshakeHandler,
         // so the matcher fires twice — once per endpoint registration.
         verify(registration, times(2)).setHandshakeHandler(any(DefaultHandshakeHandler.class));
+    }
+
+    /**
+     * F-9: Verifies that {@link WebSocketConfiguration#configureClientInboundChannel}
+     * registers at least one {@link WallTopicAuthInterceptor} on the inbound channel.
+     *
+     * <p>Security: OWASP API1 (BOLA), ADR-TEST-01 — if the interceptor is not wired,
+     * any client can subscribe to any other principal's topic by guessing their wallId.
+     */
+    @Test
+    void configureClientInboundChannel_registersWallTopicAuthInterceptor() {
+        // Arrange
+        ChannelRegistration registration = mock(ChannelRegistration.class);
+        when(registration.interceptors(any(ChannelInterceptor[].class))).thenReturn(registration);
+
+        WebSocketConfiguration config = new WebSocketConfiguration(
+                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
+
+        // Act
+        config.configureClientInboundChannel(registration);
+
+        // Assert — at least one WallTopicAuthInterceptor must be registered
+        ArgumentCaptor<ChannelInterceptor[]> captor =
+                ArgumentCaptor.forClass(ChannelInterceptor[].class);
+        verify(registration).interceptors(captor.capture());
+
+        assertThat(captor.getValue())
+                .as("WallTopicAuthInterceptor must be registered on the inbound channel (F-9, OWASP API1)")
+                .anyMatch(i -> i instanceof WallTopicAuthInterceptor);
     }
 
     /**

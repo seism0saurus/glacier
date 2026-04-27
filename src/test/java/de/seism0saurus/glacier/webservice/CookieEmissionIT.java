@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -174,6 +175,34 @@ class CookieEmissionIT {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(existingWallId));
+    }
+
+    // -------------------------------------------------------------------------
+    // Exactly one Set-Cookie for wallId (SR-TEST-03)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies that exactly one {@code Set-Cookie} header for the {@code wallId} cookie
+     * is emitted when no cookie is present on the request.
+     *
+     * <p>Security requirement (SR-TEST-03): duplicate {@code Set-Cookie} headers could
+     * allow a confused-deputy attack where a second header with weaker security flags
+     * (e.g. missing HttpOnly) shadows or supplements the first.
+     */
+    @Test
+    void readCookie_noCookiePresent_exactlyOneWallIdSetCookieHeader() throws Exception {
+        MvcResult result = mockMvc.perform(get("/rest/wall-id")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long wallIdSetCookieCount = result.getResponse()
+                .getHeaders(HttpHeaders.SET_COOKIE).stream()
+                .filter(h -> h.contains("wallId="))
+                .count();
+        assertThat(wallIdSetCookieCount)
+                .as("exactly one Set-Cookie for wallId (SR-TEST-03)")
+                .isEqualTo(1L);
     }
 
     // -------------------------------------------------------------------------

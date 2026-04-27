@@ -231,6 +231,19 @@
             <version>3.2.3</version>
         </dependency>
 
+        <!--
+            jqwik: property-based testing framework for JUnit 5 (SR-TEST-06).
+            Used for fuzz testing of HMAC sign/verify path in ShareImageProxyUrlBuilder.
+            Actively maintained; last release 1.8.4 (2024-07).
+            https://jqwik.net
+        -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>1.8.4</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>

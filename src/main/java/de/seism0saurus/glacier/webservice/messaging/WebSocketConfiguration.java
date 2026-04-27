@@ -66,14 +66,27 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     }
 
     /**
-     * Register the ShareViewTopicAuthInterceptor on the inbound channel.
-     * This enforces that viewer principals (sv_ prefix) can only subscribe to
-     * /topic/share/{shareLinkId}/... — never to /topic/hashtags/... (ADR-SHARE-04, SR-SHARE-06).
+     * Register channel interceptors on the inbound channel.
+     *
+     * <p>Two interceptors are registered in order:
+     * <ol>
+     *   <li>{@link WallTopicAuthInterceptor} — enforces per-{@link WallPrincipal} topic
+     *       isolation for {@code /topic/hashtags/...} (OWASP API1 BOLA, ADR-TEST-01).
+     *       Runs first so that wall-owner SUBSCRIBE frames are validated before the
+     *       share-viewer interceptor evaluates them.</li>
+     *   <li>{@link de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor} —
+     *       enforces that viewer principals can only subscribe to
+     *       {@code /topic/share/{shareLinkId}/...} — never to {@code /topic/hashtags/...}
+     *       (ADR-SHARE-04, SR-SHARE-06).</li>
+     * </ol>
      */
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
+        WallTopicAuthInterceptor wallInterceptor = new WallTopicAuthInterceptor();
         if (shareViewTopicAuthInterceptor != null) {
-            registration.interceptors(shareViewTopicAuthInterceptor);
+            registration.interceptors(wallInterceptor, shareViewTopicAuthInterceptor);
+        } else {
+            registration.interceptors(wallInterceptor);
         }
     }
 
