@@ -43,7 +43,14 @@ export default defineConfig({
         '**/share-link-killswitch.spec.ts',
         '**/share-link-insecure.spec.ts',
         '**/fallback-unsubscribe-prune.spec.ts',
+        '**/*-a11y.spec.ts',
       ],
+    },
+
+    {
+      name: 'a11y',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/*-a11y.spec.ts'],
     },
 
     {

@@ -1,0 +1,29 @@
+# TEST FIXTURE ONLY — do not include in production compose.
+#
+# Purpose: runs only the `a11y` Playwright project, which executes axe-core
+# WCAG 2.2 AA scans and keyboard/zoom accessibility checks against the live
+# Glacier + Mastodon stack.
+#
+# The a11y project matches **/*-a11y.spec.ts only (see playwright.config.ts).
+# All other projects are skipped, so the job finishes faster and accessibility
+# failures appear as a clearly-labelled CI stage rather than buried inside the
+# main e2e report.
+#
+# Usage (one-shot):
+#   cd infrastructure
+#   tar -xf infrastructure-content.tar.gz -C ./
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f docker-compose.override.a11y.yaml \
+#     up --build --abort-on-container-exit playwright --exit-code-from playwright
+#
+# The Playwright project that runs against this stack must be named `a11y`
+# in frontend/playwright.config.ts.
+
+services:
+  playwright:
+    environment:
+      # Activate only the `a11y` Playwright project.
+      # The docker-compose.yaml command block checks this variable and passes
+      # --project "$PLAYWRIGHT_PROJECT" to npx playwright test when it is set.
+      PLAYWRIGHT_PROJECT: "a11y"

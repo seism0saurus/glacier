@@ -261,8 +261,12 @@ services:
           sleep 2
         done
         
-        # Run the tests
-        npx playwright test
+        # Run the tests — if PLAYWRIGHT_PROJECT is set, run only that project
+        if [ -n "$${PLAYWRIGHT_PROJECT}" ]; then
+          npx playwright test --project "$${PLAYWRIGHT_PROJECT}"
+        else
+          npx playwright test
+        fi
     environment:
       # Mastodon is reachable behind the proxy
       # Key is only usable in this local instance, so it is not a problem to publish it.

@@ -268,6 +268,69 @@ jobs:
           docker ps
           docker compose -f docker-compose.yaml -f docker-compose.override.killswitch.yaml logs
 
+  # Accessibility e2e: WCAG 2.2 AA axe-core scans on the live Glacier stack.
+  # Covers: **/*-a11y.spec.ts (a11y Playwright project, chromium-only per D-20).
+  # Runs on the same dockerized Mastodon stack as the standard e2e job, but only
+  # the a11y project executes — zero overlap with the chromium project (which
+  # ignores *-a11y.spec.ts via testIgnore).
+  e2e-a11y:
+    runs-on: ubuntu-latest
+    needs: package
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Use cache for node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-verify-
+      - name: Use cache for ms-playwright
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-verify-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-verify-
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start e2e a11y test inside docker-compose
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.a11y.yaml \
+            up --build --abort-on-container-exit playwright --exit-code-from playwright
+      - name: Upload Playwright report (a11y)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-a11y
+          path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots (a11y)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots-a11y
+          path: frontend/test-results
+      - name: Show logs of service (a11y)
+        working-directory: infrastructure
+        if: failure()
+        run: |
+          docker ps
+          docker compose -f docker-compose.yaml -f docker-compose.override.a11y.yaml logs
+
   # Insecure e2e: verifies plain-HTTP / no-TLS behaviour
   # Covers: share-link-insecure.spec.ts (insecure Playwright project).
   # Under insecure: __Host- prefix and Secure flag are dropped on shareViewerId
