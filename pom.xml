@@ -5,12 +5,12 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.5</version>
+        <version>3.4.7</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.8</version>
+    <version>0.0.9</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
@@ -62,9 +62,9 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>23</java.version>
-        <glacier.version>0.0.8</glacier.version>
-        <kotlin.version>2.1.21</kotlin.version>
-        <lombok.version>1.18.38</lombok.version>
+        <glacier.version>0.0.9</glacier.version>
+        <kotlin.version>2.2.0</kotlin.version>
+        <lombok.version>1.18.46</lombok.version>
     </properties>
 
     <repositories>
@@ -131,14 +131,25 @@
         <dependency>
             <groupId>org.jetbrains.kotlinx</groupId>
             <artifactId>kotlinx-serialization-json</artifactId>
-            <version>1.8.1</version>
+            <version>1.11.0</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains.kotlinx</groupId>
             <artifactId>kotlinx-serialization-core-jvm</artifactId>
-            <version>1.8.1</version>
+            <version>1.11.0</version>
         </dependency>
 
+
+        <!-- Spring Boot Actuator for metrics (already in parent pom pattern, added here explicitly) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
 
         <!--Database Libraries-->
 <!--        <dependency>-->
@@ -169,12 +180,12 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-core</artifactId>
-            <version>1.5.18</version>
+            <version>1.5.32</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.18</version>
+            <version>1.5.32</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback.contrib</groupId>
@@ -189,7 +200,48 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.18.3</version>
+        </dependency>
+
+        <!--Share-link feature dependencies (ADR-SHARE-03, ADR-SHARE-07)-->
+
+        <!--
+            Jsoup: server-side HTML parsing for JsoupTextExtractor.
+            Used by ShareRenderingService to extract plain text from toot HTML
+            (option 4C decision: Jsoup.parse(html).text() + paragraph handling).
+            Version pinned exactly; Dependabot (maven ecosystem) will propose
+            updates automatically via .github/dependabot.yaml.
+        -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.22.2</version>
+        </dependency>
+
+        <!--
+            Caffeine: in-memory cache for the image proxy (ADR-SHARE-07).
+            10 000 entries, positive TTL 1 h, negative TTL 60 s.
+            spring-boot-starter-cache auto-configures Caffeine when it is on the
+            classpath alongside spring-cache; we import it directly here so that
+            version management is explicit and Dependabot can track it.
+            Version pinned exactly; Dependabot will propose updates.
+        -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>3.2.3</version>
+        </dependency>
+
+        <!--
+            jqwik: property-based testing framework for JUnit 5 (SR-TEST-06).
+            Used for fuzz testing of HMAC sign/verify path in ShareImageProxyUrlBuilder.
+            Actively maintained; last release 1.8.4 (2024-07).
+            https://jqwik.net
+        -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>1.8.4</version>
+            <scope>test</scope>
         </dependency>
 
     </dependencies>
@@ -199,7 +251,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.14.0</version>
+                <version>3.15.0</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -248,7 +300,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>3.11.2</version>
+                <version>3.12.0</version>
                 <configuration>
                     <source>21</source>
                 </configuration>
@@ -256,7 +308,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.3</version>
+                <version>3.5.5</version>
                 <configuration>
                     <skip>${skipUnitTests}</skip>
                     <forkCount>1</forkCount>
@@ -266,7 +318,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.3</version>
+                <version>3.5.5</version>
                 <executions>
                     <execution>
                         <id>integration-tests</id>
@@ -365,7 +417,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.5.0</version>
+                <version>3.6.3</version>
                 <executions>
                     <execution>
                         <id>move-browser-files</id>
@@ -387,7 +439,7 @@
             </plugin>
             <plugin>
                 <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.8.1</version>
+                <version>3.10.0</version>
                 <executions>
                     <execution>
                         <id>copy-and-rename-jar</id>
@@ -413,7 +465,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.13</version>
+                <version>0.8.14</version>
                 <executions>
                     <execution>
                         <id>default-prepare-agent</id>

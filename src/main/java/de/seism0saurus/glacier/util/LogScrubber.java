@@ -56,6 +56,24 @@ public final class LogScrubber {
     }
 
     /**
+     * Masks the last octet of an IPv4 address or the last group of an IPv6 address.
+     *
+     * <p>This is a log-output helper only — the full IP is retained as the rate-limit key.
+     * Satisfies D-13 / SR-8: client IP must not appear verbatim in JSON log output.</p>
+     *
+     * @param ip the IP address string; may be {@code null}
+     * @return a partially-masked string safe for log output
+     */
+    public static String maskIp(String ip) {
+        if (ip == null) return "null";
+        int lastDot = ip.lastIndexOf('.');
+        int lastColon = ip.lastIndexOf(':');
+        if (lastDot > 0) return ip.substring(0, lastDot) + ".xxx";
+        if (lastColon > 0) return ip.substring(0, lastColon) + ":xxxx";
+        return "redacted";
+    }
+
+    /**
      * Returns the length of the given hashtag as a safe log-field value.
      *
      * <p>Logging the length rather than the raw value satisfies D-13 requirements
