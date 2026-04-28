@@ -76,8 +76,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final StreamingMethods streaming;
 
     /**
+     * The SSRF guard passed through to each {@link StompCallback} instance.
+     * Validates toot URLs before any outbound HTTP request is issued (ADR-PT-01).
+     */
+    private final SafeUrlValidator safeUrlValidator;
+
+    /**
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
-     * client, messaging template, and REST template.
+     * client, messaging template, REST template, and SSRF validator.
      *
      * @param instance the Mastodon instance URL
      * @param glacierDomain the domain for Glacier integration
@@ -85,6 +91,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * @param client the Mastodon client used for API interactions
      * @param simpMessagingTemplate the messaging template for WebSocket communications
      * @param restTemplate the REST template for making HTTP requests
+     * @param safeUrlValidator the SSRF guard passed to each {@link StompCallback}
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
@@ -92,11 +99,13 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             @Value(value = "${mastodon.handle}") String handle,
             MastodonClient client,
             SimpMessagingTemplate simpMessagingTemplate,
-            RestTemplate restTemplate) {
+            RestTemplate restTemplate,
+            SafeUrlValidator safeUrlValidator) {
         this.glacierDomain = glacierDomain;
         this.handle = handle;
         this.restTemplate = restTemplate;
         this.simpMessagingTemplate = simpMessagingTemplate;
+        this.safeUrlValidator = safeUrlValidator;
         this.subscriptions = new HashMap<>();
         this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
@@ -122,7 +131,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         Future<?> future;
         LOGGER.debug("Submitting asynchronous future task...");
         future = executorService.submit(() -> {
-            StompCallback stompCallback = new StompCallback(this, simpMessagingTemplate, restTemplate, principal, hashtag, handle, glacierDomain);
+            StompCallback stompCallback = new StompCallback(this, simpMessagingTemplate, restTemplate, safeUrlValidator, principal, hashtag, handle, glacierDomain);
             try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
                 LOGGER.info("Asynchronous subscription for {} with the hashtag {} started", principal, hashtag);
                 sleepForever(subscription);

@@ -1,23 +1,30 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
-import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionAckMessage;
-import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
-import de.seism0saurus.glacier.webservice.messaging.messages.TerminationAckMessage;
-import de.seism0saurus.glacier.webservice.messaging.messages.TerminationMessage;
+import de.seism0saurus.glacier.webservice.messaging.messages.*;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 
 import java.security.Principal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.*;
 
 /**
  * The SubscriptionControllerTest class is responsible for testing the SubscriptionController class.
  * It includes test methods for subscribing to a hashtag, unsubscribing with a valid subscriptionId,
  * unsubscribing with an invalid subscriptionId, and unsubscribing without providing a subscriptionId.
+ *
+ * <p>New SR-PT-01 / SR-PT-02 tests verify that invalid hashtags receive a structured rejection
+ * response and that no exception escapes the subscribe() handler.</p>
  */
 public class SubscriptionControllerTest {
 
@@ -46,15 +53,24 @@ public class SubscriptionControllerTest {
      */
     private SubscriptionController subscriptionController;
 
+    private static Validator beanValidator;
+
+    @BeforeAll
+    static void setUpValidator() {
+        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
+        beanValidator = factory.getValidator();
+    }
+
     /**
      * Sets up the necessary dependencies for testing the SubscriptionController class.
      * Initializes the subscriptionManager field with a mock object of type SubscriptionManager.
-     * Initializes the subscriptionController field with a new instance of SubscriptionController, passing the mocked subscriptionManager as a parameter.
+     * Initializes the subscriptionController field with a new instance of SubscriptionController,
+     * passing the mocked subscriptionManager and a real Validator.
      */
     @BeforeEach
     public void setup() {
         this.subscriptionManager = mock(SubscriptionManager.class);
-        this.subscriptionController = new SubscriptionController(this.subscriptionManager);
+        this.subscriptionController = new SubscriptionController(this.subscriptionManager, beanValidator);
     }
 
     /**
@@ -221,5 +237,173 @@ public class SubscriptionControllerTest {
         assertThat(result.isTerminated()).isFalse();
         assertThat(result.getHashtag()).isEqualTo("NonexistingTestHashtag");
         assertThat(result.getPrincipal()).isEqualTo("123456789");
+    }
+
+    // -------------------------------------------------------------------------
+    // SR-PT-01 / SR-PT-02 — hashtag validation before subscription
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-PT-01: blank hashtag → negative ack with INVALID_HASHTAG rejection code.
+     *
+     * Arrange: a SubscriptionMessage with a blank hashtag and a valid principal.
+     * Act: call subscribe().
+     * Assert: isSubscribed=false, rejection code INVALID_HASHTAG, subscriptionManager not called.
+     */
+    @Test
+    public void subscribe_withBlankHashtag_returnsNegativeAckWithInvalidHashtagCode() {
+        // Setup
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag("   ");
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        // Execute
+        SubscriptionAckMessage result = subscriptionController.subscribe(headerAccessor, subscriptionMessage);
+
+        // Verify
+        assertThat(result).isNotNull();
+        assertThat(result.isSubscribed()).isFalse();
+        assertThat(result.getRejection()).isNotNull();
+        assertThat(result.getRejection().getCode()).isEqualTo(RejectionCode.INVALID_HASHTAG);
+        verifyNoInteractions(subscriptionManager);
+    }
+
+    /**
+     * SR-PT-01: hashtag containing illegal characters → negative ack with INVALID_HASHTAG.
+     *
+     * Arrange: hashtag with a '#' prefix.
+     * Act: call subscribe().
+     * Assert: rejection with INVALID_HASHTAG, no subscription started.
+     */
+    @Test
+    public void subscribe_withHashtagContainingIllegalCharacters_returnsNegativeAckWithInvalidHashtagCode() {
+        // Setup
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag("#glacier");
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        // Execute
+        SubscriptionAckMessage result = subscriptionController.subscribe(headerAccessor, subscriptionMessage);
+
+        // Verify
+        assertThat(result.isSubscribed()).isFalse();
+        assertThat(result.getRejection()).isNotNull();
+        assertThat(result.getRejection().getCode()).isEqualTo(RejectionCode.INVALID_HASHTAG);
+        verifyNoInteractions(subscriptionManager);
+    }
+
+    /**
+     * SR-PT-01: various invalid hashtag formats → negative ack with INVALID_HASHTAG.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "#glacier",
+            "hello world",
+            "<script>alert(1)</script>",
+            "aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeef"  // 51 characters
+    })
+    public void subscribe_withInvalidHashtag_returnsNegativeAckWithInvalidHashtagCode(String invalidHashtag) {
+        // Setup
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag(invalidHashtag);
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        // Execute
+        SubscriptionAckMessage result = subscriptionController.subscribe(headerAccessor, subscriptionMessage);
+
+        // Verify
+        assertThat(result.isSubscribed()).isFalse();
+        assertThat(result.getRejection()).isNotNull();
+        assertThat(result.getRejection().getCode()).isEqualTo(RejectionCode.INVALID_HASHTAG);
+        verifyNoInteractions(subscriptionManager);
+    }
+
+    /**
+     * SR-PT-02: no exception escapes subscribe() even when the hashtag is null.
+     *
+     * Arrange: a SubscriptionMessage with a null hashtag.
+     * Act: call subscribe().
+     * Assert: returns a SubscriptionAckMessage (no exception thrown).
+     */
+    @Test
+    public void subscribe_withNullHashtag_doesNotThrowException() {
+        // Setup
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag(null);
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        // Execute — must not throw
+        SubscriptionAckMessage result = subscriptionController.subscribe(headerAccessor, subscriptionMessage);
+
+        // Verify
+        assertThat(result).isNotNull();
+        assertThat(result.isSubscribed()).isFalse();
+        verifyNoInteractions(subscriptionManager);
+    }
+
+    /**
+     * SR-PT-02: subscribe() does not propagate exceptions thrown by the subscriptionManager.
+     *
+     * Arrange: subscriptionManager.subscribeToHashtag throws a RuntimeException.
+     * Act: call subscribe() with a valid hashtag.
+     * Assert: no exception escapes subscribe(); the returned ack indicates failure.
+     */
+    @Test
+    public void subscribe_whenSubscriptionManagerThrows_doesNotPropagateException() {
+        // Setup
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag("glacier");
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        doThrow(new RuntimeException("Unexpected downstream failure"))
+                .when(subscriptionManager)
+                .subscribeToHashtag("123456789", "glacier");
+
+        // Execute and assert: subscribe() must not throw even when the manager fails
+        assertThatCode(() -> subscriptionController.subscribe(headerAccessor, subscriptionMessage))
+                .as("subscribe() must not propagate exceptions from subscriptionManager")
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * Verifies that a valid hashtag (ASCII letters) is forwarded to subscriptionManager and
+     * returns a positive ack — this is the happy path regression check after adding validation.
+     */
+    @Test
+    public void subscribe_withValidHashtag_subscribesToHashtagAndReturnsPositiveAck() {
+        // Setup
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag("glacier");
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        doNothing().when(subscriptionManager).subscribeToHashtag("123456789", "glacier");
+
+        // Execute
+        SubscriptionAckMessage result = subscriptionController.subscribe(headerAccessor, subscriptionMessage);
+
+        // Verify
+        assertThat(result.isSubscribed()).isTrue();
+        assertThat(result.getPrincipal()).isEqualTo("123456789");
+        assertThat(result.getHashtag()).isEqualTo("glacier");
+        assertThat(result.getRejection()).isNull();
+        verify(subscriptionManager).subscribeToHashtag("123456789", "glacier");
     }
 }

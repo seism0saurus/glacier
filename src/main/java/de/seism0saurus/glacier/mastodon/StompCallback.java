@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -13,11 +14,18 @@ import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.*;
 import social.bigbone.api.entity.streaming.MastodonApiEvent.GenericMessage;
 
+import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
  * The StompCallback class implements the WebSocketCallback interface and is responsible for processing WebSocket events.
+ *
+ * <p>SSRF guard (ADR-PT-01 / ADR-PT-02): before issuing any outbound {@code HEAD} request
+ * against a toot URL, the URL is passed through the injected {@link SafeUrlValidator}.
+ * If the validator returns empty, the toot is silently dropped and an audit event
+ * ({@code stomp.embed.ssrf_blocked}) is emitted without logging the raw URL.</p>
  */
 public class StompCallback implements WebSocketCallback {
 
@@ -28,6 +36,12 @@ public class StompCallback implements WebSocketCallback {
      * @see "src/main/ressources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(StompCallback.class);
+
+    /**
+     * Dedicated AUDIT logger for security-relevant events (D-13 / SR-8).
+     * Messages sent here must use scrubbed values only — never raw URLs, principals, or tokens.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
      * Represents a callback for handling WebSocket events related to subscriptions.
@@ -46,6 +60,12 @@ public class StompCallback implements WebSocketCallback {
      * The REST template is needed to check the headers of the URLs of the toots for X-FRAME headers.
      */
     private final RestTemplate restTemplate;
+
+    /**
+     * SSRF guard: validates that a toot URL resolves to a public, non-private address
+     * and uses an allowed scheme before the callback issues any outbound HTTP request.
+     */
+    private final SafeUrlValidator safeUrlValidator;
 
     /**
      * The principal aka wallId of the subscription this callback.
@@ -68,15 +88,19 @@ public class StompCallback implements WebSocketCallback {
      * The StompCallback class represents a callback for handling WebSocket events.
      * It is used in conjunction with the SimpMessagingTemplate class to send messages to websocket destinations.
      *
+     * @param subscriptionManager   The SubscriptionManager used for restart-on-failure behaviour.
      * @param simpMessagingTemplate The SimpMessagingTemplate instance used for sending WebSocket messages.
      * @param restTemplate          The RestTemplate instance used for making HTTP requests, to check headers of the embedded iframes.
+     * @param safeUrlValidator      The SSRF guard: validates toot URLs before any outbound HTTP request is issued.
      * @param principal             The principal aka wallId associated with the subscription.
      * @param hashtag               The hashtag to subscribe to.
+     * @param handle                The full Mastodon handle of the Glacier bot (e.g. {@code @glacier@glacier.events}).
      * @param glacierDomain         The glacier domain for checking if a webpage is loadable as an iframe.
      */
     public StompCallback(final SubscriptionManager subscriptionManager,
                          final SimpMessagingTemplate simpMessagingTemplate,
                          final RestTemplate restTemplate,
+                         final SafeUrlValidator safeUrlValidator,
                          final String principal,
                          final String hashtag,
                          final String handle,
@@ -84,6 +108,7 @@ public class StompCallback implements WebSocketCallback {
         this.subscriptionManager = subscriptionManager;
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.restTemplate = restTemplate;
+        this.safeUrlValidator = safeUrlValidator;
         this.principal = principal;
         this.hashtag = hashtag;
         this.shortHandle = getShortHandle(handle);
@@ -164,8 +189,30 @@ public class StompCallback implements WebSocketCallback {
         }
     }
 
-    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination ) throws JsonProcessingException {
+    /**
+     * Sends a status message to the given destination after passing SSRF and frame-ancestor guards.
+     *
+     * <p>SSRF guard (ADR-PT-02): the payload URL is validated via {@link SafeUrlValidator}
+     * before issuing the outbound {@code HEAD} request. If validation fails, the toot is
+     * silently dropped and an audit event is emitted.</p>
+     *
+     * @param mapper              Jackson mapper for deserialising the payload
+     * @param statusMessageClass  the concrete {@link StatusMessage} subtype to build
+     * @param genericMessageContent the envelope containing the raw payload JSON
+     * @param destination         the STOMP topic destination to publish the message to
+     * @throws JsonProcessingException if the payload JSON cannot be parsed
+     */
+    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination) throws JsonProcessingException {
         GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+
+        // SSRF guard: validate the toot URL before issuing any outbound request
+        Optional<URI> safeUri = safeUrlValidator.validate(payload.getUrl());
+        if (safeUri.isEmpty()) {
+            AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
+                    LogScrubber.urlHostHash(payload.getUrl()),
+                    extractScheme(payload.getUrl()));
+            return;
+        }
 
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
         if (isLoadable(httpHeaders, glacierDomain)) {
@@ -260,11 +307,25 @@ public class StompCallback implements WebSocketCallback {
     /**
      * Processes a StatusCreated event by sending a creation notification to the specified destination.
      *
+     * <p>SSRF guard (ADR-PT-02): the status URL is validated via {@link SafeUrlValidator}
+     * before issuing the outbound {@code HEAD} request. If validation fails, the toot is
+     * silently dropped and an audit event is emitted — no message is forwarded to the wall.</p>
+     *
      * @param status      The newly created status.
      * @param destination The destination to send the status event. /creation will be appended to it as a suffix.
      */
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
+
+        // SSRF guard: validate the toot URL before issuing any outbound request
+        Optional<URI> safeUri = safeUrlValidator.validate(status.getUrl());
+        if (safeUri.isEmpty()) {
+            AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
+                    LogScrubber.urlHostHash(status.getUrl()),
+                    extractScheme(status.getUrl()));
+            return;
+        }
+
         HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
         if (isLoadable(httpHeaders, glacierDomain)) {
             StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
@@ -318,6 +379,28 @@ public class StompCallback implements WebSocketCallback {
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
             default -> logEvent("got an unknown WebSocketEvent: %s".formatted(event));
+        }
+    }
+
+    /**
+     * Extracts the URI scheme from a raw URL string for use in audit log fields.
+     *
+     * <p>Returns {@code "unknown"} for null, blank, or malformed URLs so that
+     * the audit event is always emitted even when the URL cannot be parsed.</p>
+     *
+     * @param rawUrl the raw URL string; may be null or malformed
+     * @return the lowercase scheme (e.g. {@code "https"}), or {@code "unknown"}
+     */
+    private static String extractScheme(String rawUrl) {
+        if (rawUrl == null || rawUrl.isBlank()) {
+            return "unknown";
+        }
+        try {
+            URI uri = URI.create(rawUrl);
+            String scheme = uri.getScheme();
+            return scheme != null ? scheme.toLowerCase() : "unknown";
+        } catch (IllegalArgumentException e) {
+            return "unknown";
         }
     }
 

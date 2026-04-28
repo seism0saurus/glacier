@@ -10,6 +10,16 @@
         </layout>
     </appender>
 
+    <!--
+        AUDIT logger — security-relevant events (D-13 / SR-8).
+        All events routed here must use scrubbed values only (see LogScrubber).
+        Raw cookies, authorization headers, wallId, and access tokens must never
+        appear in messages sent to this appender.
+    -->
+    <logger name="AUDIT" level="info" additivity="false">
+        <appender-ref ref="jsonstdout"/>
+    </logger>
+
     <root level="info">
         <appender-ref ref="jsonstdout"/>
     </root>
