@@ -2,12 +2,14 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.*;
@@ -88,7 +90,9 @@ public class StompCallback implements WebSocketCallback {
         this.hashtag = hashtag;
         this.shortHandle = getShortHandle(handle);
         this.glacierDomain = glacierDomain;
-        LOGGER.info("StompCallback for {} with hashtag {} created", principal, hashtag);
+        // D-13/SR-8: never log raw principal (UUID wallId) or raw hashtag
+        LOGGER.info("StompCallback for principal-hash={} with hashtag-len={} created",
+                LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag));
     }
 
     private static @NotNull String getShortHandle(String handle) {
@@ -114,7 +118,9 @@ public class StompCallback implements WebSocketCallback {
      */
     @Override
     public void onEvent(@NotNull final WebSocketEvent event) {
-        LOGGER.info(event.toString());
+        // D-13/SR-8 / ADR-F6-02: event.toString() is uncontrolled output that can include raw URLs,
+        // hashtags, account handles, and raw HTML toot content — demoted to DEBUG, type-only rendering
+        LOGGER.debug("stream.event type={}", event.getClass().getSimpleName());
         String baseDestination = "/topic/hashtags/" + principal + "/" + hashtag;
         switch (event) {
             case MastodonApiEvent.StreamEvent streamEvent -> {
@@ -157,7 +163,11 @@ public class StompCallback implements WebSocketCallback {
             ) {
                 procesStatusDeletedEvent(genericMessageContent.getPayload().textValue(), destination);
             } else {
-                LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
+                // D-13/SR-8 / ADR-F6-03: genericMessageContent full dump contains raw URLs,
+                // hashtags, and payload — emit only stream size and allowlisted event name
+                LOGGER.warn("stream.generic.unhandled streams-size={} event={}",
+                        genericMessageContent.getStream().size(),
+                        LogScrubber.safeEventName(genericMessageContent.getEvent()));
             }
         } catch (JsonProcessingException e) {
             LOGGER.error("Could not parse GenericMessage", e);
@@ -167,7 +177,17 @@ public class StompCallback implements WebSocketCallback {
     private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination ) throws JsonProcessingException {
         GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
 
-        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        // Fix #4 (ADR-F6-04): wrap HEAD request in try-catch; on failure log only url-host-hash
+        // and exception class — never payload.getUrl() or ex.getMessage() which embeds the full URL
+        HttpHeaders httpHeaders;
+        try {
+            httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        } catch (RestClientException ex) {
+            LOGGER.debug("stomp.embed.head_failed url-host-hash={} error={}",
+                    LogScrubber.urlHostHash(payload.getUrl()), ex.getClass().getSimpleName());
+            return;
+        }
+
         if (isLoadable(httpHeaders, glacierDomain)) {
             if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
                 StatusMessage statusEvent = null;
@@ -178,7 +198,11 @@ public class StompCallback implements WebSocketCallback {
                 }
                 assert statusEvent != null;
                 this.simpMessagingTemplate.convertAndSend(destination, statusEvent);
-                LOGGER.info("Sending message to {}", destination);
+                // Fix #5 (ADR-F6-03): raw STOMP destination string embeds principal UUID and
+                // raw hashtag — emit structured triple instead
+                String eventType = destination.substring(destination.lastIndexOf('/') + 1);
+                LOGGER.info("stomp.message.published principal-hash={} hashtag-len={} event-type={}",
+                        LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag), eventType);
             } else {
                 LOGGER.info("No opt in. Ignoring");
             }
@@ -265,7 +289,16 @@ public class StompCallback implements WebSocketCallback {
      */
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
-        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        // Fix #6 (ADR-F6-04): wrap HEAD request in try-catch; on failure log only url-host-hash
+        // and exception class — never status.getUrl() or ex.getMessage() which embeds the full URL
+        HttpHeaders httpHeaders;
+        try {
+            httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        } catch (RestClientException ex) {
+            LOGGER.debug("stomp.embed.head_failed url-host-hash={} error={}",
+                    LogScrubber.urlHostHash(status.getUrl()), ex.getClass().getSimpleName());
+            return;
+        }
         if (isLoadable(httpHeaders, glacierDomain)) {
             StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
             this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
@@ -327,6 +360,7 @@ public class StompCallback implements WebSocketCallback {
      * @param msg The message to be logged.
      */
     private void logEvent(final String msg) {
-        LOGGER.info("Subscription {} {}", principal, msg);
+        // D-13/SR-8: never log raw principal (UUID wallId) — use hashed 8-char prefix
+        LOGGER.info("Subscription principal-hash={} {}", LogScrubber.hash8(principal), msg);
     }
 }

@@ -1,6 +1,7 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
+import de.seism0saurus.glacier.util.LogScrubber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -126,10 +127,14 @@ public class SubscriptionListener {
     public void onConnectedEvent(SessionConnectedEvent event) {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
         if (event.getUser() == null) {
-            LOGGER.warn("Client with session {} connected but has no user associated with it", headerAccessor.getSessionId());
+            // Fix #7a (ADR-F6-01): simpSessionId is a GDPR personal-data correlator — hash it
+            LOGGER.warn("Client with session-hash={} connected but has no user associated with it",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
             return;
         }
-        LOGGER.info("Client with session {} and username {} connected", headerAccessor.getSessionId(), event.getUser().getName());
+        // Fix #7b (ADR-F6-01): hash both sessionId and principal for D-13/SR-8 compliance
+        LOGGER.info("Client with session-hash={} and username-hash={} connected",
+                LogScrubber.hash8(headerAccessor.getSessionId()), LogScrubber.hash8(event.getUser().getName()));
         Future<?> future = this.disconnectTimer.get(event.getUser().getName());
         if (future != null) {
             future.cancel(true);
@@ -150,19 +155,24 @@ public class SubscriptionListener {
     public void onDisconnectEvent(SessionDisconnectEvent event) {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
         if (event.getUser() == null) {
-            LOGGER.warn("Client with session {} disconnected but has no user associated with it", headerAccessor.getSessionId());
+            // Fix #7c (ADR-F6-01): simpSessionId is a GDPR personal-data correlator — hash it
+            LOGGER.warn("Client with session-hash={} disconnected but has no user associated with it",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
             return;
         }
-        LOGGER.info("Client with session {} and username {} disconnected. Starting timer to wait for reconnection", headerAccessor.getSessionId(), event.getUser().getName());
+        // Fix #7d (ADR-F6-01): hash both sessionId and principal for D-13/SR-8 compliance
+        LOGGER.info("Client with session-hash={} and username-hash={} disconnected. Starting timer to wait for reconnection",
+                LogScrubber.hash8(headerAccessor.getSessionId()), LogScrubber.hash8(event.getUser().getName()));
         Future<?> future = executorService.submit(() -> {
-            LOGGER.info("Timer for principal {} started", event.getUser().getName());
+            // Fix #8 (SR-F6-08): hash the principal in all three timer-lambda log lines — D-13/SR-8 compliance
+            LOGGER.info("Timer for principal-hash={} started", LogScrubber.hash8(event.getUser().getName()));
             try {
                 Thread.sleep(timeout);
             } catch (InterruptedException e) {
-                LOGGER.info("Timeout for principal {} was canceled", event.getUser().getName());
+                LOGGER.info("Timeout for principal-hash={} was canceled", LogScrubber.hash8(event.getUser().getName()));
                 return;
             }
-            LOGGER.info("Connection for principal {} timed out. Terminating all subscriptions.", event.getUser().getName());
+            LOGGER.info("Connection for principal-hash={} timed out. Terminating all subscriptions.", LogScrubber.hash8(event.getUser().getName()));
             this.subscriptionManager.terminateAllSubscriptions(event.getUser().getName());
             this.disconnectTimer.remove(event.getUser().getName());
         });

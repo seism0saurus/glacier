@@ -165,6 +165,18 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+            jqwik: property-based testing framework for JUnit 5 (SR-TEST-06).
+            Used for fuzz testing of CWE-117 log-injection guard in LogScrubber.safeEventName.
+            https://jqwik.net
+        -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>1.8.4</version>
+            <scope>test</scope>
+        </dependency>
+
         <!--Logging Libraries-->
         <dependency>
             <groupId>ch.qos.logback</groupId>
