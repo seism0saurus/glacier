@@ -337,11 +337,26 @@ public class StompCallback implements WebSocketCallback {
     /**
      * Process a StatusEdited event by sending a modification notification to the specified destination.
      *
+     * <p>SSRF guard (ADR-PT-01 / SR-PT-04): the status URL is validated via {@link SafeUrlValidator}
+     * before any message is published to the wall. If the validator returns empty, the edited toot
+     * is silently dropped and an audit event ({@code stomp.embed.ssrf_blocked}) is emitted with
+     * scrubbed URL metadata — the raw URL is never logged (D-13 / SR-8).</p>
+     *
      * @param status      The edited status.
      * @param destination The destination to send the status event. /modification will be appended to it as a suffix.
      */
     private void processStatusEditedEvent(final Status status, final String destination) {
         logEvent("got a StatusEdited event");
+
+        // SSRF guard: validate the toot URL before publishing any message to the wall
+        Optional<URI> safeUri = safeUrlValidator.validate(status.getUrl());
+        if (safeUri.isEmpty()) {
+            AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
+                    LogScrubber.urlHostHash(status.getUrl()),
+                    extractScheme(status.getUrl()));
+            return;
+        }
+
         StatusMessage statusEvent = StatusUpdatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
         this.simpMessagingTemplate.convertAndSend(destination + "/modification", statusEvent);
     }

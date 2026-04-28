@@ -956,6 +956,118 @@ public class StompCallbackTest {
         verify(spyTemplate, never()).convertAndSend(any(String.class), any(StatusCreatedMessage.class));
     }
 
+    // -------------------------------------------------------------------------
+    // SSRF guard tests — SR-PT-04, SR-PT-05, SR-PT-06 (processStatusEditedEvent path)
+    // These tests must FAIL before the production fix and PASS after it.
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-PT-04 (processStatusEditedEvent path):
+     * When the SSRF validator blocks a URL for an edited status, no outbound HEAD request is issued.
+     *
+     * <p>Arrange: a blocking {@link SafeUrlValidator} + a StatusEdited event carrying a private-range URL.</p>
+     * <p>Act: onEvent.</p>
+     * <p>Assert: {@code restTemplate.headForHeaders} is never called — the guard short-circuits before
+     * any outbound HTTP request reaches the potentially hostile host.</p>
+     */
+    @Test
+    public void onEvent_statusEdited_ssrfGuardBlocks_doesNotCallHeadForHeaders() {
+        // Arrange
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+
+        when(mockStatus.getId()).thenReturn("edit-1");
+        when(mockStatus.getUrl()).thenReturn("http://192.168.1.1/status/1");
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, mockTemplate, restTemplate, BLOCKING_VALIDATOR,
+                principal, hashtag, "glacier@example.com", "glacier.example.com");
+        ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert (SR-PT-04): no outbound HEAD request issued
+        verify(restTemplate, never()).headForHeaders(any(String.class));
+    }
+
+    /**
+     * SR-PT-05 (processStatusEditedEvent path):
+     * When the SSRF validator blocks a URL for an edited status, no wall message is published.
+     *
+     * <p>Arrange: a blocking {@link SafeUrlValidator} + a StatusEdited event.</p>
+     * <p>Act: onEvent.</p>
+     * <p>Assert: {@code simpMessagingTemplate.convertAndSend} is never called — the blocked toot
+     * must not reach any wall subscriber.</p>
+     */
+    @Test
+    public void onEvent_statusEdited_ssrfGuardBlocks_doesNotPublishToWall() {
+        // Arrange
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+
+        when(mockStatus.getId()).thenReturn("edit-1");
+        when(mockStatus.getUrl()).thenReturn("http://192.168.1.1/status/1");
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, mockTemplate, restTemplate, BLOCKING_VALIDATOR,
+                principal, hashtag, "glacier@example.com", "glacier.example.com");
+        ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert (SR-PT-05): no wall message published
+        verify(mockTemplate, never()).convertAndSend(any(String.class), any(Object.class));
+    }
+
+    /**
+     * SR-PT-06 (processStatusEditedEvent path):
+     * When the SSRF validator blocks a URL for an edited status, the AUDIT logger emits
+     * a {@code stomp.embed.ssrf_blocked} event containing scrubbed URL metadata.
+     *
+     * <p>Arrange: a blocking {@link SafeUrlValidator} + a StatusEdited event + a log appender
+     * attached to the {@code AUDIT} logger.</p>
+     * <p>Act: onEvent.</p>
+     * <p>Assert: the AUDIT logger emits {@code stomp.embed.ssrf_blocked} with {@code url-host-hash}
+     * and {@code scheme} fields — raw URL must never appear in the log (D-13 / SR-8).</p>
+     */
+    @Test
+    public void onEvent_statusEdited_ssrfGuardBlocks_emitsAuditEvent() {
+        // Arrange
+        TestLogAppender auditAppender = new TestLogAppender();
+        auditAppender.start();
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("AUDIT");
+        auditLogger.addAppender(auditAppender);
+
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+
+        when(mockStatus.getId()).thenReturn("edit-1");
+        when(mockStatus.getUrl()).thenReturn("http://192.168.1.1/status/1");
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, mockTemplate, restTemplate, BLOCKING_VALIDATOR,
+                principal, hashtag, "glacier@example.com", "glacier.example.com");
+        ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert (SR-PT-06): AUDIT event emitted with scrubbed fields only
+        assertThat(auditAppender.getLoggedMessages())
+                .anySatisfy(msg -> {
+                    assertThat(msg).contains("stomp.embed.ssrf_blocked");
+                    assertThat(msg).contains("url-host-hash=");
+                    assertThat(msg).contains("scheme=http");
+                });
+
+        auditLogger.detachAppender(auditAppender);
+    }
+
     @NotNull
     private static TestLogAppender getTestLogAppender() {
         TestLogAppender logAppender = new TestLogAppender();
