@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -10,7 +11,8 @@ import social.bigbone.MastodonClient;
 import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
-import java.io.IOException;
+import java.net.URI;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +32,10 @@ class SubscriptionManagerImplTest {
 
     private final StreamingMethods methods;
 
+    /** Permissive validator — never blocks any URL. Used for all non-SSRF tests. */
+    private static final SafeUrlValidator PERMISSIVE_VALIDATOR =
+            rawUrl -> Optional.of(URI.create(rawUrl));
+
     @InjectMocks
     private SubscriptionManagerImpl subscriptionManager;
 
@@ -40,7 +46,7 @@ class SubscriptionManagerImplTest {
         String instance = "test-instance";
         String glacierDomain = "test-domain";
         String handle = "test-handle@test-instance";
-        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, simpMessagingTemplate, restTemplate);
+        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, simpMessagingTemplate, restTemplate, PERMISSIVE_VALIDATOR);
     }
 
     @Test
