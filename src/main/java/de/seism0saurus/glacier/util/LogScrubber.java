@@ -16,6 +16,8 @@ import java.util.regex.Pattern;
  *   <li>Raw {@code wallId} / cookie values</li>
  *   <li>Toot URLs, bodies, or {@code editedAt} timestamps</li>
  *   <li>Client IP addresses in full form</li>
+ *   <li>Raw session identifiers</li>
+ *   <li>Unvalidated Mastodon streaming event names (CWE-117 log injection guard)</li>
  * </ul>
  *
  * <p>All methods in this class are pure functions with no side-effects; they can be
@@ -42,6 +44,22 @@ public final class LogScrubber {
     private static final Pattern UUID_PATTERN =
             Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
                     Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Allowlist of documented Mastodon 4.x streaming event names.
+     *
+     * <p>ADR-F6-05: {@code genericMessageContent.getEvent()} originates from the Mastodon
+     * streaming wire — a hostile or compromised instance can inject CRLF / control characters
+     * (CWE-117 log injection). This allowlist is the CWE-117 guard: only values in this set
+     * pass through verbatim; everything else is rendered as {@code unknown(len=N)}.
+     *
+     * @see #safeEventName(String)
+     */
+    private static final Set<String> KNOWN_STREAM_EVENTS = Set.of(
+            "update", "status.update", "delete", "status.delete",
+            "filters_changed", "announcement", "announcement.reaction",
+            "announcement.delete", "encrypted_message", "notification", "conversation"
+    );
 
     private LogScrubber() {
         // Utility class — not instantiable
@@ -161,5 +179,32 @@ public final class LogScrubber {
         } catch (IllegalArgumentException e) {
             return hash8("unparseable");
         }
+    }
+
+    /**
+     * Returns the streaming event name verbatim if it is on the Mastodon 4.x allowlist;
+     * otherwise returns a bounded fallback that prevents CWE-117 log injection.
+     *
+     * <p>ADR-F6-05: {@code genericMessageContent.getEvent()} arrives from the Mastodon
+     * streaming wire. A hostile or compromised instance can inject CRLF sequences or
+     * control characters to corrupt log entries. This method is the CWE-117 guard:
+     * <ul>
+     *   <li>Allowlisted event names pass through unchanged — safe for structured logs.</li>
+     *   <li>Unknown names are rendered as {@code unknown(len=N)} — bounded length, no
+     *       raw attacker-controlled bytes reach the log encoder.</li>
+     *   <li>{@code null} → {@code "null"}; blank → {@code "blank"}.</li>
+     * </ul>
+     *
+     * <p>Always use this method when logging a value sourced from
+     * {@code GenericMessageContent#getEvent()}.
+     *
+     * @param event the raw event name from the Mastodon streaming wire; may be {@code null}
+     * @return a log-safe representation of the event name
+     */
+    public static String safeEventName(final String event) {
+        if (event == null) return "null";
+        if (event.isBlank()) return "blank";
+        if (KNOWN_STREAM_EVENTS.contains(event)) return event;
+        return "unknown(len=" + event.length() + ")";
     }
 }

@@ -1,5 +1,8 @@
 package de.seism0saurus.glacier.util;
 
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
+import net.jqwik.api.constraints.StringLength;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -18,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>{@code hashtagLen} returns the character count</li>
  *   <li>{@code urlHostHash} hashes host:port for SSRF audit events (SR-PT-07)</li>
  *   <li>{@code FORBIDDEN_LOG_FIELDS} contains required sensitive key names</li>
+ *   <li>{@code safeEventName} allowlist-guards Mastodon streaming event names (ADR-F6-05, CWE-117)</li>
  * </ul>
  */
 class LogScrubberTest {
@@ -280,5 +284,140 @@ class LogScrubberTest {
         assertThat(LogScrubber.urlHostHash("https://mastodon.social/@user/1"))
                 .hasSize(8)
                 .matches("[0-9a-f]{8}");
+    }
+
+    // -------------------------------------------------------------------------
+    // safeEventName — ADR-F6-05, CWE-117 log injection guard
+    // -------------------------------------------------------------------------
+
+    /**
+     * Arrange: null input.
+     * Act: call safeEventName(null).
+     * Assert: returns the literal string "null" — consistent with other LogScrubber null sentinels.
+     */
+    @Test
+    void safeEventName_null_returnsNullSentinel() {
+        assertThat(LogScrubber.safeEventName(null)).isEqualTo("null");
+    }
+
+    /**
+     * Arrange: empty string.
+     * Act: call safeEventName("").
+     * Assert: returns the literal string "blank".
+     */
+    @Test
+    void safeEventName_emptyString_returnsBlankSentinel() {
+        assertThat(LogScrubber.safeEventName("")).isEqualTo("blank");
+    }
+
+    /**
+     * Arrange: whitespace-only string.
+     * Act: call safeEventName("  ").
+     * Assert: returns the literal string "blank".
+     */
+    @Test
+    void safeEventName_whitespaceOnly_returnsBlankSentinel() {
+        assertThat(LogScrubber.safeEventName("  ")).isEqualTo("blank");
+    }
+
+    /**
+     * Arrange: each of the Mastodon 4.x documented streaming event names.
+     * Act: call safeEventName with each known value.
+     * Assert: verbatim value is returned — allowlisted events pass through unchanged.
+     */
+    @Test
+    void safeEventName_knownEvents_returnVerbatim() {
+        assertThat(LogScrubber.safeEventName("update")).isEqualTo("update");
+        assertThat(LogScrubber.safeEventName("status.update")).isEqualTo("status.update");
+        assertThat(LogScrubber.safeEventName("delete")).isEqualTo("delete");
+        assertThat(LogScrubber.safeEventName("status.delete")).isEqualTo("status.delete");
+        assertThat(LogScrubber.safeEventName("filters_changed")).isEqualTo("filters_changed");
+        assertThat(LogScrubber.safeEventName("announcement")).isEqualTo("announcement");
+        assertThat(LogScrubber.safeEventName("announcement.reaction")).isEqualTo("announcement.reaction");
+        assertThat(LogScrubber.safeEventName("announcement.delete")).isEqualTo("announcement.delete");
+        assertThat(LogScrubber.safeEventName("encrypted_message")).isEqualTo("encrypted_message");
+        assertThat(LogScrubber.safeEventName("notification")).isEqualTo("notification");
+        assertThat(LogScrubber.safeEventName("conversation")).isEqualTo("conversation");
+    }
+
+    /**
+     * Arrange: an event name not in the Mastodon 4.x allowlist.
+     * Act: call safeEventName("injected_event").
+     * Assert: returns bounded fallback "unknown(len=14)" — the raw value never reaches the logger.
+     */
+    @Test
+    void safeEventName_unknownEvent_returnsBoundedFallback() {
+        assertThat(LogScrubber.safeEventName("injected_event")).isEqualTo("unknown(len=14)");
+    }
+
+    /**
+     * Arrange: single-character unknown event.
+     * Act: call safeEventName("x").
+     * Assert: returns "unknown(len=1)" — bounded and controlled.
+     */
+    @Test
+    void safeEventName_singleCharUnknownEvent_returnsBoundedFallback() {
+        assertThat(LogScrubber.safeEventName("x")).isEqualTo("unknown(len=1)");
+    }
+
+    /**
+     * Arrange: event name containing CRLF characters — classic CWE-117 log injection payload.
+     * Act: call safeEventName with the injected value.
+     * Assert: the result contains no newline or carriage return characters.
+     */
+    @Test
+    void safeEventName_crlfInjectionAttempt_doesNotPassThrough() {
+        String injected = "update\r\nFAKE_LOG_ENTRY";
+        String result = LogScrubber.safeEventName(injected);
+        assertThat(result).doesNotContain("\r");
+        assertThat(result).doesNotContain("\n");
+        assertThat(result).startsWith("unknown(len=");
+    }
+
+    /**
+     * Arrange: event name containing a null byte — CWE-117 variant.
+     * Act: call safeEventName with a string containing a null byte.
+     * Assert: the result does not contain the null byte and is bounded.
+     */
+    @Test
+    void safeEventName_nullByteInjectionAttempt_doesNotPassThrough() {
+        String injected = "update malicious";
+        String result = LogScrubber.safeEventName(injected);
+        assertThat(result).doesNotContain(" ");
+        assertThat(result).startsWith("unknown(len=");
+    }
+
+    // -------------------------------------------------------------------------
+    // safeEventName — jqwik property-based fuzz test (SR-TEST-06)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Property: for any arbitrary string input, safeEventName must NEVER emit CRLF characters.
+     *
+     * <p>This is the CWE-117 log-injection guard — no attacker-controlled bytes from the
+     * Mastodon streaming wire should be able to insert log-forged lines via CRLF sequences.
+     *
+     * <p>Arrange: arbitrary string up to 200 characters.
+     * Act: call safeEventName(s).
+     * Assert:
+     * <ul>
+     *   <li>Result contains no newline or carriage return characters.</li>
+     *   <li>Result length is bounded: at most max(s.length(), 20) — "unknown(len=N)" is
+     *       at most ~20 chars for inputs up to 999 chars; for larger inputs the
+     *       bound is s.length() (only allowlisted values pass through, max ~21 chars).</li>
+     * </ul>
+     */
+    @Property
+    void safeEventName_neverContainsCrlfForAnyArbitraryInput(@ForAll @StringLength(max = 200) String s) {
+        String result = LogScrubber.safeEventName(s);
+        assertThat(result)
+                .as("safeEventName must never emit CRLF for input of length %d", s.length())
+                .doesNotContain("\n", "\r");
+        // Result is bounded: the longest allowlisted value is "announcement.reaction" (21 chars)
+        // and "unknown(len=N)" for N up to 200 is 17 chars — always less than or equal to
+        // max(s.length(), 25) which accommodates the full fallback format
+        assertThat(result.length())
+                .as("safeEventName result length should be bounded")
+                .isLessThanOrEqualTo(Math.max(s.length(), 25));
     }
 }

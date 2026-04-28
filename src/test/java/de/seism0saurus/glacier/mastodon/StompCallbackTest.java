@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.mastodon;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
@@ -747,7 +748,13 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes a GenericMessage event, that's not a update or delete message, correctly
+     * Tests if the event handler processes a GenericMessage event, that's not a update or delete message, correctly.
+     *
+     * <p>D-13/SR-8 / Fix #3 (ADR-F6-03): the warn message must use the new structured format
+     * {@code stream.generic.unhandled streams-size=N event=...} — never the raw
+     * {@code genericMessageContent.toString()} which embeds raw URLs, hashtags and payload.
+     * Unknown event names are rendered as {@code unknown(len=N)} by
+     * {@link de.seism0saurus.glacier.util.LogScrubber#safeEventName(String)}.
      */
     @Test
     public void onEvent_UnrelatedGenericMessageEvent_isIgnored() throws JsonProcessingException {
@@ -770,9 +777,15 @@ public class StompCallbackTest {
         // Execute
         callback.onEvent(mockEvent);
 
-        // Verify
+        // Verify: new structured log format — never raw genericMessageContent dump
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("Not an update event for the subscribed hashtag"));
+                .anySatisfy(msg -> assertThat(msg).contains("stream.generic.unhandled"));
+        // Ensure raw event name from unknown value is not present verbatim (CWE-117 guard)
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("unknown(len=11)")); // "other_event" has 11 chars
+        // Ensure the old unguarded format is gone
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("Not an update event for the subscribed hashtag"));
     }
 
     /**
@@ -1368,9 +1381,189 @@ public class StompCallbackTest {
         verify(messageCache, never()).recordThenPublish(any(), any(), any());
     }
 
+    // -------------------------------------------------------------------------
+    // D-13 / SR-8 log-shape tests (Fix #1–#6, ADR-F6)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fix #1 (ADR-F6-01): constructor must log hashtag-len= instead of the raw hashtag,
+     * and principal-hash= instead of the raw UUID principal.
+     *
+     * <p>Arrange: construct StompCallback with a known hashtag "glacier".
+     * Act: construction itself triggers the INFO log.
+     * Assert: log contains "hashtag-len=7" (len of "glacier"), never raw "glacier";
+     *         log contains "principal-hash=" (hashed), never the raw UUID.
+     */
+    @Test
+    public void constructor_logsHashtagLen_notRawHashtag() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "glacier";
+
+        // Act — construction triggers the log
+        new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "example.com");
+
+        // Assert — Fix #1: structured fields present, raw values absent
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> {
+                    assertThat(msg).contains("hashtag-len=7");
+                    assertThat(msg).contains("principal-hash=");
+                    assertThat(msg).doesNotContain(hashtag);
+                    assertThat(msg).doesNotContain(principal);
+                });
+    }
+
+    /**
+     * Fix #2 (ADR-F6-02): event.toString() must NOT appear at INFO level.
+     * The replacement is a DEBUG log with type-only rendering — not observable at INFO.
+     *
+     * <p>Arrange: construct StompCallback, attach appender, send any WebSocketEvent.
+     * Act: onEvent(streamEvent) for a StatusCreated event.
+     * Assert: no INFO-level message contains a raw event.toString() dump;
+     *         the appender must NOT capture any INFO message with the raw event class name
+     *         as produced by event.toString().
+     */
+    @Test
+    public void onEvent_streamEvent_doesNotLogEventDumpAtInfo() {
+        // Arrange
+        LevelAwareTestLogAppender logAppender = getLevelAwareTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "glacier.example.com");
+
+        Account account = mock(Account.class);
+        when(account.getDisplayName()).thenReturn("user@example.com");
+        when(mockStatus.getId()).thenReturn("12345");
+        when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/12345");
+        when(mockStatus.getAccount()).thenReturn(account);
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(allowHeader);
+
+        ParsedStreamEvent.StatusCreated parsedEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(parsedEvent, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert: no INFO message should be a raw event.toString() dump
+        assertThat(logAppender.getInfoMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("MastodonApiEvent$StreamEvent"));
+        // The DEBUG log with type-only rendering may be present — but must not be at INFO
+        assertThat(logAppender.getInfoMessages())
+                .noneSatisfy(msg -> assertThat(msg).matches(".*StreamEvent.*StatusCreated.*toString.*"));
+    }
+
+    /**
+     * Fix #3 (ADR-F6-03): unhandled generic message must log structured fields, never raw dump.
+     *
+     * <p>This duplicates the existing {@code onEvent_UnrelatedGenericMessageEvent_isIgnored}
+     * but focuses on the positive shape of the new log: "stream.generic.unhandled streams-size=N event=unknown(len=M)".
+     */
+    @Test
+    public void onEvent_unhandledGenericEvent_logsStructuredFieldsNotRawDump() throws JsonProcessingException {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode jsonNode = TextNode.valueOf("{}");
+        // Use a stream name that is NOT "hashtag" so neither update/delete branch fires
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("notification")   // known event, but stream is "user" not "hashtag"
+                .stream(List.of("user"))
+                .payload(jsonNode)
+                .build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Assert Fix #3: structured key present
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("stream.generic.unhandled"));
+        // Known event name passes through allowlist verbatim (not "unknown(len=N)")
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("event=notification"));
+        // streams-size is present and correct
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("streams-size=1"));
+    }
+
+    /**
+     * Fix #5 (ADR-F6-03): after successful sendMessage, log must use structured triple
+     * instead of raw STOMP destination string.
+     *
+     * <p>Arrange: a full GenericMessage "update" event with loadable toot and opt-in mention.
+     *             Uses a unique hashtag value "glacier2025" to avoid false matches on the key "hashtag-len".
+     * Act: onEvent processes the message and sends it.
+     * Assert: the INFO log says "stomp.message.published" with principal-hash=, hashtag-len=, event-type=
+     *         and does NOT contain the raw STOMP destination path or the raw UUID principal.
+     */
+    @Test
+    public void sendMessage_logsStructuredPublishedEvent_notRawDestination() throws JsonProcessingException {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567/embed")).thenReturn(allowHeader);
+
+        String principal = UUID.randomUUID().toString();
+        // Use a distinctive hashtag that won't accidentally match log key names like "hashtag-len"
+        String hashtag = "glacier2025";
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "example.com");
+
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        // Stream must contain "hashtag" (the literal string) to pass the branch check in processGenericEvent
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("update").stream(List.of("hashtag")).payload(jsonNode).build();
+        String serializedContent = mapper.writeValueAsString(content);
+        when(mockEvent.getText()).thenReturn(serializedContent);
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Assert Fix #5: structured log fields present, raw destination absent
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> {
+                    assertThat(msg).contains("stomp.message.published");
+                    assertThat(msg).contains("principal-hash=");
+                    assertThat(msg).contains("hashtag-len=" + hashtag.length());
+                    assertThat(msg).contains("event-type=creation");
+                });
+        // Raw STOMP destination must not appear in ANY logged message
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("/topic/hashtags/"));
+        // Raw UUID principal must not appear in ANY logged message
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains(principal));
+        // Raw hashtag value must not appear in ANY logged message
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains(hashtag));
+    }
+
     @NotNull
     private static TestLogAppender getTestLogAppender() {
         TestLogAppender logAppender = new TestLogAppender();
+        Logger logger = (Logger) LoggerFactory.getLogger(StompCallback.class);
+        logAppender.start();
+        logger.addAppender(logAppender);
+        return logAppender;
+    }
+
+    @NotNull
+    private static LevelAwareTestLogAppender getLevelAwareTestLogAppender() {
+        LevelAwareTestLogAppender logAppender = new LevelAwareTestLogAppender();
         Logger logger = (Logger) LoggerFactory.getLogger(StompCallback.class);
         logAppender.start();
         logger.addAppender(logAppender);
@@ -1387,6 +1580,31 @@ public class StompCallbackTest {
         @Override
         protected void append(ILoggingEvent eventObject) {
             loggedMessages.add(eventObject.getFormattedMessage());
+        }
+    }
+
+    /**
+     * Level-aware log appender that separates INFO (and above) messages from DEBUG messages.
+     * Used for Fix #2 verification: event.toString() must not appear at INFO level.
+     */
+    static class LevelAwareTestLogAppender extends AppenderBase<ILoggingEvent> {
+        private final List<String> infoMessages = new ArrayList<>();
+        private final List<String> debugMessages = new ArrayList<>();
+        private final List<String> allMessages = new ArrayList<>();
+
+        public List<String> getInfoMessages() { return infoMessages; }
+        public List<String> getDebugMessages() { return debugMessages; }
+        public List<String> getAllMessages() { return allMessages; }
+
+        @Override
+        protected void append(ILoggingEvent eventObject) {
+            String msg = eventObject.getFormattedMessage();
+            allMessages.add(msg);
+            if (eventObject.getLevel().isGreaterOrEqual(Level.INFO)) {
+                infoMessages.add(msg);
+            } else if (eventObject.getLevel() == Level.DEBUG) {
+                debugMessages.add(msg);
+            }
         }
     }
 }

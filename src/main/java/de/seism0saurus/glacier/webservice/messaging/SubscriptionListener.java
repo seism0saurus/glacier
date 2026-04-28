@@ -145,12 +145,14 @@ public class SubscriptionListener {
     public void onConnectedEvent(SessionConnectedEvent event) {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
         if (event.getUser() == null) {
-            LOGGER.warn("Client with session {} connected but has no user associated with it", headerAccessor.getSessionId());
+            // Fix #7a (ADR-F6-01): simpSessionId is a GDPR personal-data correlator — hash it
+            LOGGER.warn("Client with session-hash={} connected but has no user associated with it",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
             return;
         }
-        // D-13/SR-8: log only hashed principal — never the raw wallId UUID
-        LOGGER.info("Client with session {} and principal-hash={} connected",
-                headerAccessor.getSessionId(), LogScrubber.hash8(event.getUser().getName()));
+        // D-13/SR-8 / ADR-F6-01: hash both sessionId and principal — never log raw values
+        LOGGER.info("Client with session-hash={} and username-hash={} connected",
+                LogScrubber.hash8(headerAccessor.getSessionId()), LogScrubber.hash8(event.getUser().getName()));
         Future<?> future = this.disconnectTimer.get(event.getUser().getName());
         if (future != null) {
             future.cancel(true);
@@ -171,15 +173,17 @@ public class SubscriptionListener {
     public void onDisconnectEvent(SessionDisconnectEvent event) {
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.wrap(event.getMessage());
         if (event.getUser() == null) {
-            LOGGER.warn("Client with session {} disconnected but has no user associated with it", headerAccessor.getSessionId());
+            // Fix #7c (ADR-F6-01): simpSessionId is a GDPR personal-data correlator — hash it
+            LOGGER.warn("Client with session-hash={} disconnected but has no user associated with it",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
             return;
         }
-        // D-13/SR-8: log only hashed principal — never the raw wallId UUID
-        LOGGER.info("Client with session {} and principal-hash={} disconnected. Starting timer to wait for reconnection",
-                headerAccessor.getSessionId(), LogScrubber.hash8(event.getUser().getName()));
+        // D-13/SR-8 / ADR-F6-01: hash both sessionId and principal — never log raw values
+        LOGGER.info("Client with session-hash={} and username-hash={} disconnected. Starting timer to wait for reconnection",
+                LogScrubber.hash8(headerAccessor.getSessionId()), LogScrubber.hash8(event.getUser().getName()));
         Future<?> future = executorService.submit(() -> {
-            // D-13/SR-8: capture hash once for closure — raw principal stays in the closure
-            // only to pass to terminateAllSubscriptions; the log uses the hash only
+            // D-13/SR-8: hash the principal in all timer-lambda log lines — capture hash once for closure
+            // raw principal stays in the closure only to pass to terminateAllSubscriptions
             String principalHash = LogScrubber.hash8(event.getUser().getName());
             LOGGER.info("Timer for principal-hash={} started", principalHash);
             try {
