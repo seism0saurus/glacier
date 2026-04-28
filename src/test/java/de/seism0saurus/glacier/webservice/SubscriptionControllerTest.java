@@ -19,6 +19,7 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import java.security.Principal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.Mockito.*;
 
@@ -411,5 +412,30 @@ public class SubscriptionControllerTest {
         assertThat(result.isTerminated()).isFalse();
         assertThat(result.getHashtag()).isEqualTo("NonexistingTestHashtag");
         assertThat(result.getPrincipal()).isEqualTo("123456789");
+    }
+
+    /**
+     * SR-PT-01 / SR-PT-02 combined: assertThatCode variant — no exception escapes subscribe().
+     *
+     * Arrange: subscriptionManager.subscribeToHashtag throws a RuntimeException.
+     * Act: call subscribe() with a valid hashtag.
+     * Assert: no exception escapes subscribe(); the returned ack indicates failure.
+     */
+    @Test
+    public void subscribe_whenSubscriptionManagerThrows_doesNotPropagateException_assertThatCode() {
+        SubscriptionMessage subscriptionMessage = new SubscriptionMessage();
+        subscriptionMessage.setHashtag("glacier");
+
+        Principal principal = () -> "123456789";
+        SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
+        when(headerAccessor.getUser()).thenReturn(principal);
+
+        doThrow(new RuntimeException("Unexpected downstream failure"))
+                .when(subscriptionManager)
+                .subscribeToHashtag("123456789", "glacier");
+
+        assertThatCode(() -> subscriptionController.subscribe(headerAccessor, subscriptionMessage))
+                .as("subscribe() must not propagate exceptions from subscriptionManager")
+                .doesNotThrowAnyException();
     }
 }
