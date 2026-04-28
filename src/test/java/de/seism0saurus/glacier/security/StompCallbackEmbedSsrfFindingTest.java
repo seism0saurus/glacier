@@ -6,6 +6,7 @@ import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.api.entity.Account;
 import social.bigbone.api.entity.Status;
@@ -15,6 +16,7 @@ import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -96,6 +98,76 @@ class StompCallbackEmbedSsrfFindingTest {
 
         // Post-fix invariant (SR-PT-04): SafeUrlValidator must reject the URL
         // BEFORE headForHeaders is ever called.
+        verify(restTemplate, never()).headForHeaders(anyString());
+    }
+
+    /**
+     * Pentest finding regression — {@code StatusEdited} SSRF path (SR-PT-04 / SR-PT-05 / SR-PT-10).
+     *
+     * <p>{@code processStatusEditedEvent} does NOT issue a {@code HEAD} request; it validates the
+     * toot URL via {@link SafeUrlValidator} and — if safe — builds a {@link de.seism0saurus.glacier.webservice.messaging.messages.StatusUpdatedMessage}
+     * and publishes it via {@code SimpMessagingTemplate}. The SSRF guard must therefore fire
+     * BEFORE {@code convertAndSend} is called, not before {@code headForHeaders}.</p>
+     *
+     * <p>This test uses the real {@link DefaultSafeUrlValidator} production blocklist (SR-PT-04)
+     * and a mocked {@link SimpMessagingTemplate} so we can assert that no wall message is
+     * published for any URL in the blocklist (SR-PT-05).</p>
+     *
+     * <p>SSRF guard fires before CacheEntry write — SR-PT-10 (StatusEdited path):
+     * because {@code processStatusEditedEvent} never writes to any cache before the URL
+     * validation, and validation rejects these URLs, no side effect can reach the wall.</p>
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            // Loopback — would let an attacker enumerate localhost:* services
+            "http://127.0.0.1:9090/status/1",
+            // Link-local / cloud metadata (AWS/GCP/Azure IMDS)
+            "http://169.254.169.254/latest/meta-data/",
+            // RFC1918 — blind probe of internal network
+            "http://10.0.0.5/internal/status/1",
+            "http://192.168.1.1/router/status/1",
+            // Non-HTTP scheme — must be rejected by the scheme allowlist
+            "file:///etc/passwd",
+    })
+    void onEvent_statusEdited_urlInBlocklist_noMessageSentToWall(final String maliciousUrl) {
+        // Setup: a remote Mastodon status whose url points at a forbidden destination.
+        SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        // SR-PT-05: mock the template so we can verify convertAndSend is never invoked
+        SimpMessagingTemplate simpMessagingTemplate = mock(SimpMessagingTemplate.class);
+        Status status = mock(Status.class);
+        Account account = mock(Account.class);
+
+        when(account.getDisplayName()).thenReturn("attacker@malicious.example");
+        when(status.getId()).thenReturn("ssrf-edited-1");
+        when(status.getUrl()).thenReturn(maliciousUrl);
+        when(status.getAccount()).thenReturn(account);
+
+        // SR-PT-04: use the REAL DefaultSafeUrlValidator — the whole point of this
+        // regression test is that the production blocklist rejects these URLs.
+        SafeUrlValidator validator = new DefaultSafeUrlValidator();
+
+        // Constructor: (SubscriptionManager, SimpMessagingTemplate, RestTemplate,
+        //               SafeUrlValidator, principal, hashtag, handle, glacierDomain)
+        StompCallback callback = new StompCallback(
+                subscriptionManager, simpMessagingTemplate, restTemplate, validator,
+                UUID.randomUUID().toString(), "hashtag",
+                "glacier@example.com", "glacier.example.com");
+
+        ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(status);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Post-fix invariant (SR-PT-05 / SR-PT-10): SafeUrlValidator must reject the URL
+        // BEFORE convertAndSend is ever called — no wall message must be published.
+        // Note: processStatusEditedEvent does NOT call headForHeaders (it goes straight to
+        // convertAndSend after URL validation), so the assertion here is on the template.
+        verify(simpMessagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+
+        // SR-PT-04 (complementary): confirm restTemplate.headForHeaders was also not called —
+        // the StatusEdited path never calls it, this assertion documents that invariant.
         verify(restTemplate, never()).headForHeaders(anyString());
     }
 }
