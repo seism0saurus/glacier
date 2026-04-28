@@ -1,6 +1,10 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.share.application.SafeUrlValidator;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.webservice.cache.CacheCapacityException;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
@@ -13,7 +17,8 @@ import social.bigbone.MastodonClient;
 import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
-import java.io.IOException;
+import java.net.URI;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,9 +41,16 @@ class SubscriptionManagerImplTest {
     private MessageCache messageCache;
 
     @Mock
+    private ShareViewStompRelay shareViewStompRelay;
+
+    @Mock
     private RestTemplate restTemplate;
 
     private final StreamingMethods methods;
+
+    /** Permissive validator — never blocks any URL. Used for all non-SSRF tests. */
+    private static final SafeUrlValidator PERMISSIVE_VALIDATOR =
+            rawUrl -> Optional.of(URI.create(rawUrl));
 
     @InjectMocks
     private SubscriptionManagerImpl subscriptionManager;
@@ -47,10 +59,15 @@ class SubscriptionManagerImplTest {
         MockitoAnnotations.openMocks(this);
         methods = mock(StreamingMethods.class);
         when(mastodonClient.streaming()).thenReturn(methods);
+        // Stub recordThenPublish so StompCallback doesn't NPE when called from virtual threads
+        when(messageCache.recordThenPublish(any(PrincipalKey.class), any(String.class), any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, "stub", "https://stub.example.com/embed", null, 1L));
         String instance = "test-instance";
         String glacierDomain = "test-domain";
         String handle = "test-handle@test-instance";
-        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, messageCache, restTemplate, null);
+        subscriptionManager = new SubscriptionManagerImpl(
+                instance, glacierDomain, handle, mastodonClient,
+                messageCache, restTemplate, shareViewStompRelay, PERMISSIVE_VALIDATOR);
     }
 
     @Test
@@ -304,7 +321,7 @@ class SubscriptionManagerImplTest {
     }
 
     // -----------------------------------------------------------------
-    // New tests for Phase 1: MessageCache integration
+    // Phase 1: MessageCache integration tests (from main branch)
     // -----------------------------------------------------------------
 
     /**
@@ -390,13 +407,6 @@ class SubscriptionManagerImplTest {
     /**
      * Two principals with overlapping subscriptions to the same hashtag must not interfere
      * with each other: terminating one principal's subscription must leave the other's intact.
-     *
-     * <p>This test guards against a hypothetical concurrent-mutation bug where the internal
-     * {@code Map<principal, Map<hashtag, Future<?>>>} is shared across principals.
-     *
-     * <p>Arrange: both principals subscribe to the same hashtag.
-     * <p>Act:     terminate principalA's subscription.
-     * <p>Assert:  principalB's subscription remains active; principalA's is gone.
      */
     @Test
     void subscribeAndTerminate_byDifferentPrincipals_doNotInterfere() {
@@ -404,17 +414,14 @@ class SubscriptionManagerImplTest {
         String principalB = "principal-B-11111111";
         String sharedHashtag = "sharedHashtag";
 
-        // Arrange — both principals subscribe to the same hashtag
         subscriptionManager.subscribeToHashtag(principalA, sharedHashtag);
         subscriptionManager.subscribeToHashtag(principalB, sharedHashtag);
 
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principalA, sharedHashtag));
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principalB, sharedHashtag));
 
-        // Act — terminate only principalA's subscription
         subscriptionManager.terminateSubscription(principalA, sharedHashtag);
 
-        // Assert — principalA's subscription is gone, principalB's is intact
         assertFalse(subscriptionManager.isHashtagSubscribedByPrincipal(principalA, sharedHashtag));
         assertTrue(subscriptionManager.isHashtagSubscribedByPrincipal(principalB, sharedHashtag));
     }

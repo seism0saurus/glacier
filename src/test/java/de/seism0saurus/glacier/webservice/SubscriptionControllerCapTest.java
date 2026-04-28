@@ -5,6 +5,9 @@ import de.seism0saurus.glacier.webservice.cache.CacheCapacityException;
 import de.seism0saurus.glacier.webservice.messaging.messages.RejectionCode;
 import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionAckMessage;
 import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
@@ -30,13 +33,20 @@ class SubscriptionControllerCapTest {
 
     private static final int CAP = 10;
 
+    private static Validator beanValidator;
+
+    @BeforeAll
+    static void setUpValidator() {
+        beanValidator = Validation.buildDefaultValidatorFactory().getValidator();
+    }
+
     private SubscriptionManager subscriptionManager;
     private SubscriptionController subscriptionController;
 
     @BeforeEach
     void setUp() {
         subscriptionManager = mock(SubscriptionManager.class);
-        subscriptionController = new SubscriptionController(subscriptionManager, CAP);
+        subscriptionController = new SubscriptionController(subscriptionManager, beanValidator, CAP);
     }
 
     // -----------------------------------------------------------------------
@@ -54,15 +64,16 @@ class SubscriptionControllerCapTest {
      */
     @Test
     void subscribe_returnsRejectionAck_whenCapExceeded() {
+        // "overflowHashtag" is a valid hashtag string (letters only, no hyphens)
         SubscriptionMessage msg = new SubscriptionMessage();
-        msg.setHashtag("overflow-hashtag");
+        msg.setHashtag("overflowHashtag");
 
         Principal principal = () -> "wall-uuid-cap-test";
         SimpMessageHeaderAccessor accessor = mock(SimpMessageHeaderAccessor.class);
         when(accessor.getUser()).thenReturn(principal);
 
         doThrow(new CacheCapacityException("cap exceeded"))
-                .when(subscriptionManager).subscribeToHashtag("wall-uuid-cap-test", "overflow-hashtag");
+                .when(subscriptionManager).subscribeToHashtag("wall-uuid-cap-test", "overflowHashtag");
 
         SubscriptionAckMessage result = subscriptionController.subscribe(accessor, msg);
 
@@ -87,8 +98,9 @@ class SubscriptionControllerCapTest {
      */
     @Test
     void subscribe_returnsPositiveAck_whenAlreadySubscribed() {
+        // "sameHashtag" is a valid hashtag string (letters only, no hyphens)
         SubscriptionMessage msg = new SubscriptionMessage();
-        msg.setHashtag("same-hashtag");
+        msg.setHashtag("sameHashtag");
 
         Principal principal = () -> "wall-uuid-dup-test";
         SimpMessageHeaderAccessor accessor = mock(SimpMessageHeaderAccessor.class);

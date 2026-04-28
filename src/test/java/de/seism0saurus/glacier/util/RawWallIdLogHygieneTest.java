@@ -6,19 +6,19 @@ import ch.qos.logback.core.read.ListAppender;
 import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.mastodon.SubscriptionManagerImpl;
+import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import de.seism0saurus.glacier.webservice.SubscriptionController;
 import de.seism0saurus.glacier.webservice.cache.CacheCapacityException;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.messaging.SubscriptionListener;
 import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
@@ -52,6 +52,20 @@ class RawWallIdLogHygieneTest {
      * line, the test fails.
      */
     static final String CANARY_UUID = "550e8400-e29b-41d4-a716-446655440000";
+
+    /**
+     * Permissive SSRF validator that accepts every URL — the focus of this test class is
+     * log hygiene, not SSRF blocking. SSRF behaviour is covered by dedicated security tests.
+     */
+    private static final SafeUrlValidator PERMISSIVE_VALIDATOR =
+            rawUrl -> java.util.Optional.of(java.net.URI.create(rawUrl));
+
+    private static Validator beanValidator;
+
+    @BeforeAll
+    static void setUpValidator() {
+        beanValidator = Validation.buildDefaultValidatorFactory().getValidator();
+    }
 
     // Appenders attached during each test — detached in @AfterEach
     private ListAppender<ILoggingEvent> stompCallbackAppender;
@@ -89,7 +103,7 @@ class RawWallIdLogHygieneTest {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
 
         // Act — constructor emits the INFO line
-        new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+        new StompCallback(subscriptionManager, messageCache, null, restTemplate, PERMISSIVE_VALIDATOR,
                 CANARY_UUID, "java", "glacier@example.com", "glacier.example.com");
 
         // Assert — no raw UUID in any log line
@@ -106,7 +120,7 @@ class RawWallIdLogHygieneTest {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
 
         // Trigger logEvent via a TechnicalEvent.Closed
-        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate,
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, PERMISSIVE_VALIDATOR,
                 CANARY_UUID, "java", "glacier@example.com", "glacier.example.com");
         // Reset appender after constructor — focus on logEvent logs
         stompCallbackAppender.list.clear();
@@ -133,7 +147,7 @@ class RawWallIdLogHygieneTest {
 
         SubscriptionManagerImpl manager = new SubscriptionManagerImpl(
                 "example.com", "glacier.example.com", "glacier@example.com",
-                client, messageCache, restTemplate, null);
+                client, messageCache, restTemplate, null, PERMISSIVE_VALIDATOR);
 
         // Act
         manager.subscribeToHashtag(CANARY_UUID, "java");
@@ -152,7 +166,7 @@ class RawWallIdLogHygieneTest {
     @Test
     void subscriptionController_subscribe_happyPath_doesNotLogRawPrincipalUuid() {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
-        SubscriptionController controller = new SubscriptionController(subscriptionManager, 10);
+        SubscriptionController controller = new SubscriptionController(subscriptionManager, beanValidator, 10);
 
         Principal principal = () -> CANARY_UUID;
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
@@ -177,7 +191,7 @@ class RawWallIdLogHygieneTest {
         doThrow(new CacheCapacityException("cap exceeded"))
                 .when(subscriptionManager).subscribeToHashtag(CANARY_UUID, "java");
 
-        SubscriptionController controller = new SubscriptionController(subscriptionManager, 10);
+        SubscriptionController controller = new SubscriptionController(subscriptionManager, beanValidator, 10);
 
         Principal principal = () -> CANARY_UUID;
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
@@ -200,7 +214,7 @@ class RawWallIdLogHygieneTest {
     @Test
     void subscriptionController_subscribe_noPrincipal_doesNotLogRawHeaderAccessor() {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
-        SubscriptionController controller = new SubscriptionController(subscriptionManager, 10);
+        SubscriptionController controller = new SubscriptionController(subscriptionManager, beanValidator, 10);
 
         SimpMessageHeaderAccessor headerAccessor = mock(SimpMessageHeaderAccessor.class);
         when(headerAccessor.getUser()).thenReturn(null);

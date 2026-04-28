@@ -4,6 +4,7 @@ import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 import de.seism0saurus.glacier.webservice.cache.FallbackResponse;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.cache.UnknownSubscriptionException;
+import de.seism0saurus.glacier.webservice.messaging.HashtagFormat;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import jakarta.servlet.http.HttpServletRequest;
@@ -50,7 +51,7 @@ import java.util.Map;
  * <p>Security hardening (D-08, D-09, D-10, SR-1, SR-2, SR-4, SR-7):
  * <ul>
  *   <li>{@code @Validated} enables Bean Validation on method parameters (SR-1)</li>
- *   <li>{@code hashtag} validated against {@code ^[\p{L}\p{N}_]{1,50}$} — never echoed in errors</li>
+ *   <li>{@code hashtag} validated against {@link HashtagFormat#PATTERN} — never echoed in errors</li>
  *   <li>{@code since} clamped to {@code [0, Long.MAX_VALUE/2]}</li>
  *   <li>Authentication delegated to {@link CookieBasedFallbackAuthGuard} (SR-2)</li>
  *   <li>Rate limiting applied before cache access (SR-4)</li>
@@ -68,13 +69,6 @@ public class FallbackController {
      * @see "src/main/ressources/logback.xml"
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(FallbackController.class);
-
-    /**
-     * Validation pattern for the {@code hashtag} parameter (SR-1, D-08).
-     * Allows Unicode letters/digits and underscore, 1–50 characters.
-     * No spaces, no HTML-special characters, no path separators.
-     */
-    public static final String HASHTAG_PATTERN = "^[\\p{L}\\p{N}_]{1,50}$";
 
     /**
      * Upper bound for the {@code since} cursor to prevent integer-overflow tricks (SR-1).
@@ -120,7 +114,7 @@ public class FallbackController {
      * </ol>
      *
      * @param rawWallId the {@code wallId} cookie; {@code null} when absent
-     * @param hashtag   the subscribed hashtag to query (validated against regex)
+     * @param hashtag   the subscribed hashtag to query (validated against {@link HashtagFormat#PATTERN})
      * @param since     cursor from the client's last successful poll; {@code null} → full buffer
      * @param request   the raw servlet request (used for auth guard and remote IP extraction)
      * @return one of the documented response codes
@@ -129,7 +123,7 @@ public class FallbackController {
     public ResponseEntity<?> getMessages(
             @CookieValue(value = "wallId", required = false) final String rawWallId,
             @RequestParam("hashtag")
-            @Pattern(regexp = HASHTAG_PATTERN, message = "invalid_hashtag")
+            @Pattern(regexp = HashtagFormat.PATTERN, message = "invalid_hashtag")
             final String hashtag,
             @RequestParam(value = "since", required = false)
             @Min(value = 0, message = "invalid_cursor")
@@ -196,4 +190,3 @@ public class FallbackController {
     }
 
 }
-

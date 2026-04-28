@@ -34,8 +34,13 @@
         - fallback.auth.fail
         - fallback.ratelimit.hit
         - cache.capacity.exhausted
+        - stomp.embed.ssrf_blocked
+        - stomp.subscription.invalid_hashtag
       Routes to the same JSON stdout at INFO level so operators can grep "AUDIT"
       in log aggregators without needing a separate sink.
+      All events routed here must use scrubbed values only (see LogScrubber).
+      Raw cookies, authorization headers, wallId, and access tokens must never
+      appear in messages sent to this appender.
     -->
     <logger name="AUDIT" level="INFO" additivity="false">
         <appender-ref ref="jsonstdout"/>

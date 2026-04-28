@@ -14,17 +14,21 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Package-exhaustive DTO field scan to prevent leakage of internal identifiers.
+ * Package-exhaustive DTO field scan to prevent leakage of internal identifiers
+ * and raw URLs that would allow SSRF probing or session correlation.
  *
- * <p>Security requirement (ADR-TEST-02, SR-TEST-05, OWASP API3 Excessive Data Exposure):
- * Response/Entry/DTO/Message classes must NEVER expose internal identifiers that would allow
- * a client to correlate requests, hijack sessions, or perform BOLA attacks:
+ * <p>Security requirement (ADR-TEST-02, SR-TEST-05, SR-PT-08, OWASP API3 Excessive
+ * Data Exposure): Response/Entry/DTO/Message classes must NEVER expose:
  * <ul>
  *   <li>{@code wallId} — the session identifier used for STOMP topic authorization</li>
  *   <li>{@code sharerWallId} — identifies the share-link creator</li>
  *   <li>{@code principal} — internal Spring Security principal</li>
  *   <li>{@code rawWallId} — an unmasked wallId variant</li>
  *   <li>{@code userId} — generic user identifier</li>
+ *   <li>{@code tootUrl} — raw toot URL (SR-PT-08: must not appear in response DTOs;
+ *       the validated embed URL is the only safe form to expose)</li>
+ *   <li>{@code rawTootUrl} — explicitly marks an unvalidated toot URL variant</li>
+ *   <li>{@code embedUrl} — raw embed URL field that would expose unvalidated URL strings</li>
  * </ul>
  *
  * <p>The scan is <strong>package-exhaustive</strong> — it inspects all classes in
@@ -42,13 +46,24 @@ class DtoFieldScanTest {
     /**
      * Field names that must NEVER appear in any DTO/Response/Entry/Message class
      * unless explicitly allowlisted in {@link #ALLOWED_EXCEPTIONS}.
+     *
+     * <p>SR-PT-08: {@code tootUrl}, {@code rawTootUrl}, and {@code embedUrl} are
+     * added to the forbidden set to prevent future DTOs from inadvertently exposing
+     * raw or unvalidated URL strings. The only safe form for a toot URL in a
+     * client-facing DTO is the validated embed URL (the {@code url} field in
+     * {@code StatusCreatedMessage} / {@code StatusUpdatedMessage} which is already
+     * constrained to the {@code /embed} path suffix by {@code StompCallback}).</p>
      */
     private static final Set<String> FORBIDDEN_FIELD_NAMES = Set.of(
             "wallId",
             "sharerWallId",
             "principal",
             "rawWallId",
-            "userId"
+            "userId",
+            // SR-PT-08: raw toot URL fields must not appear in client-facing DTOs
+            "tootUrl",
+            "rawTootUrl",
+            "embedUrl"
     );
 
     /**
@@ -164,34 +179,13 @@ class DtoFieldScanTest {
      * Verifies that the {@code findClassesInDirectory} filename filter correctly
      * distinguishes between anonymous/synthetic inner classes (which should be excluded)
      * and named nested classes (which must be included in the scan).
-     *
-     * <p>The old filter {@code !file.getName().contains("$")} incorrectly excluded
-     * all files with {@code $} in the name, including named nested DTOs such as
-     * {@code Outer$BarResponse.class}.  The corrected regex
-     * {@code .*\\$\\d+\\.class} excludes only those files whose inner-class
-     * discriminator is a pure decimal number (anonymous classes and synthetic lambdas
-     * use numeric suffixes like {@code $1}, {@code $2}), while keeping named nested
-     * classes like {@code Outer$BarResponse.class}.
-     *
-     * <p>Note: synthetic lambda classes emitted by the JDK typically take the form
-     * {@code Outer$$Lambda$42.class} — the double-dollar followed by {@code Lambda$}
-     * and then a number.  These ARE matched by {@code .*\\$\\d+\\.class}
-     * (the {@code $42} numeric suffix at the end matches the pattern), so they are
-     * excluded from the scan.  This is acceptable: lambda classes do not match the
-     * DTO suffix filter ({@link #DTO_SUFFIXES}) and would be silently dropped from the
-     * scan results even if they were included.
-     *
-     * <p>Regression guard: if the filter is accidentally reverted to
-     * {@code contains("$")}, this test will fail.
      */
     @Test
     void scan_regexExcludesAnonymousButIncludesNamedNestedClasses() {
-        // Named nested DTO class — MUST NOT be excluded (should be included in scan)
         assertThat("Outer$BarResponse.class")
                 .as("Named nested class 'Outer$BarResponse.class' must NOT match the exclusion regex")
                 .doesNotMatch(".*\\$\\d+\\.class");
 
-        // Anonymous inner class (javac synthetic) — MUST be excluded
         assertThat("Outer$1.class")
                 .as("Anonymous inner class 'Outer$1.class' must match the exclusion regex")
                 .matches(".*\\$\\d+\\.class");
@@ -199,17 +193,39 @@ class DtoFieldScanTest {
                 .as("Anonymous inner class 'Outer$2.class' must match the exclusion regex")
                 .matches(".*\\$\\d+\\.class");
 
-        // Synthetic lambda class — also excluded by the regex (numeric suffix after $).
-        // Even if it were included, the DTO-suffix filter would drop it.
         assertThat("Outer$$Lambda$42.class")
                 .as("Synthetic lambda class 'Outer$$Lambda$42.class' is excluded by the regex "
                         + "because '$42' matches the \\$\\d+ pattern")
                 .matches(".*\\$\\d+\\.class");
 
-        // Plain top-level class — never excluded
         assertThat("PlainClass.class")
                 .as("Plain class 'PlainClass.class' must NOT match the exclusion regex")
                 .doesNotMatch(".*\\$\\d+\\.class");
+    }
+
+    // -------------------------------------------------------------------------
+    // SR-PT-08: Verify raw toot URL field names are in the forbidden set
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-PT-08: verifies that {@code tootUrl}, {@code rawTootUrl}, and {@code embedUrl}
+     * are present in {@link #FORBIDDEN_FIELD_NAMES}.
+     *
+     * <p>OWASP API3 / SR-PT-08: raw toot URL fields in client-facing DTOs would expose
+     * unvalidated URL strings to the browser, undermining the SSRF guard in
+     * {@link de.seism0saurus.glacier.mastodon.StompCallback}.</p>
+     */
+    @Test
+    void forbiddenFieldNames_containsRawTootUrlFields() {
+        assertThat(FORBIDDEN_FIELD_NAMES)
+                .as("SR-PT-08: tootUrl must be in FORBIDDEN_FIELD_NAMES to prevent raw URL exposure")
+                .contains("tootUrl");
+        assertThat(FORBIDDEN_FIELD_NAMES)
+                .as("SR-PT-08: rawTootUrl must be in FORBIDDEN_FIELD_NAMES to prevent raw URL exposure")
+                .contains("rawTootUrl");
+        assertThat(FORBIDDEN_FIELD_NAMES)
+                .as("SR-PT-08: embedUrl must be in FORBIDDEN_FIELD_NAMES to prevent raw URL exposure")
+                .contains("embedUrl");
     }
 
     // ============================================================================

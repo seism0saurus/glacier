@@ -10,11 +10,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link LogScrubber}.
  *
- * Security controls verified (D-13, SR-8):
- * - hash8 produces 8-char lowercase hex, consistent, handles null/blank
- * - containsRawUuid detects UUID patterns
- * - maskIp masks last octet/group
- * - FORBIDDEN_LOG_FIELDS contains required sensitive key names
+ * <p>Security controls verified (D-13, SR-8):
+ * <ul>
+ *   <li>{@code hash8} produces 8-char lowercase hex, consistent, handles null/blank</li>
+ *   <li>{@code containsRawUuid} detects UUID patterns</li>
+ *   <li>{@code maskIp} masks last octet/group</li>
+ *   <li>{@code hashtagLen} returns the character count</li>
+ *   <li>{@code urlHostHash} hashes host:port for SSRF audit events (SR-PT-07)</li>
+ *   <li>{@code FORBIDDEN_LOG_FIELDS} contains required sensitive key names</li>
+ * </ul>
  */
 class LogScrubberTest {
 
@@ -56,6 +60,42 @@ class LogScrubberTest {
         assertThat(LogScrubber.hash8(input)).doesNotContain(input);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "   ", "\t", "\n"})
+    void hash8_blankInput_returnsBlankSentinel(String blank) {
+        assertThat(LogScrubber.hash8(blank)).isEqualTo("blank");
+    }
+
+    /**
+     * Pins the exact 8-hex-char output for a fixed known value.
+     * SHA-256 of "my-wall-id" (UTF-8) first 8 hex chars: "70c8ebbb".
+     */
+    @Test
+    void hash8_knownValue_returnsExpectedEightCharPrefix() {
+        // SHA-256("my-wall-id") first 8 hex chars, verified: echo -n "my-wall-id" | sha256sum
+        assertThat(LogScrubber.hash8("my-wall-id")).isEqualTo("70c8ebbb");
+    }
+
+    @Test
+    void hash8_matchesLegacyTruncation_forKnownInputs() {
+        assertThat(LogScrubber.hash8("550e8400-e29b-41d4-a716-446655440000"))
+                .matches("[0-9a-f]{8}")
+                .hasSize(8);
+        assertThat(LogScrubber.hash8("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
+                .matches("[0-9a-f]{8}")
+                .hasSize(8);
+        assertThat(LogScrubber.hash8("6ba7b811-9dad-11d1-80b4-00c04fd430c8"))
+                .matches("[0-9a-f]{8}")
+                .hasSize(8);
+
+        String h1 = LogScrubber.hash8("550e8400-e29b-41d4-a716-446655440000");
+        String h2 = LogScrubber.hash8("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+        String h3 = LogScrubber.hash8("6ba7b811-9dad-11d1-80b4-00c04fd430c8");
+        assertThat(h1).isNotEqualTo(h2);
+        assertThat(h2).isNotEqualTo(h3);
+        assertThat(h1).isNotEqualTo(h3);
+    }
+
     // -------------------------------------------------------------------------
     // containsRawUuid (wallId detection)
     // -------------------------------------------------------------------------
@@ -88,7 +128,6 @@ class LogScrubberTest {
 
     @Test
     void maskIp_ipv6_masksLastGroup() {
-        // "2001:db8::1" — last ':' is at position 9, giving prefix "2001:db8:"
         assertThat(LogScrubber.maskIp("2001:db8::1")).isEqualTo("2001:db8::xxxx");
     }
 
@@ -103,18 +142,18 @@ class LogScrubberTest {
     }
 
     // -------------------------------------------------------------------------
-    // hashtagLen
+    // hashtagLen — returns int
     // -------------------------------------------------------------------------
 
     @Test
-    void hashtagLen_normal_returnsLengthNotValue() {
-        assertThat(LogScrubber.hashtagLen("java")).isEqualTo("len=4");
-        assertThat(LogScrubber.hashtagLen("java")).doesNotContain("java");
+    void hashtagLen_normal_returnsLength() {
+        assertThat(LogScrubber.hashtagLen("java")).isEqualTo(4);
+        assertThat(LogScrubber.hashtagLen("glacier")).isEqualTo(7);
     }
 
     @Test
-    void hashtagLen_null_returnsLenNull() {
-        assertThat(LogScrubber.hashtagLen(null)).isEqualTo("len=null");
+    void hashtagLen_null_returnsZero() {
+        assertThat(LogScrubber.hashtagLen(null)).isEqualTo(0);
     }
 
     // -------------------------------------------------------------------------
@@ -148,72 +187,98 @@ class LogScrubberTest {
     }
 
     // -------------------------------------------------------------------------
-    // FIX C — blank input sentinel and legacy truncation pin (D-13, FIX C)
-    // These tests pin the exact hash8 output for known inputs so that future
-    // refactors cannot silently change the hash shape (regression guard).
+    // urlHostHash — SR-PT-07
     // -------------------------------------------------------------------------
 
     /**
-     * {@code hash8} on an empty string or a whitespace-only string returns the literal
-     * sentinel {@code "blank"}, not a hash of the blank value.
-     *
-     * <p>This distinguishes "caller passed nothing meaningful" from "caller passed a real value
-     * that happens to hash to some 8-hex-char string", and keeps log output readable.
+     * SR-PT-07 (part 1): same host + different paths → same hash.
      */
-    @ParameterizedTest
-    @ValueSource(strings = {"", " ", "   ", "\t", "\n"})
-    void hash8_blankInput_returnsBlankSentinel(String blank) {
-        assertThat(LogScrubber.hash8(blank)).isEqualTo("blank");
+    @Test
+    void urlHostHash_sameHostDifferentPaths_returnsSameHash() {
+        String url1 = "https://mastodon.social/@user/12345";
+        String url2 = "https://mastodon.social/@other/99999";
+
+        assertThat(LogScrubber.urlHostHash(url1)).isEqualTo(LogScrubber.urlHostHash(url2));
     }
 
     /**
-     * Pins the exact 8-hex-char output for three representative UUID-format wallIds.
-     *
-     * <p>These expected values are the first 8 hex chars of SHA-256(input) computed once and
-     * recorded here.  If the hash function, encoding, or truncation logic ever changes,
-     * this test fails — which is the desired regression signal.
-     *
-     * <p>SHA-256 inputs and expected 8-char prefix (verified with reference implementation):
-     * <ul>
-     *   <li>{@code "550e8400-e29b-41d4-a716-446655440000"} → first 8 hex chars of its SHA-256</li>
-     *   <li>{@code "6ba7b810-9dad-11d1-80b4-00c04fd430c8"} → first 8 hex chars of its SHA-256</li>
-     *   <li>{@code "6ba7b811-9dad-11d1-80b4-00c04fd430c8"} → first 8 hex chars of its SHA-256</li>
-     * </ul>
+     * SR-PT-07 (part 2): different hosts → different hashes.
      */
     @Test
-    void hash8_matchesLegacyTruncation_forKnownInputs() {
-        // Expected values computed from SHA-256 of the literal UUID strings:
-        // These pin the contract: same input → same output, always 8 lowercase hex chars.
-        assertThat(LogScrubber.hash8("550e8400-e29b-41d4-a716-446655440000"))
-                .matches("[0-9a-f]{8}")
-                .hasSize(8);
-        assertThat(LogScrubber.hash8("6ba7b810-9dad-11d1-80b4-00c04fd430c8"))
-                .matches("[0-9a-f]{8}")
-                .hasSize(8);
-        assertThat(LogScrubber.hash8("6ba7b811-9dad-11d1-80b4-00c04fd430c8"))
-                .matches("[0-9a-f]{8}")
-                .hasSize(8);
+    void urlHostHash_differentHosts_returnsDifferentHashes() {
+        String url1 = "https://mastodon.social/@user/12345";
+        String url2 = "https://fosstodon.org/@user/12345";
 
-        // Distinct UUIDs must produce distinct hashes (collision probability ~1/2^32)
-        String h1 = LogScrubber.hash8("550e8400-e29b-41d4-a716-446655440000");
-        String h2 = LogScrubber.hash8("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
-        String h3 = LogScrubber.hash8("6ba7b811-9dad-11d1-80b4-00c04fd430c8");
-        assertThat(h1).isNotEqualTo(h2);
-        assertThat(h2).isNotEqualTo(h3);
-        assertThat(h1).isNotEqualTo(h3);
+        assertThat(LogScrubber.urlHostHash(url1)).isNotEqualTo(LogScrubber.urlHostHash(url2));
     }
 
     /**
-     * Exact 8-char pin for a fixed known value — makes the regression guard concrete.
-     *
-     * <p>SHA-256 of {@code "my-wall-id"} (UTF-8) is
-     * {@code 70c8ebbb0e92e899393f860250fa3fb9dbcad80e27342a76ec82812cf290c3f4}.
-     * First 8 hex chars: {@code "70c8ebbb"}.  This pin is stable across all JVM vendors
-     * that implement SHA-256 per FIPS 180-4 (required by the JVM spec).
+     * https URL without explicit port defaults to 443.
      */
     @Test
-    void hash8_knownValue_returnsExpectedEightCharPrefix() {
-        // SHA-256("my-wall-id") first 8 hex chars, verified: echo -n "my-wall-id" | sha256sum
-        assertThat(LogScrubber.hash8("my-wall-id")).isEqualTo("70c8ebbb");
+    void urlHostHash_httpsWithoutExplicitPort_defaultsToPort443() {
+        String withoutPort = "https://mastodon.social/about";
+        String withPort443 = "https://mastodon.social:443/about";
+
+        assertThat(LogScrubber.urlHostHash(withoutPort))
+                .isEqualTo(LogScrubber.urlHostHash(withPort443));
+    }
+
+    /**
+     * http URL without explicit port defaults to 80.
+     */
+    @Test
+    void urlHostHash_httpWithoutExplicitPort_defaultsToPort80() {
+        String withoutPort = "http://mastodon.social/about";
+        String withPort80 = "http://mastodon.social:80/about";
+
+        assertThat(LogScrubber.urlHostHash(withoutPort))
+                .isEqualTo(LogScrubber.urlHostHash(withPort80));
+    }
+
+    /**
+     * null URL returns the hash of the "unparseable" sentinel.
+     */
+    @Test
+    void urlHostHash_nullUrl_returnsUnparseableHash() {
+        assertThat(LogScrubber.urlHostHash(null))
+                .isEqualTo(LogScrubber.hash8("unparseable"));
+    }
+
+    /**
+     * Blank URL returns the "unparseable" hash.
+     */
+    @Test
+    void urlHostHash_blankUrl_returnsUnparseableHash() {
+        assertThat(LogScrubber.urlHostHash("   "))
+                .isEqualTo(LogScrubber.hash8("unparseable"));
+    }
+
+    /**
+     * Malformed URL returns the "unparseable" hash without throwing.
+     */
+    @Test
+    void urlHostHash_malformedUrl_returnsUnparseableHash() {
+        assertThat(LogScrubber.urlHostHash("not a url ://[invalid"))
+                .isEqualTo(LogScrubber.hash8("unparseable"));
+    }
+
+    /**
+     * URL without a host (e.g. file scheme) returns the "unparseable" hash.
+     */
+    @Test
+    void urlHostHash_urlWithoutHost_returnsUnparseableHash() {
+        assertThat(LogScrubber.urlHostHash("file:///local/path"))
+                .isEqualTo(LogScrubber.hash8("unparseable"));
+    }
+
+    /**
+     * Valid URL returns exactly 8 lowercase hex characters.
+     */
+    @Test
+    void urlHostHash_validUrl_returnsEightCharacterHex() {
+        assertThat(LogScrubber.urlHostHash("https://mastodon.social/@user/1"))
+                .hasSize(8)
+                .matches("[0-9a-f]{8}");
     }
 }

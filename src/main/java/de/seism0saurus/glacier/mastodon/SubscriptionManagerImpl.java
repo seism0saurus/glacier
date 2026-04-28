@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
@@ -83,11 +84,17 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     private final ShareViewStompRelay shareViewStompRelay;
 
+    /**
+     * The SSRF guard passed through to each {@link StompCallback} instance.
+     * Validates toot URLs before any outbound HTTP request or cache write is issued (ADR-PT-01 / SR-PT-10).
+     */
+    private final SafeUrlValidator safeUrlValidator;
+
     private final StreamingMethods streaming;
 
     /**
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
-     * client, message cache, REST template, and share view relay.
+     * client, message cache, REST template, share view relay, and SSRF validator.
      *
      * @param instance            the Mastodon instance URL
      * @param glacierDomain       the domain for Glacier integration
@@ -96,6 +103,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * @param messageCache        the ring-buffer cache for event storage and STOMP fan-out
      * @param restTemplate        the REST template for making HTTP requests
      * @param shareViewStompRelay relay for fan-out to share viewer topics (ADR-SHARE-04)
+     * @param safeUrlValidator    the SSRF guard passed to each {@link StompCallback} (ADR-PT-01 / SR-PT-10)
      */
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
@@ -104,12 +112,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
             MastodonClient client,
             MessageCache messageCache,
             RestTemplate restTemplate,
-            ShareViewStompRelay shareViewStompRelay) {
+            ShareViewStompRelay shareViewStompRelay,
+            SafeUrlValidator safeUrlValidator) {
         this.glacierDomain = glacierDomain;
         this.handle = handle;
         this.restTemplate = restTemplate;
         this.messageCache = messageCache;
         this.shareViewStompRelay = shareViewStompRelay;
+        this.safeUrlValidator = safeUrlValidator;
         this.subscriptions = new HashMap<>();
         this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
@@ -147,7 +157,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         Future<?> future;
         LOGGER.debug("Submitting asynchronous future task...");
         future = executorService.submit(() -> {
-            StompCallback stompCallback = new StompCallback(this, messageCache, shareViewStompRelay, restTemplate, principal, hashtag, handle, glacierDomain);
+            StompCallback stompCallback = new StompCallback(
+                    this, messageCache, shareViewStompRelay, restTemplate,
+                    safeUrlValidator, principal, hashtag, handle, glacierDomain);
             try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
                 // D-13/SR-8: log only hashed principal — never the raw wallId UUID
                 LOGGER.info("Asynchronous subscription for principal-hash={} with the hashtag={} started",

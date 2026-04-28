@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.util;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -53,6 +54,9 @@ public final class LogScrubber {
      * exposing the raw value.  The 8-char prefix corresponds to 32 bits of the digest —
      * collision probability is negligible for operational log correlation.
      *
+     * <p>Returns {@code "null"} when {@code value} is {@code null}.
+     * Returns {@code "blank"} when {@code value} is blank (empty or whitespace only).
+     *
      * @param value the sensitive value to hash; if {@code null}, returns {@code "null"}
      * @return an 8-character lowercase hex string (always deterministic)
      */
@@ -61,7 +65,7 @@ public final class LogScrubber {
         if (value.isBlank()) return "blank";
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] bytes = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(bytes).substring(0, 8);
         } catch (NoSuchAlgorithmException e) {
             // SHA-256 is guaranteed in every JVM (NIST FIPS 180-4)
@@ -87,6 +91,7 @@ public final class LogScrubber {
      * Masks the last octet of an IPv4 address or the last group of an IPv6 address.
      *
      * <p>This is a log-output helper only — the full IP is retained as the rate-limit key.
+     * Satisfies D-13 / SR-8: client IP must not appear verbatim in JSON log output.
      *
      * @param ip the IP address string; may be {@code null}
      * @return a partially-masked string safe for log output
@@ -101,13 +106,60 @@ public final class LogScrubber {
     }
 
     /**
-     * Truncates a hashtag to its length for safe logging — never logs the value itself.
+     * Returns the character length of the given hashtag as a safe log-field value.
      *
-     * @param hashtag the raw hashtag; may be {@code null}
-     * @return a string of the form {@code "len=N"} where N is the hashtag's character count
+     * <p>Logging the length rather than the raw value satisfies D-13 requirements
+     * while still providing enough signal to distinguish blank, short, and
+     * suspiciously long inputs in audit events.
+     *
+     * <p>Returns {@code 0} when {@code hashtag} is {@code null}.
+     *
+     * @param hashtag the raw hashtag string; may be {@code null}
+     * @return the character length of the hashtag, or {@code 0}
      */
-    public static String hashtagLen(final String hashtag) {
-        if (hashtag == null) return "len=null";
-        return "len=" + hashtag.length();
+    public static int hashtagLen(final String hashtag) {
+        if (hashtag == null) return 0;
+        return hashtag.length();
+    }
+
+    /**
+     * Returns a hash of the host and normalised port extracted from the given URL.
+     *
+     * <p>Scheme-specific port normalisation: if no explicit port is present, port 443
+     * is assumed for {@code https} schemes and port 80 for everything else.
+     * The hash input is {@code "host:port"}, ensuring that two URLs pointing to the
+     * same logical host always produce the same hash regardless of path or query.</p>
+     *
+     * <p>Malformed URLs, URLs whose host component cannot be extracted, and
+     * {@code null} or blank inputs all produce the hash of the sentinel string
+     * {@code "unparseable"}.</p>
+     *
+     * <p>This is the correct method to use in SSRF-related audit log events such as
+     * {@code stomp.embed.ssrf_blocked} — it surfaces which remote host triggered the
+     * guard without logging the raw URL or any path components that could contain
+     * sensitive data.</p>
+     *
+     * @param rawUrl the raw URL string to extract a host hash from; may be {@code null}
+     * @return an 8-character lowercase hex digest of {@code "host:port"},
+     *         or a digest of {@code "unparseable"} for invalid input
+     */
+    public static String urlHostHash(String rawUrl) {
+        if (rawUrl == null || rawUrl.isBlank()) {
+            return hash8("unparseable");
+        }
+        try {
+            URI uri = URI.create(rawUrl);
+            String host = uri.getHost();
+            if (host == null) {
+                return hash8("unparseable");
+            }
+            int port = uri.getPort();
+            if (port == -1) {
+                port = "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+            }
+            return hash8(host + ":" + port);
+        } catch (IllegalArgumentException e) {
+            return hash8("unparseable");
+        }
     }
 }
