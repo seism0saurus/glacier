@@ -1,11 +1,15 @@
 package de.seism0saurus.glacier.mastodon;
 
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
 import social.bigbone.api.method.StreamingMethods;
@@ -25,7 +29,10 @@ class SubscriptionManagerImplTest {
     private MastodonClient mastodonClient;
 
     @Mock
-    private SimpMessagingTemplate simpMessagingTemplate;
+    private MessageCache messageCache;
+
+    @Mock
+    private ShareViewStompRelay shareViewStompRelay;
 
     @Mock
     private RestTemplate restTemplate;
@@ -43,10 +50,15 @@ class SubscriptionManagerImplTest {
         MockitoAnnotations.openMocks(this);
         methods = mock(StreamingMethods.class);
         when(mastodonClient.streaming()).thenReturn(methods);
+        // Stub recordThenPublish so StompCallback doesn't NPE when called from virtual threads
+        when(messageCache.recordThenPublish(any(PrincipalKey.class), any(String.class), any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, "stub", "https://stub.example.com/embed", null, 1L));
         String instance = "test-instance";
         String glacierDomain = "test-domain";
         String handle = "test-handle@test-instance";
-        subscriptionManager = new SubscriptionManagerImpl(instance, glacierDomain, handle, mastodonClient, simpMessagingTemplate, restTemplate, PERMISSIVE_VALIDATOR);
+        subscriptionManager = new SubscriptionManagerImpl(
+                instance, glacierDomain, handle, mastodonClient,
+                messageCache, restTemplate, shareViewStompRelay, PERMISSIVE_VALIDATOR);
     }
 
     @Test
@@ -197,7 +209,7 @@ class SubscriptionManagerImplTest {
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
                 subscriptionManager.terminateSubscription(principal, hashtag)
         );
-        assertEquals("The provided principal " + principal + " is unknown", exception.getMessage());
+        assertEquals("The provided principal is unknown", exception.getMessage());
     }
 
     @Test
@@ -212,7 +224,7 @@ class SubscriptionManagerImplTest {
         Exception exception = assertThrows(IllegalArgumentException.class, () ->
                 subscriptionManager.terminateSubscription(principal, unknownHashtag)
         );
-        assertEquals("The provided hashtag " + unknownHashtag + " for principal " + principal + " is unknown", exception.getMessage());
+        assertEquals("The provided hashtag is unknown for this principal", exception.getMessage());
     }
 
     @Test

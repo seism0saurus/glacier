@@ -2,11 +2,15 @@ package de.seism0saurus.glacier.security;
 
 import de.seism0saurus.glacier.share.application.DefaultSafeUrlValidator;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.api.entity.Account;
 import social.bigbone.api.entity.Status;
@@ -33,15 +37,15 @@ import static org.mockito.Mockito.when;
  *
  * <p>This test was previously {@code @Disabled}. It is now re-enabled and verifies
  * the post-fix invariant: for every URL in the SSRF blocklist,
- * {@code restTemplate.headForHeaders} is NEVER called (SR-PT-04).</p>
+ * {@code restTemplate.headForHeaders} is NEVER called (SR-PT-04) and
+ * {@code messageCache.recordThenPublish} is NEVER called (SR-PT-10).</p>
  *
- * <p>Constructor adaptation note: the {@link StompCallback} constructor signature is
- * {@code (SubscriptionManager, SimpMessagingTemplate, RestTemplate, SafeUrlValidator,
+ * <p>Constructor note (merged design): the {@link StompCallback} constructor signature is
+ * {@code (SubscriptionManager, MessageCache, ShareViewStompRelay, RestTemplate, SafeUrlValidator,
  * String principal, String hashtag, String handle, String glacierDomain)}.
- * The {@code MessageCache} parameter referenced in the original finding draft was
- * from a different feature branch and is NOT part of this constructor.
- * The real {@link DefaultSafeUrlValidator} is used here (not a mock) — the whole
- * point of this regression test is that the production blocklist rejects these URLs.</p>
+ * The {@code SimpMessagingTemplate} parameter has been removed — publishing is delegated to
+ * {@link MessageCache} (D-03). The real {@link DefaultSafeUrlValidator} is used here (not a mock)
+ * — the whole point of this regression test is that the production blocklist rejects these URLs.</p>
  *
  * <p>Severity of the original finding: Medium (blind SSRF, internal-network probe;
  * no data exfiltration because HEAD response body is dropped). Now resolved.</p>
@@ -66,6 +70,8 @@ class StompCallbackEmbedSsrfFindingTest {
         // Setup: a remote Mastodon status whose url points at a forbidden destination.
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         RestTemplate restTemplate = mock(RestTemplate.class);
+        MessageCache messageCache = mock(MessageCache.class);
+        ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
         Status status = mock(Status.class);
         Account account = mock(Account.class);
 
@@ -81,12 +87,12 @@ class StompCallbackEmbedSsrfFindingTest {
         // loopback/unresolvable-host check in isPrivateAddress().
         SafeUrlValidator validator = new DefaultSafeUrlValidator();
 
-        // Constructor: (SubscriptionManager, SimpMessagingTemplate, RestTemplate,
-        //               SafeUrlValidator, principal, hashtag, handle, glacierDomain)
-        // SimpMessagingTemplate is null because the SSRF guard fires before any
-        // message would be sent — the null will never be dereferenced.
+        // Constructor (merged): (SubscriptionManager, MessageCache, ShareViewStompRelay,
+        //                        RestTemplate, SafeUrlValidator, principal, hashtag, handle, glacierDomain)
+        // MessageCache/ShareViewStompRelay are mocked because the SSRF guard fires before
+        // any write would be attempted — they will never be dereferenced.
         StompCallback callback = new StompCallback(
-                subscriptionManager, null, restTemplate, validator,
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate, validator,
                 UUID.randomUUID().toString(), "hashtag",
                 "glacier@example.com", "glacier.example.com");
 
@@ -99,23 +105,27 @@ class StompCallbackEmbedSsrfFindingTest {
         // Post-fix invariant (SR-PT-04): SafeUrlValidator must reject the URL
         // BEFORE headForHeaders is ever called.
         verify(restTemplate, never()).headForHeaders(anyString());
+
+        // Post-fix invariant (SR-PT-10): SafeUrlValidator must reject the URL
+        // BEFORE the cache is ever written.
+        verify(messageCache, never()).recordThenPublish(any(PrincipalKey.class), anyString(), any(CacheEntry.class));
     }
 
     /**
      * Pentest finding regression — {@code StatusEdited} SSRF path (SR-PT-04 / SR-PT-05 / SR-PT-10).
      *
      * <p>{@code processStatusEditedEvent} does NOT issue a {@code HEAD} request; it validates the
-     * toot URL via {@link SafeUrlValidator} and — if safe — builds a {@link de.seism0saurus.glacier.webservice.messaging.messages.StatusUpdatedMessage}
-     * and publishes it via {@code SimpMessagingTemplate}. The SSRF guard must therefore fire
-     * BEFORE {@code convertAndSend} is called, not before {@code headForHeaders}.</p>
+     * toot URL via {@link SafeUrlValidator} and — if safe — builds a cache entry and publishes it
+     * via {@link MessageCache#recordThenPublish}. The SSRF guard must therefore fire
+     * BEFORE {@code recordThenPublish} is called, not before {@code headForHeaders}.</p>
      *
      * <p>This test uses the real {@link DefaultSafeUrlValidator} production blocklist (SR-PT-04)
-     * and a mocked {@link SimpMessagingTemplate} so we can assert that no wall message is
-     * published for any URL in the blocklist (SR-PT-05).</p>
+     * and a mocked {@link MessageCache} so we can assert that no cache write occurs for any URL
+     * in the blocklist (SR-PT-10).</p>
      *
      * <p>SSRF guard fires before CacheEntry write — SR-PT-10 (StatusEdited path):
-     * because {@code processStatusEditedEvent} never writes to any cache before the URL
-     * validation, and validation rejects these URLs, no side effect can reach the wall.</p>
+     * because {@code processStatusEditedEvent} validates the URL before writing to the cache,
+     * and validation rejects these URLs, no side effect can reach the wall or the cache.</p>
      */
     @ParameterizedTest
     @ValueSource(strings = {
@@ -129,12 +139,13 @@ class StompCallbackEmbedSsrfFindingTest {
             // Non-HTTP scheme — must be rejected by the scheme allowlist
             "file:///etc/passwd",
     })
-    void onEvent_statusEdited_urlInBlocklist_noMessageSentToWall(final String maliciousUrl) {
+    void onEvent_statusEdited_urlInBlocklist_noCacheWriteOccurs(final String maliciousUrl) {
         // Setup: a remote Mastodon status whose url points at a forbidden destination.
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         RestTemplate restTemplate = mock(RestTemplate.class);
-        // SR-PT-05: mock the template so we can verify convertAndSend is never invoked
-        SimpMessagingTemplate simpMessagingTemplate = mock(SimpMessagingTemplate.class);
+        // SR-PT-10: mock the cache so we can verify recordThenPublish is never invoked
+        MessageCache messageCache = mock(MessageCache.class);
+        ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
         Status status = mock(Status.class);
         Account account = mock(Account.class);
 
@@ -147,10 +158,10 @@ class StompCallbackEmbedSsrfFindingTest {
         // regression test is that the production blocklist rejects these URLs.
         SafeUrlValidator validator = new DefaultSafeUrlValidator();
 
-        // Constructor: (SubscriptionManager, SimpMessagingTemplate, RestTemplate,
-        //               SafeUrlValidator, principal, hashtag, handle, glacierDomain)
+        // Constructor (merged): (SubscriptionManager, MessageCache, ShareViewStompRelay,
+        //                        RestTemplate, SafeUrlValidator, principal, hashtag, handle, glacierDomain)
         StompCallback callback = new StompCallback(
-                subscriptionManager, simpMessagingTemplate, restTemplate, validator,
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate, validator,
                 UUID.randomUUID().toString(), "hashtag",
                 "glacier@example.com", "glacier.example.com");
 
@@ -160,11 +171,9 @@ class StompCallbackEmbedSsrfFindingTest {
         // Act
         callback.onEvent(streamEvent);
 
-        // Post-fix invariant (SR-PT-05 / SR-PT-10): SafeUrlValidator must reject the URL
-        // BEFORE convertAndSend is ever called — no wall message must be published.
-        // Note: processStatusEditedEvent does NOT call headForHeaders (it goes straight to
-        // convertAndSend after URL validation), so the assertion here is on the template.
-        verify(simpMessagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+        // Post-fix invariant (SR-PT-10): SafeUrlValidator must reject the URL
+        // BEFORE recordThenPublish is ever called — no cache write must occur.
+        verify(messageCache, never()).recordThenPublish(any(PrincipalKey.class), anyString(), any(CacheEntry.class));
 
         // SR-PT-04 (complementary): confirm restTemplate.headForHeaders was also not called —
         // the StatusEdited path never calls it, this assertion documents that invariant.

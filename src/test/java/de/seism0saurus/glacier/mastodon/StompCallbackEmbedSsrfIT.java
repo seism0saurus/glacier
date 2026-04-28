@@ -6,6 +6,11 @@ import ch.qos.logback.core.AppenderBase;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import de.seism0saurus.glacier.share.application.DefaultSafeUrlValidator;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +19,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.MastodonClient;
@@ -140,9 +144,11 @@ class StompCallbackEmbedSsrfIT {
         when(status.getUrl()).thenReturn(maliciousUrl);
         when(status.getAccount()).thenReturn(account);
 
-        // Use the real Spring-wired DefaultSafeUrlValidator (verifies bean injection)
+        // Use the real Spring-wired DefaultSafeUrlValidator (verifies bean injection).
+        // MessageCache and ShareViewStompRelay are null here because the SSRF guard fires
+        // before any cache write — they are never dereferenced.
         StompCallback callback = new StompCallback(
-                subscriptionManager, null, mockRestTemplate, defaultSafeUrlValidator,
+                subscriptionManager, null, null, mockRestTemplate, defaultSafeUrlValidator,
                 UUID.randomUUID().toString(), "test",
                 "glacier@example.com", "glacier.example.com");
 
@@ -177,8 +183,10 @@ class StompCallbackEmbedSsrfIT {
         when(status.getUrl()).thenReturn(blockedUrl);
         when(status.getAccount()).thenReturn(account);
 
+        // MessageCache and ShareViewStompRelay are null — the SSRF guard fires before
+        // any cache write, so these are never dereferenced.
         StompCallback callback = new StompCallback(
-                subscriptionManager, null, mockRestTemplate, defaultSafeUrlValidator,
+                subscriptionManager, null, null, mockRestTemplate, defaultSafeUrlValidator,
                 UUID.randomUUID().toString(), "test",
                 "glacier@example.com", "glacier.example.com");
 
@@ -239,13 +247,20 @@ class StompCallbackEmbedSsrfIT {
             }
         };
 
-        // Use a mock SimpMessagingTemplate — processStatusCreatedEvent (StreamEvent path)
-        // calls convertAndSend after the SSRF check; without this the test NPEs.
-        // The message delivery result is not under test here.
-        SimpMessagingTemplate mockTemplate = mock(SimpMessagingTemplate.class);
+        // Use a mock MessageCache — processStatusCreatedEvent (StreamEvent path)
+        // calls messageCache.recordThenPublish after the SSRF check; without this the test NPEs.
+        // The message delivery result is not under test here — only that the HEAD request
+        // was issued to WireMock (proving the non-SSRF code path is intact).
+        MessageCache mockMessageCache = mock(MessageCache.class);
+        when(mockMessageCache.recordThenPublish(
+                org.mockito.ArgumentMatchers.any(PrincipalKey.class),
+                org.mockito.ArgumentMatchers.any(String.class),
+                org.mockito.ArgumentMatchers.any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, "allowed-1", "https://stub.example.com/embed", null, 1L));
+        ShareViewStompRelay nullRelay = null; // relay not needed for this test
 
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, realRestTemplate, permissiveValidator,
+                subscriptionManager, mockMessageCache, nullRelay, realRestTemplate, permissiveValidator,
                 UUID.randomUUID().toString(), "test",
                 "glacier@example.com", "glacier.example.com");
 

@@ -3,30 +3,50 @@ package de.seism0saurus.glacier.mastodon;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.util.LogScrubber;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
+import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
+import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.streaming.*;
 import social.bigbone.api.entity.streaming.MastodonApiEvent.GenericMessage;
 
 import java.net.URI;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * The StompCallback class implements the WebSocketCallback interface and is responsible for processing WebSocket events.
+ * The StompCallback class implements the WebSocketCallback interface and is responsible for
+ * processing WebSocket events received from the Mastodon streaming API.
  *
- * <p>SSRF guard (ADR-PT-01 / ADR-PT-02): before issuing any outbound {@code HEAD} request
- * against a toot URL, the URL is passed through the injected {@link SafeUrlValidator}.
+ * <p>On each qualifying Mastodon streaming event, this class delegates to
+ * {@link MessageCache#recordThenPublish} which atomically appends the event to the
+ * ring buffer and fans it out over STOMP (D-03). The {@link MessageCache}
+ * implementation owns the {@code SimpMessagingTemplate}; this class no longer holds it.</p>
+ *
+ * <p>SSRF guard (ADR-PT-01 / ADR-PT-02 / SR-PT-10): for every event that carries a toot URL
+ * ({@code processStatusCreatedEvent}, {@code processStatusEditedEvent}, {@code sendMessage}),
+ * the URL is passed through the injected {@link SafeUrlValidator} <em>before</em> any outbound
+ * {@code HEAD} request and <em>before</em> any {@link MessageCache#recordThenPublish} call.
  * If the validator returns empty, the toot is silently dropped and an audit event
- * ({@code stomp.embed.ssrf_blocked}) is emitted without logging the raw URL.</p>
+ * ({@code stomp.embed.ssrf_blocked}) is emitted with scrubbed URL metadata only
+ * (D-13 / SR-8 — raw URL never logged).
+ *
+ * <p>Deletion events ({@code procesStatusDeletedEvent}) carry only a status ID — no URL —
+ * and therefore require no SSRF guard.</p>
  */
 public class StompCallback implements WebSocketCallback {
 
@@ -51,11 +71,17 @@ public class StompCallback implements WebSocketCallback {
     private final SubscriptionManager subscriptionManager;
 
     /**
-     * The simpMessagingTemplate variable is an instance of the SimpMessagingTemplate class. It is used to send messages to WebSocket destinations.
-     * The SimpMessagingTemplate class provides methods such as convertAndSend() to convert and send messages to specified destinations.
-     * This variable is marked as private and final, indicating that it cannot be modified after initialization and can only be accessed within the containing class.
+     * The message cache. Atomically records events and fans them out over STOMP (D-03).
+     * Replaces the former {@code SimpMessagingTemplate} — the template is now owned by
+     * the cache implementation.
      */
-    private final SimpMessagingTemplate simpMessagingTemplate;
+    private final MessageCache messageCache;
+
+    /**
+     * Relay that fans toot events to viewer-scoped share topics (ADR-SHARE-04).
+     * May be null if no share links are active — null-safe call sites use it only when non-null.
+     */
+    private final ShareViewStompRelay shareViewStompRelay;
 
     /**
      * The REST template is needed to check the headers of the URLs of the toots for X-FRAME headers.
@@ -64,14 +90,23 @@ public class StompCallback implements WebSocketCallback {
 
     /**
      * SSRF guard: validates that a toot URL resolves to a public, non-private address
-     * and uses an allowed scheme before the callback issues any outbound HTTP request.
+     * and uses an allowed scheme before the callback issues any outbound HTTP request
+     * or writes to the cache (ADR-PT-01 / ADR-PT-02 / SR-PT-10).
      */
     private final SafeUrlValidator safeUrlValidator;
 
     /**
      * The principal aka wallId of the subscription this callback.
+     * Stored as raw String for STOMP destination construction only.
+     * Never logged directly — always hashed via {@link LogScrubber#hash8} (D-13 / SR-8).
      */
     private final String principal;
+
+    /**
+     * PrincipalKey wrapping the wallId — used for MessageCache lookups to prevent
+     * cross-namespace collision (ADR-SHARE-05, revised).
+     */
+    private final PrincipalKey principalKey;
 
     /**
      * This variable represents the hashtag of subscription of this callback.
@@ -79,6 +114,7 @@ public class StompCallback implements WebSocketCallback {
     private final String hashtag;
 
     private final String shortHandle;
+
     /**
      * The glacierDomain variable represents the domain used for this instance of glacier.
      */
@@ -86,20 +122,30 @@ public class StompCallback implements WebSocketCallback {
 
     /**
      * Initializes a new instance of the StompCallback class.
-     * The StompCallback class represents a callback for handling WebSocket events.
-     * It is used in conjunction with the SimpMessagingTemplate class to send messages to websocket destinations.
      *
-     * @param subscriptionManager   The SubscriptionManager used for restart-on-failure behaviour.
-     * @param simpMessagingTemplate The SimpMessagingTemplate instance used for sending WebSocket messages.
-     * @param restTemplate          The RestTemplate instance used for making HTTP requests, to check headers of the embedded iframes.
-     * @param safeUrlValidator      The SSRF guard: validates toot URLs before any outbound HTTP request is issued.
-     * @param principal             The principal aka wallId associated with the subscription.
-     * @param hashtag               The hashtag to subscribe to.
-     * @param handle                The full Mastodon handle of the Glacier bot (e.g. {@code @glacier@glacier.events}).
-     * @param glacierDomain         The glacier domain for checking if a webpage is loadable as an iframe.
+     * <p>The {@code messageCache} parameter replaces the former
+     * {@code SimpMessagingTemplate} parameter; the template is now owned by
+     * {@link MessageCache} (D-03).
+     *
+     * <p>SSRF guard (ADR-PT-01): every toot URL is validated by {@code safeUrlValidator}
+     * before any outbound HTTP request or cache write. If the validator returns empty,
+     * the toot is silently dropped.
+     *
+     * @param subscriptionManager  the manager to call when a stream failure requires restart
+     * @param messageCache         the cache that records events and publishes them over STOMP (D-03)
+     * @param shareViewStompRelay  the relay that fans events to viewer share topics (may be null,
+     *                             ADR-SHARE-04)
+     * @param restTemplate         the template used to inspect embed headers of toot URLs
+     * @param safeUrlValidator     the SSRF guard: validates toot URLs before any outbound request
+     *                             or cache write (ADR-PT-01 / SR-PT-10)
+     * @param principal            the wallId associated with the subscription
+     * @param hashtag              the hashtag to subscribe to
+     * @param handle               the bot's full Mastodon handle, used for the opt-in check
+     * @param glacierDomain        the glacier domain for iframe-loadability checks
      */
     public StompCallback(final SubscriptionManager subscriptionManager,
-                         final SimpMessagingTemplate simpMessagingTemplate,
+                         final MessageCache messageCache,
+                         final ShareViewStompRelay shareViewStompRelay,
                          final RestTemplate restTemplate,
                          final SafeUrlValidator safeUrlValidator,
                          final String principal,
@@ -107,31 +153,36 @@ public class StompCallback implements WebSocketCallback {
                          final String handle,
                          final String glacierDomain) {
         this.subscriptionManager = subscriptionManager;
-        this.simpMessagingTemplate = simpMessagingTemplate;
+        this.messageCache = messageCache;
+        this.shareViewStompRelay = shareViewStompRelay;
         this.restTemplate = restTemplate;
         this.safeUrlValidator = safeUrlValidator;
         this.principal = principal;
+        // ADR-SHARE-05 (revised): wrap raw wallId in PrincipalKey to prevent cross-namespace
+        // collision in MessageCache lookups. StompCallback is always called for a wall principal.
+        this.principalKey = new PrincipalKey(PrincipalKind.WALL, principal);
         this.hashtag = hashtag;
         this.shortHandle = getShortHandle(handle);
         this.glacierDomain = glacierDomain;
-        LOGGER.info("StompCallback for {} with hashtag {} created", principal, hashtag);
+        // D-13/SR-8: never log raw principal — use hashed 8-char prefix
+        LOGGER.info("StompCallback for principal-hash={} with hashtag={} created",
+                LogScrubber.hash8(principal), hashtag);
     }
 
     private static @NotNull String getShortHandle(String handle) {
         String tmpHandle = handle;
-        if (null == tmpHandle){
+        if (null == tmpHandle) {
             throw new IllegalArgumentException("A mastodon handle is needed");
         }
-        if (tmpHandle.startsWith("@")){
+        if (tmpHandle.startsWith("@")) {
             // remove initial @
             tmpHandle = tmpHandle.substring(1);
         }
-        if (!tmpHandle.contains("@")){
+        if (!tmpHandle.contains("@")) {
             throw new IllegalArgumentException("The mastodon handle does not contain an @ so either the name or the server is missing");
         }
         return tmpHandle.substring(0, tmpHandle.indexOf('@'));
     }
-
 
     /**
      * Handles a WebSocket event.
@@ -172,15 +223,13 @@ public class StompCallback implements WebSocketCallback {
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())){
+            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())) {
                 sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent, destination + "/creation");
             } else if (genericMessageContent.getStream().contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
                 sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent, destination + "/modification");
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
-                        || "status.delete".equals(genericMessageContent.getEvent())
-                       )
-            ) {
+                    || "status.delete".equals(genericMessageContent.getEvent()))) {
                 procesStatusDeletedEvent(genericMessageContent.getPayload().textValue(), destination);
             } else {
                 LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
@@ -193,20 +242,30 @@ public class StompCallback implements WebSocketCallback {
     /**
      * Sends a status message to the given destination after passing SSRF and frame-ancestor guards.
      *
-     * <p>SSRF guard (ADR-PT-02): the payload URL is validated via {@link SafeUrlValidator}
-     * before issuing the outbound {@code HEAD} request. If validation fails, the toot is
-     * silently dropped and an audit event is emitted.</p>
+     * <p>Processing order (SR-PT-10 invariant):
+     * <ol>
+     *   <li>SSRF guard via {@link SafeUrlValidator} — exits early if blocked, emits AUDIT event.</li>
+     *   <li>{@code HEAD} request to inspect embed headers (C-03 — RestClientException treated as
+     *       not-loadable to avoid stalling the Bigbone virtual thread).</li>
+     *   <li>Frame-ancestor / X-Frame-Options check via {@link #isLoadable}.</li>
+     *   <li>Bot opt-in check (toot must mention {@code shortHandle}).</li>
+     *   <li>Cache write via {@link MessageCache#recordThenPublish} (D-03).</li>
+     *   <li>Relay to share-view topics (ADR-SHARE-04).</li>
+     * </ol>
      *
-     * @param mapper              Jackson mapper for deserialising the payload
-     * @param statusMessageClass  the concrete {@link StatusMessage} subtype to build
+     * @param mapper                Jackson mapper for deserialising the payload
+     * @param statusMessageClass    the concrete {@link StatusMessage} subtype to build
      * @param genericMessageContent the envelope containing the raw payload JSON
-     * @param destination         the STOMP topic destination to publish the message to
+     * @param destination           the STOMP topic destination (informational only — publishing
+     *                              is delegated to {@link MessageCache})
      * @throws JsonProcessingException if the payload JSON cannot be parsed
      */
-    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass, GenericMessageContent genericMessageContent, String destination) throws JsonProcessingException {
-        GenericMessageContentPayload payload = mapper.readValue(genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+    private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass,
+                             GenericMessageContent genericMessageContent, String destination) throws JsonProcessingException {
+        GenericMessageContentPayload payload = mapper.readValue(
+                genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
 
-        // SSRF guard: validate the toot URL before issuing any outbound request
+        // 1. SSRF guard: validate the toot URL before issuing any outbound request or cache write
         Optional<URI> safeUri = safeUrlValidator.validate(payload.getUrl());
         if (safeUri.isEmpty()) {
             AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
@@ -215,17 +274,39 @@ public class StompCallback implements WebSocketCallback {
             return;
         }
 
-        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        // 2. HEAD request (C-03: timeout / connection failure → not-loadable)
+        HttpHeaders httpHeaders;
+        try {
+            httpHeaders = this.restTemplate.headForHeaders(payload.getUrl() + "/embed");
+        } catch (RestClientException ex) {
+            LOGGER.debug("HEAD request to {}/embed failed — treating as not-loadable (C-03): {}",
+                    payload.getUrl(), ex.getMessage());
+            return;
+        }
+
+        // 3. Frame-ancestor / X-Frame-Options gate
         if (isLoadable(httpHeaders, glacierDomain)) {
+            // 4. Bot opt-in gate
             if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
-                StatusMessage statusEvent = null;
-                if (StatusCreatedMessage.class.equals(statusMessageClass)){
-                    statusEvent = StatusCreatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").build();
-                } else if (StatusUpdatedMessage.class.equals(statusMessageClass)) {
-                    statusEvent = StatusUpdatedMessage.builder().id(payload.getId()).url(payload.getUrl() + "/embed").editedAt(payload.getEditedAt()).build();
+                // 5. Cache write (D-03)
+                CacheEntry partial;
+                if (StatusCreatedMessage.class.equals(statusMessageClass)) {
+                    partial = new CacheEntry(EventType.CREATED, payload.getId(), payload.getUrl() + "/embed", null, 0L);
+                } else {
+                    // StatusUpdatedMessage — normalise editedAt to UTC (D-07)
+                    String editedAt = normaliseEditedAt(payload.getEditedAt());
+                    if (editedAt == null && payload.getEditedAt() != null) {
+                        // normalisation failed (malformed input) — already warned, drop
+                        return;
+                    }
+                    partial = new CacheEntry(EventType.UPDATED, payload.getId(), payload.getUrl() + "/embed", editedAt, 0L);
                 }
-                assert statusEvent != null;
-                this.simpMessagingTemplate.convertAndSend(destination, statusEvent);
+                CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+                // 6. ADR-SHARE-04: relay to viewer share topics after successful cache write
+                if (shareViewStompRelay != null && stored != null) {
+                    String eventType = StatusCreatedMessage.class.equals(statusMessageClass) ? "creation" : "modification";
+                    shareViewStompRelay.relayTootEvent(principal, hashtag, eventType, stored);
+                }
                 LOGGER.info("Sending message to {}", destination);
             } else {
                 LOGGER.info("No opt in. Ignoring");
@@ -238,8 +319,8 @@ public class StompCallback implements WebSocketCallback {
     /**
      * Checks if a webpage is loadable as iframe based on the provided HttpHeaders and the configured glacierDomain.
      * <p>
-     * If a content security policy with a frame-ancestore direvtive exists. That value is used, since it overrules the X-Frame-Options.
-     * Otherwise, the X-Frame-Options are used.
+     * If a content security policy with a frame-ancestors directive exists, that value is used, since it overrules
+     * the X-Frame-Options. Otherwise, the X-Frame-Options are used.
      * If none of these is set, the browser default (allow) is used.
      *
      * @param httpHeaders   The HttpHeaders of the webpage.
@@ -262,7 +343,7 @@ public class StompCallback implements WebSocketCallback {
                 frameAncestorsContainsServerOrWildcard = Stream.of(csp.getFirst().split(";"))
                         .filter(policy -> policy.toUpperCase().contains("FRAME-ANCESTORS"))
                         .map(String::trim)
-                        // This is not perfect, but if the site of the too, does not explicitly allow glacier, or all http(s) sites as ancestors, we will most likely not be able to load it.
+                        // This is not perfect, but if the site of the toot does not explicitly allow glacier, or all http(s) sites as ancestors, we will most likely not be able to load it.
                         // So this regex should match either *, http(s):, http(s)://* with or without ports or the glacier domain with or without leading http(s) and with or without ports.
                         .anyMatch(policy -> policy.toUpperCase().matches(
                                 "FRAME-ANCESTORS (\\S+ )*((HTTPS?:(//)?)|((HTTPS?://)?\\*(:((\\*)|80|443))?)|((HTTPS?://)?"
@@ -306,19 +387,28 @@ public class StompCallback implements WebSocketCallback {
     }
 
     /**
-     * Processes a StatusCreated event by sending a creation notification to the specified destination.
+     * Processes a StatusCreated event by recording it in the cache and fanning it out over STOMP.
      *
-     * <p>SSRF guard (ADR-PT-02): the status URL is validated via {@link SafeUrlValidator}
-     * before issuing the outbound {@code HEAD} request. If validation fails, the toot is
-     * silently dropped and an audit event is emitted — no message is forwarded to the wall.</p>
+     * <p>Processing order (SR-PT-10 invariant):
+     * <ol>
+     *   <li>SSRF guard via {@link SafeUrlValidator} — exits early if blocked, emits AUDIT event.</li>
+     *   <li>{@code HEAD} request to inspect embed headers (C-03).</li>
+     *   <li>Frame-ancestor / X-Frame-Options check.</li>
+     *   <li>Cache write via {@link MessageCache#recordThenPublish} (D-03).</li>
+     *   <li>Relay to share-view topics (ADR-SHARE-04).</li>
+     * </ol>
+     *
+     * <p>Note: unlike the generic event path ({@link #sendMessage}), this path does not check
+     * the bot opt-in mention — it relies on the Mastodon subscription filter having already
+     * narrowed the stream to the configured hashtag.
      *
      * @param status      The newly created status.
-     * @param destination The destination to send the status event. /creation will be appended to it as a suffix.
+     * @param destination The base STOMP destination; /creation suffix is appended (informational).
      */
     private void processStatusCreatedEvent(final Status status, final String destination) {
         logEvent("got a StatusCreated event");
 
-        // SSRF guard: validate the toot URL before issuing any outbound request
+        // 1. SSRF guard: validate the toot URL before issuing any outbound request or cache write
         Optional<URI> safeUri = safeUrlValidator.validate(status.getUrl());
         if (safeUri.isEmpty()) {
             AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
@@ -327,28 +417,49 @@ public class StompCallback implements WebSocketCallback {
             return;
         }
 
-        HttpHeaders httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        // 2. HEAD request (C-03: timeout / connection failure → not-loadable)
+        HttpHeaders httpHeaders;
+        try {
+            httpHeaders = this.restTemplate.headForHeaders(status.getUrl() + "/embed");
+        } catch (RestClientException ex) {
+            LOGGER.debug("HEAD request to {}/embed failed — treating as not-loadable (C-03): {}",
+                    status.getUrl(), ex.getMessage());
+            return;
+        }
+
+        // 3. Frame-ancestor / X-Frame-Options gate
         if (isLoadable(httpHeaders, glacierDomain)) {
-            StatusMessage statusEvent = StatusCreatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
-            this.simpMessagingTemplate.convertAndSend(destination + "/creation", statusEvent);
+            // 4. Cache write (D-03)
+            CacheEntry partial = new CacheEntry(EventType.CREATED, status.getId(), status.getUrl() + "/embed", null, 0L);
+            CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+            // 5. ADR-SHARE-04: relay to viewer share topics after successful cache write
+            if (shareViewStompRelay != null && stored != null) {
+                shareViewStompRelay.relayTootEvent(principal, hashtag, "creation", stored);
+            }
         }
     }
 
     /**
-     * Process a StatusEdited event by sending a modification notification to the specified destination.
+     * Process a StatusEdited event by updating the cache and fanning out the modification over STOMP.
      *
-     * <p>SSRF guard (ADR-PT-01 / SR-PT-04): the status URL is validated via {@link SafeUrlValidator}
-     * before any message is published to the wall. If the validator returns empty, the edited toot
-     * is silently dropped and an audit event ({@code stomp.embed.ssrf_blocked}) is emitted with
-     * scrubbed URL metadata — the raw URL is never logged (D-13 / SR-8).</p>
+     * <p>Processing order (SR-PT-10 invariant):
+     * <ol>
+     *   <li>SSRF guard via {@link SafeUrlValidator} — exits early if blocked, emits AUDIT event.</li>
+     *   <li>{@code editedAt} normalisation to UTC (D-07).</li>
+     *   <li>Cache write via {@link MessageCache#recordThenPublish} (D-03).</li>
+     *   <li>Relay to share-view topics (ADR-SHARE-04).</li>
+     * </ol>
+     *
+     * <p>Note: no {@code HEAD} request is issued for edited statuses — the toot URL was already
+     * validated when the toot was first created.
      *
      * @param status      The edited status.
-     * @param destination The destination to send the status event. /modification will be appended to it as a suffix.
+     * @param destination The base STOMP destination; /modification suffix is appended (informational).
      */
     private void processStatusEditedEvent(final Status status, final String destination) {
         logEvent("got a StatusEdited event");
 
-        // SSRF guard: validate the toot URL before publishing any message to the wall
+        // 1. SSRF guard: validate the toot URL before publishing any message to the cache
         Optional<URI> safeUri = safeUrlValidator.validate(status.getUrl());
         if (safeUri.isEmpty()) {
             AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
@@ -357,20 +468,34 @@ public class StompCallback implements WebSocketCallback {
             return;
         }
 
-        StatusMessage statusEvent = StatusUpdatedMessage.builder().id(status.getId()).url(status.getUrl() + "/embed").build();
-        this.simpMessagingTemplate.convertAndSend(destination + "/modification", statusEvent);
+        // 2. Normalise editedAt to UTC (D-07)
+        String editedAt = normaliseEditedAt(status.getEditedAt() != null ? status.getEditedAt().toString() : null);
+
+        // 3. Cache write (D-03)
+        CacheEntry partial = new CacheEntry(EventType.UPDATED, status.getId(), status.getUrl() + "/embed", editedAt, 0L);
+        CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+        // 4. ADR-SHARE-04: relay to viewer share topics
+        if (shareViewStompRelay != null && stored != null) {
+            shareViewStompRelay.relayTootEvent(principal, hashtag, "modification", stored);
+        }
     }
 
     /**
-     * Processes the StatusDeleted event by sending a deletion notification to the specified destination.
+     * Processes the StatusDeleted event by recording the deletion in the cache and fanning it out.
+     *
+     * <p>Deletion events carry only a status ID — no URL — so no SSRF guard is required here.</p>
      *
      * @param statusId    The ID of the deleted status.
-     * @param destination The destination to send the deletion notification to. /deletion will be appended to it as a suffix.
+     * @param destination The base STOMP destination; /deletion suffix is appended (informational).
      */
     private void procesStatusDeletedEvent(final String statusId, final String destination) {
         logEvent("got a StatusDeleted event");
-        StatusMessage statusEvent = StatusDeletedMessage.builder().id(statusId).build();
-        this.simpMessagingTemplate.convertAndSend(destination + "/deletion", statusEvent);
+        CacheEntry partial = new CacheEntry(EventType.DELETED, statusId, null, null, 0L);
+        CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
+        // ADR-SHARE-04: relay to viewer share topics
+        if (shareViewStompRelay != null && stored != null) {
+            shareViewStompRelay.relayTootEvent(principal, hashtag, "deletion", stored);
+        }
     }
 
     /**
@@ -421,11 +546,37 @@ public class StompCallback implements WebSocketCallback {
     }
 
     /**
+     * Normalises an ISO-8601 timestamp to UTC by parsing it as an {@link Instant} and
+     * calling {@code toString()}, which always produces a {@code Z}-suffix form (D-07).
+     *
+     * <p>Returns {@code null} and logs a WARN when the input cannot be parsed, so that
+     * a malformed {@code editedAt} in a Mastodon fork's payload does not crash the
+     * ingestion thread.
+     *
+     * @param raw the raw {@code editedAt} string from the Mastodon payload; may be {@code null}
+     * @return UTC normalised string, or {@code null} if {@code raw} was {@code null} or
+     *         unparseable
+     */
+    static String normaliseEditedAt(final String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(raw).toString();
+        } catch (DateTimeParseException ex) {
+            LOGGER.warn("Could not parse editedAt value '{}' — dropping update event (D-07)", raw);
+            return null;
+        }
+    }
+
+    /**
      * Logs an event.
+     *
+     * <p>D-13/SR-8: uses hashed principal prefix — never the raw wallId UUID.
      *
      * @param msg The message to be logged.
      */
     private void logEvent(final String msg) {
-        LOGGER.info("Subscription {} {}", principal, msg);
+        LOGGER.info("Subscription principal-hash={} {}", LogScrubber.hash8(principal), msg);
     }
 }
