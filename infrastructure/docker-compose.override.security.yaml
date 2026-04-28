@@ -1,0 +1,66 @@
+---
+# Compose override that runs the security scan suite alongside the packaged
+# Glacier image.  ZAP and the probes target ONLY the local glacier container —
+# never the upstream Mastodon (out of scope per pentest rules of engagement).
+#
+# Compose with:
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f docker-compose.override.security.yaml \
+#     up --build --abort-on-container-exit security-runner --exit-code-from security-runner
+
+services:
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: zap
+    networks:
+      - mastodon
+    volumes:
+      - ./security:/zap/wrk
+    # ZAP is started by the security-runner step, not as a daemon.
+    command: ["sleep", "infinity"]
+    depends_on:
+      - glacier
+
+  security-runner:
+    image: python:3.12-slim
+    container_name: security-runner
+    networks:
+      - mastodon
+    working_dir: /work
+    volumes:
+      - ./security:/work
+    environment:
+      BASE_URL: "http://glacier:8080"
+      SHARE_BASE_URL: "https://share.proxy"
+      EXPECT_SECURE_COOKIE: "true"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eux
+        pip install --no-cache-dir websocket-client==1.8.0
+        # Wait for glacier to be ready
+        count=0
+        while ! curl -fsS http://glacier:8080/ > /dev/null 2>&1; do
+          count=$((count + 1))
+          if [ "$$count" -gt 60 ]; then
+            echo "glacier never became ready"; exit 1
+          fi
+          sleep 2
+        done
+        # 1) Header audit — passive
+        sh /work/scripts/header-audit.sh
+        # 2) WS BOLA probe — runtime cross-principal isolation
+        python /work/scripts/ws-bola-probe.py
+        # 3) ZAP baseline — passive scan, must pass clean against committed baseline
+        docker_zap_url="http://zap:8080"
+        # ZAP runs in its own container; trigger it via REST API would require
+        # daemon-mode setup. The CI workflow runs the ZAP scan as a separate
+        # docker run step rather than orchestrating ZAP from inside this container.
+        echo "security-runner OK"
+        # NOTE: ZAP scan itself is run as a separate `docker run` step from
+        # security.yml, NOT from this compose service — keeps the runner image
+        # minimal and lets the workflow capture its exit code independently.
+    depends_on:
+      - glacier

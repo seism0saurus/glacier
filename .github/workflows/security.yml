@@ -1,0 +1,233 @@
+name: "Security Scan"
+
+# Runs on every push to a release-style branch ("*.*.*") AFTER the packaging job
+# of verify.yml has produced the docker image. Also exposed via workflow_dispatch
+# so an operator can manually trigger the FULL active scan (heavier, ~30 min).
+#
+# Scope rules (rules of engagement):
+#   - All scanners target ONLY http://glacier:8080 (the local container).
+#   - The upstream Mastodon container is NEVER actively scanned.
+#   - No real fediverse instance is ever contacted from this workflow.
+#   - No real tokens are committed; the e2e access token is the same one used
+#     by verify.yml against the seeded local Mastodon (already in compose).
+#
+# Workflow-injection note: this file uses ${{ github.ref_name }} only in env:
+# values (safe: the GitHub-provided ref, not user-controllable). No untrusted
+# inputs (issue/PR titles or bodies) are interpolated into any run: command.
+
+on:
+  push:
+    branches: ["*.*.*"]
+  workflow_dispatch:
+    inputs:
+      run_full_scan:
+        description: "Run ZAP full active scan (~30 min). Disabled by default."
+        type: boolean
+        default: false
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GLACIER_IMAGE_TAG: ${{ github.ref_name }}
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download packaged jar
+        uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+        continue-on-error: true
+
+      - name: Fail fast if jar artifact is missing
+        run: |
+          test -f infrastructure/glacier/glacier.jar \
+            || { echo "::error::Glacier jar artifact missing. Run the verify.yml package job first."; exit 1; }
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Start security stack
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            up --build -d glacier proxy
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
+              echo "glacier ready"; break
+            fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/ > /dev/null
+
+      - name: ZAP baseline scan
+        working-directory: infrastructure
+        run: |
+          docker run --rm \
+            --network=infrastructure_mastodon \
+            -v "$(pwd)/security:/zap/wrk" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -cmd -autorun /zap/wrk/zap/baseline.yaml \
+            || true
+
+      - name: Diff ZAP baseline against committed allowlist
+        working-directory: infrastructure
+        run: |
+          python3 security/scripts/diff-zap-baseline.py \
+            security/zap-baseline.json \
+            security/baselines/zap-baseline.json \
+            --threshold Medium
+
+      - name: Header audit
+        working-directory: infrastructure
+        env:
+          BASE_URL: "http://localhost:8080"
+          SHARE_BASE_URL: "http://localhost:8080"
+          EXPECT_SECURE_COOKIE: "false"
+        run: |
+          bash security/scripts/header-audit.sh
+
+      - name: WebSocket BOLA probe
+        working-directory: infrastructure
+        env:
+          BASE_URL: "http://localhost:8080"
+        run: |
+          pip install --quiet websocket-client==1.8.0
+          python3 security/scripts/ws-bola-probe.py
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+          format: "sarif"
+          output: "trivy-report.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+          ignore-unfixed: true
+          ignorefile: "infrastructure/security/.trivyignore"
+
+      - name: Upload Trivy SARIF to code-scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-report.sarif"
+
+      - name: Upload security artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            infrastructure/security/zap-baseline.html
+            infrastructure/security/zap-baseline.json
+            trivy-report.sarif
+
+      - name: Compose logs on failure
+        if: failure()
+        working-directory: infrastructure
+        run: |
+          docker ps -a
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            logs --tail=200
+
+      - name: Tear down
+        if: always()
+        working-directory: infrastructure
+        run: |
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            down -v --remove-orphans
+
+  full-scan:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_full_scan == true
+    needs: baseline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GLACIER_IMAGE_TAG: ${{ github.ref_name }}
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Start stack
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            up --build -d glacier proxy
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then break; fi
+            sleep 2
+          done
+
+      - name: ZAP full active scan
+        working-directory: infrastructure
+        run: |
+          docker run --rm \
+            --network=infrastructure_mastodon \
+            -v "$(pwd)/security:/zap/wrk" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -cmd -autorun /zap/wrk/zap/full-scan.yaml || true
+
+      - name: Diff full-scan against baseline
+        working-directory: infrastructure
+        run: |
+          python3 security/scripts/diff-zap-baseline.py \
+            security/zap-full-scan.json \
+            security/baselines/zap-baseline.json \
+            --threshold High
+
+      - name: Upload full-scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-full-scan-reports
+          path: |
+            infrastructure/security/zap-full-scan.html
+            infrastructure/security/zap-full-scan.json
+            infrastructure/security/zap-full-scan-sarif.sarif
+
+      - name: Upload full-scan SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "infrastructure/security/zap-full-scan-sarif.sarif"
+
+      - name: Tear down
+        if: always()
+        working-directory: infrastructure
+        run: |
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            down -v --remove-orphans

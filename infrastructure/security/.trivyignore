@@ -1,0 +1,8 @@
+# Trivy CVE suppression list for Glacier image scans.
+#
+# Format: <CVE-ID> # <justification>; expires:<YYYY-MM-DD>
+# CI fails any HIGH or CRITICAL not present here.
+# Re-triage entries on or before their expiry date.
+#
+# Example (no entries currently committed; add via PR with rationale):
+# CVE-2024-1234 # affects only XML parsing path that Glacier never invokes; expires:2026-07-31

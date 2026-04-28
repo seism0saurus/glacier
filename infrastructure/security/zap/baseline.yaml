@@ -1,0 +1,92 @@
+---
+# OWASP ZAP Automation Framework configuration for Glacier baseline scan.
+#
+# Scope:    http://glacier:8080 (the local docker-compose service ONLY).
+# Excluded: every external host. Active scanners that may follow redirects are
+#           also configured to drop any request whose host is not glacier:8080.
+#
+# Run:
+#   docker run --rm --network=infrastructure_mastodon \
+#     -v "$(pwd)/infrastructure/security:/zap/wrk" \
+#     -t ghcr.io/zaproxy/zaproxy:stable \
+#     zap.sh -cmd -autorun /zap/wrk/zap/baseline.yaml
+#
+# Output: /zap/wrk/zap-baseline.json + /zap/wrk/zap-baseline.html
+#
+# This config intentionally stays in BASELINE mode (passive scanners only).
+# A separate full-scan.yaml exists for the active-scan job — gated behind a
+# manual workflow_dispatch trigger because active scanners can mutate state.
+
+env:
+  contexts:
+    - name: "glacier-local"
+      urls:
+        - "http://glacier:8080"
+      includePaths:
+        - "http://glacier:8080.*"
+      excludePaths:
+        # never scan the bundled SPA's static asset bundles — they are immutable
+        # and noisy for ZAP's content-injection rules.
+        - "http://glacier:8080/.*\\.(js|css|woff2?|ttf|svg|png|jpg|gif|ico|map)$"
+        # the upstream Mastodon backing service is a third-party container —
+        # excluded from active probing for legal scope reasons.
+        - "https://proxy/.*"
+        - "http://proxy/.*"
+      authentication:
+        method: "manual"  # cookie identity is opaque, ZAP cannot synthesize wallId
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+      maxBodySizeInBytesToScan: 0
+    rules:
+      # 10038: CSP header missing — Glacier intentionally serves no CSP on the SPA root
+      # because the embedded iframe rendering needs a permissive CSP. Suppressed
+      # at baseline; share/* and /rest/messages have their own filters that DO set
+      # CSP and are covered by ShareSecurityHeadersFilterTest / FallbackSecurityHeadersFilterTest.
+      - id: 10038
+        action: IGNORE
+      # 10049: Cache-control header missing on /index.html — the Angular bundle
+      # ships hashed asset filenames; index.html no-store is enforced by Traefik
+      # in production. Suppressed in dev where Traefik is bypassed.
+      - id: 10049
+        action: IGNORE
+
+  - type: spider
+    parameters:
+      context: "glacier-local"
+      maxDuration: 5
+      maxDepth: 5
+      maxChildren: 50
+    tests:
+      - name: "spider-progress"
+        type: stats
+        statistic: "spider.urls.added"
+        operator: ">="
+        value: 1
+        onFail: warn
+
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  - type: report
+    parameters:
+      template: "traditional-json"
+      reportDir: "/zap/wrk"
+      reportFile: "zap-baseline"
+      reportTitle: "Glacier ZAP Baseline"
+      reportDescription: "Passive scan against http://glacier:8080 (local compose)."
+
+  - type: report
+    parameters:
+      template: "traditional-html"
+      reportDir: "/zap/wrk"
+      reportFile: "zap-baseline"
+      reportTitle: "Glacier ZAP Baseline"

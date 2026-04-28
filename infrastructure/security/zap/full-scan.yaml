@@ -1,0 +1,82 @@
+---
+# OWASP ZAP Automation Framework — full active scan.
+#
+# Scope:  http://glacier:8080 ONLY. Same allowlist as baseline.yaml.
+# Trigger: workflow_dispatch in security.yml (NOT every PR — active scan
+#          can take 30+ minutes and mutates rate-limit state).
+#
+# Active scanners are restricted to the OWASP Top 10 categories Glacier is
+# realistically exposed to. Categories that don't apply (e.g. SQLi — Glacier
+# has no DB) are explicitly disabled to keep noise down.
+
+env:
+  contexts:
+    - name: "glacier-local"
+      urls:
+        - "http://glacier:8080"
+      includePaths:
+        - "http://glacier:8080/rest/.*"
+      excludePaths:
+        # never scan the bundled SPA — only the REST surface
+        - "http://glacier:8080/(?!rest).*"
+        # do NOT mutate the share-link create endpoint via active scanner —
+        # that hits the per-sharer cap and pollutes the seeded fixture state.
+        - "http://glacier:8080/rest/share-links.*"
+        # do NOT spider the upstream Mastodon — out of scope (we don't own it).
+        - "https?://proxy/.*"
+  parameters:
+    failOnError: true
+    failOnWarning: false
+
+jobs:
+  - type: passiveScan-config
+    parameters:
+      maxAlertsPerRule: 10
+      scanOnlyInScope: true
+
+  - type: spider
+    parameters:
+      context: "glacier-local"
+      maxDuration: 5
+      maxDepth: 5
+
+  - type: activeScan
+    parameters:
+      context: "glacier-local"
+      policy: "API"
+      maxRuleDurationInMins: 5
+      maxScanDurationInMins: 25
+    policyDefinition:
+      defaultStrength: "Medium"
+      defaultThreshold: "Medium"
+      rules:
+        # SQL Injection — Glacier has no SQL persistence layer; disable.
+        - id: 40018
+          strength: "Off"
+        # Cross-Site Scripting (Reflected) — keep, REST endpoints accept query params
+        - id: 40012
+          strength: "High"
+          threshold: "Medium"
+        # Path Traversal — keep
+        - id: 6
+          strength: "High"
+          threshold: "Medium"
+        # Server-Side Include — disable, JSP not used
+        - id: 40009
+          strength: "Off"
+        # XML External Entity — Glacier's REST is JSON-only; disable
+        - id: 90023
+          strength: "Off"
+
+  - type: report
+    parameters:
+      template: "traditional-json"
+      reportDir: "/zap/wrk"
+      reportFile: "zap-full-scan"
+      reportTitle: "Glacier ZAP Full Active Scan"
+
+  - type: report
+    parameters:
+      template: "sarif-json"
+      reportDir: "/zap/wrk"
+      reportFile: "zap-full-scan-sarif"

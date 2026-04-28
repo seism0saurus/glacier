@@ -1,0 +1,7 @@
+{
+  "$comment": "Initial empty baseline for ZAP findings against Glacier. Each entry suppresses one alert id+url+param combination, with a justification and a re-review date. Add findings here only after triage; CI fails on any new alert not present in this baseline.",
+  "schemaVersion": 1,
+  "scope": "http://glacier:8080",
+  "lastReviewed": "2026-04-27",
+  "alerts": []
+}

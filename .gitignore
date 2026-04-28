@@ -19,3 +19,4 @@
 /.claude/agent-memory/
 /.claude/worktrees/
 /.claude/settings.local.json
+/.jqwik-database
