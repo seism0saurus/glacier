@@ -860,8 +860,8 @@ public class StompCallbackTest {
         // Arrange
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, restTemplate,
-                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         // Truncated JSON — missing closing brace causes Jackson to throw with canary in source fragment
         when(mockGenericMessage.getText())
@@ -890,8 +890,8 @@ public class StompCallbackTest {
         // Arrange
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, restTemplate,
-                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -919,8 +919,8 @@ public class StompCallbackTest {
         // Arrange
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, restTemplate,
-                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -950,8 +950,8 @@ public class StompCallbackTest {
         // Arrange
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, restTemplate,
-                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -984,8 +984,8 @@ public class StompCallbackTest {
         TestLogAppender auditAppender = getAuditLogAppender();
         MDC.clear(); // ensure clean MDC state before the test
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, restTemplate,
-                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -1060,8 +1060,8 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         TestLogAppender auditAppender = getAuditLogAppender();
         StompCallback callback = new StompCallback(
-                subscriptionManager, mockTemplate, restTemplate,
-                UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         // Truncated JSON — missing closing brace causes Jackson to throw JsonParseException
         // with the fragment visible in the source context of the exception message.
@@ -1903,13 +1903,16 @@ public class StompCallbackTest {
      *       level, throwable proxy, and MDC state (T-A1 through T-A5).</li>
      * </ul>
      */
-    @Getter
     static class TestLogAppender extends AppenderBase<ILoggingEvent> {
         private final List<String> loggedMessages = new ArrayList<>();
         private final List<ILoggingEvent> loggedEvents = new ArrayList<>();
 
         public List<String> getLoggedMessages() {
             return loggedMessages;
+        }
+
+        public List<ILoggingEvent> getLoggedEvents() {
+            return loggedEvents;
         }
 
         @Override
