@@ -525,11 +525,11 @@ public class StompCallback implements WebSocketCallback {
             case TechnicalEvent.Open open ->
                     logEvent("got an Open event: %s".formatted(open));
             case TechnicalEvent.Closing closing ->
-                    logEvent("got a Closing event: %s".formatted(closing));
+                    logEvent("got a Closing event — code=%d".formatted(closing.getCode()));
             case TechnicalEvent.Closed closed ->
-                    logEvent("got a Closed event: %s".formatted(closed));
+                    logEvent("got a Closed event — code=%d".formatted(closed.getCode()));
             case TechnicalEvent.Failure failure -> {
-                logEvent("got a Failure event. Restarting subscription. The error is: %s".formatted(failure.getError().getMessage()));
+                logEvent("got a Failure event. Restarting subscription. exception=%s".formatted(failure.getError().getClass().getSimpleName()));
                 this.subscriptionManager.terminateSubscription(principal, hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }

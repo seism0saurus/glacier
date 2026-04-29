@@ -38,6 +38,7 @@ import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import social.bigbone.api.entity.streaming.TechnicalEvent;
 import social.bigbone.api.entity.streaming.WebSocketEvent;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.ArrayList;
@@ -471,7 +472,11 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes a Technical Closing event correctly
+     * Tests if the event handler processes a Technical Closing event correctly.
+     *
+     * <p>Updated for TD-2 (ADR-TD2-03): the log now contains only the numeric close code
+     * via {@code code=%d}, never the peer-controlled reason string or the raw Kotlin
+     * {@code toString()} representation of the event object.</p>
      */
     @Test
     public void onEvent_EventTechnicalClosing() {
@@ -482,17 +487,22 @@ public class StompCallbackTest {
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Closing mockEvent = mock(TechnicalEvent.Closing.class);
+        when(mockEvent.getCode()).thenReturn(1000);
 
         // Execute
         callback.onEvent(mockEvent);
 
-        // Verify
+        // Verify: new format — numeric code only, no raw toString dump
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got a Closing event: Mock for Closing"));
+                .anySatisfy(msg -> assertThat(msg).contains("got a Closing event — code=1000"));
     }
 
     /**
-     * Tests if the event handler processes a Technical Closed event correctly
+     * Tests if the event handler processes a Technical Closed event correctly.
+     *
+     * <p>Updated for TD-2 (ADR-TD2-03): the log now contains only the numeric close code
+     * via {@code code=%d}, never the peer-controlled reason string or the raw Kotlin
+     * {@code toString()} representation of the event object.</p>
      */
     @Test
     public void onEvent_EventTechnicalClosed() {
@@ -503,13 +513,14 @@ public class StompCallbackTest {
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
         TechnicalEvent.Closed mockEvent = mock(TechnicalEvent.Closed.class);
+        when(mockEvent.getCode()).thenReturn(1000);
 
         // Execute
         callback.onEvent(mockEvent);
 
-        // Verify
+        // Verify: new format — numeric code only, no raw toString dump
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got a Closed event: Mock for Closed"));
+                .anySatisfy(msg -> assertThat(msg).contains("got a Closed event — code=1000"));
     }
 
     /**
@@ -841,6 +852,45 @@ public class StompCallbackTest {
             "__GLACIER_TD1_CANARY_" + UUID.randomUUID() + "__";
 
     // -------------------------------------------------------------------------
+    // T-A constants shared by the TD-2 technical-event log-hygiene tests
+    // -------------------------------------------------------------------------
+
+    /**
+     * Network-layer exception classes that OkHttp wraps in {@link TechnicalEvent.Failure}.
+     * These are the JVM-controlled simple names that are safe to log — they contain
+     * no peer-influenced bytes. Used by T-A2 to verify the logged token is drawn from
+     * this bounded set, and by Lane B (T-B1) as the parameterised source.
+     */
+    private static final List<Class<? extends Throwable>> EXPECTED_TECHNICAL_FAILURE_EXCEPTIONS = List.of(
+            java.io.IOException.class,
+            java.io.EOFException.class,
+            java.io.InterruptedIOException.class,
+            java.net.SocketTimeoutException.class,
+            java.net.ConnectException.class,
+            java.net.SocketException.class,
+            java.net.UnknownHostException.class,
+            java.net.ProtocolException.class,
+            java.nio.channels.ClosedChannelException.class,
+            javax.net.ssl.SSLException.class,
+            javax.net.ssl.SSLHandshakeException.class,
+            javax.net.ssl.SSLPeerUnverifiedException.class,
+            javax.net.ssl.SSLProtocolException.class,
+            okhttp3.internal.http2.StreamResetException.class,
+            okhttp3.internal.http2.ConnectionShutdownException.class
+    );
+
+    /**
+     * Canary sentinel for TD-2 tests. Injected as the exception message in
+     * {@link TechnicalEvent.Failure} events to detect if peer-controlled bytes
+     * (exception message text) reach the log record.
+     *
+     * <p>A random UUID suffix ensures the value is unique per JVM run and cannot
+     * accidentally match a pre-existing log fragment.
+     */
+    private static final String CANARY_FRAGMENT_TD2 =
+            "__GLACIER_TD2_CANARY_" + UUID.randomUUID() + "__";
+
+    // -------------------------------------------------------------------------
     // TD-1 — Lane A tests  (T-A1 through T-A5)
     //
     // Each test exercises the JsonProcessingException catch block in
@@ -1128,29 +1178,410 @@ public class StompCallbackTest {
                 .anySatisfy(msg -> assertThat(msg).contains("got an unknown event: class social.bigbone.api.entity.streaming.WebSocketEvent$"));
     }
 
+    // -------------------------------------------------------------------------
+    // TD-2 — Lane A tests  (T-A1 through T-A6, T-A4b, T-A5b)
+    //
+    // Each test exercises processTechnicalEvent to verify that the new log format
+    // (ADR-TD2-01) does not leak peer-controlled bytes (exception message,
+    // WebSocket close reason) into log records.
+    // -------------------------------------------------------------------------
+
     /**
-     * Tests if the event handler processes a Technical Failure event correctly
+     * T-A1 — Verifies that a TechnicalEvent.Failure produces at least one INFO-level log event.
+     *
+     * <p>Arrange: StompCallback + TestLogAppender; {@link TechnicalEvent.Failure} wrapping an
+     *             {@link java.io.IOException} whose message is the TD-2 canary sentinel.
+     * Act:     invoke onEvent(failureEvent).
+     * Assert:  at least one captured ILoggingEvent has Level.INFO.
      */
     @Test
-    public void onEvent_EventTechnicalFailure() {
-        // Setup
+    public void failureEvent_logsInfoLevel() {
+        // Arrange
         TestLogAppender logAppender = getTestLogAppender();
-        String errorMessage = "Error Message";
+        String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
-        TechnicalEvent.Failure mockEvent = mock(TechnicalEvent.Failure.class);
-        Throwable mockException = mock(Throwable.class);
-        when(mockEvent.getError()).thenReturn(mockException);
-        when(mockException.getMessage()).thenReturn(errorMessage);
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
 
-        // Execute
-        callback.onEvent(mockEvent);
+        // Act
+        callback.onEvent(failureEvent);
 
-        // Verify
-        Mockito.verify(mockEvent, Mockito.atLeastOnce()).getError();
+        // Assert: at least one INFO-level event was emitted
+        assertThat(logAppender.getLoggedEvents())
+                .anySatisfy(event -> assertThat(event.getLevel()).isEqualTo(Level.INFO));
+    }
+
+    /**
+     * T-A2 — Verifies that the Failure log message names an exception simple class from the
+     * allowlist ({@link #EXPECTED_TECHNICAL_FAILURE_EXCEPTIONS}), proving the type is surfaced
+     * without leaking the exception's full message (which contains peer-controlled text).
+     *
+     * <p>Arrange: same IOException canary input.
+     * Act:     invoke onEvent.
+     * Assert:  getFormattedMessage() of at least one event contains a name from
+     *          {@code EXPECTED_TECHNICAL_FAILURE_EXCEPTIONS} (matched by simple class name).
+     */
+    @Test
+    public void failureEvent_includesAllowlistedExceptionSimpleName() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
+
+        // Act
+        callback.onEvent(failureEvent);
+
+        // Assert: the formatted message names one allowlisted exception class
+        assertThat(logAppender.getLoggedEvents())
+                .anySatisfy(event ->
+                        assertThat(EXPECTED_TECHNICAL_FAILURE_EXCEPTIONS)
+                                .anyMatch(clazz -> event.getFormattedMessage().contains(clazz.getSimpleName())));
+    }
+
+    /**
+     * T-A3 — Verifies that the log message uses the new prefix format
+     * {@code "got a Failure event. Restarting subscription. exception="} and does NOT
+     * contain the legacy format {@code "The error is:"} (ADR-TD2-03 / SR-TD2-03).
+     *
+     * <p>Arrange: IOException with canary sentinel as the message.
+     * Act:     invoke onEvent.
+     * Assert:  at least one formatted message contains the new prefix;
+     *          no message contains the legacy prefix.
+     */
+    @Test
+    public void failureEvent_messagePrefixMatches() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
+
+        // Act
+        callback.onEvent(failureEvent);
+
+        // Assert: new structured prefix is present (ADR-TD2-01)
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got a Failure event. Restarting subscription. The error is: Error Message"));
+                .anySatisfy(msg -> assertThat(msg).contains("got a Failure event. Restarting subscription. exception="));
+        // Assert: legacy format is fully removed (SR-TD2-03)
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("The error is:"));
+    }
+
+    /**
+     * T-A4 — Verifies that no Throwable is attached to any captured log event.
+     *
+     * <p>This is the primary regression guard for ADR-TD2-01: attaching the Throwable
+     * as a SLF4J argument causes Logback to render {@link Throwable#getMessage()} —
+     * which embeds peer-controlled error text — into the structured JSON log record.
+     *
+     * <p>Arrange: IOException with canary sentinel.
+     * Act:     invoke onEvent.
+     * Assert:  every captured ILoggingEvent has getThrowableProxy() == null (SR-TD2-09).
+     */
+    @Test
+    public void failureEvent_attachesNoThrowable() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
+
+        // Act
+        callback.onEvent(failureEvent);
+
+        // Assert: no event carries a Throwable proxy — the exception message cannot be
+        // serialised into the log record by Logback's ThrowableProxyConverter (SR-TD2-09)
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+    }
+
+    /**
+     * T-A5 — Verifies that a TechnicalEvent.Failure neither pollutes the SLF4J MDC context
+     * nor emits events to the dedicated AUDIT logger (SR-TD2-12).
+     *
+     * <p>Arrange: IOException with canary sentinel; attach both AUDIT and normal appenders.
+     * Act:     invoke onEvent.
+     * Assert:  MDC contains no key with CANARY_FRAGMENT_TD2 value;
+     *          AUDIT appender received zero events.
+     */
+    @Test
+    public void failureEvent_doesNotPolluteMdcOrAudit() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        TestLogAppender auditAppender = getAuditLogAppender();
+        MDC.clear();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
+
+        // Act
+        callback.onEvent(failureEvent);
+
+        // Assert: MDC does not contain the canary fragment
+        assertThat(MDC.getCopyOfContextMap()).satisfiesAnyOf(
+                map -> assertThat(map).isNull(),
+                map -> assertThat(map).doesNotContainValue(CANARY_FRAGMENT_TD2)
+        );
+        // Assert: AUDIT logger received no events — technical network failures are
+        // operational events, not security audit events (SR-TD2-12)
+        assertThat(auditAppender.getLoggedEvents()).isEmpty();
+    }
+
+    /**
+     * T-A6 — Verifies that on a TechnicalEvent.Failure the subscription manager
+     * is first terminated then restarted (SR-TD2-13).
+     *
+     * <p>This test replaces the old {@code onEvent_EventTechnicalFailure} which asserted
+     * the legacy "The error is: Error Message" format — removed by ADR-TD2-01.
+     *
+     * <p>Arrange: StompCallback with mocked subscriptionManager; TechnicalEvent.Failure with
+     *             any Throwable.
+     * Act:     invoke onEvent(failureEvent).
+     * Assert:  {@code subscriptionManager.terminateSubscription(principal, hashtag)} called once;
+     *          {@code subscriptionManager.subscribeToHashtag(principal, hashtag)} called once.
+     */
+    @Test
+    public void failureEvent_restartsSubscription() {
+        // Arrange
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "example.com");
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        when(failureEvent.getError()).thenReturn(new java.io.IOException("any error"));
+
+        // Act
+        callback.onEvent(failureEvent);
+
+        // Assert: subscription lifecycle — terminate then restart (SR-TD2-13)
+        Mockito.verify(subscriptionManager, Mockito.times(1)).terminateSubscription(principal, hashtag);
+        Mockito.verify(subscriptionManager, Mockito.times(1)).subscribeToHashtag(principal, hashtag);
+    }
+
+    /**
+     * T-A4b — Verifies that a TechnicalEvent.Closing logs the numeric close code
+     * and does NOT log the peer-controlled reason string (SR-TD2-14).
+     *
+     * <p>Arrange: mocked Closing with code=1006 and reason=CANARY_FRAGMENT_TD2.
+     * Act:     invoke onEvent.
+     * Assert:  at least one log message contains "1006";
+     *          no log message contains CANARY_FRAGMENT_TD2 (the peer reason).
+     */
+    @Test
+    public void closingEvent_logsCodeNotReason() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Closing closingEvent = mock(TechnicalEvent.Closing.class);
+        when(closingEvent.getCode()).thenReturn(1006);
+        when(closingEvent.getReason()).thenReturn(CANARY_FRAGMENT_TD2);
+
+        // Act
+        callback.onEvent(closingEvent);
+
+        // Assert: numeric code is present in the log (ADR-TD2-03)
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("1006"));
+        // Assert: peer-controlled reason string must be fully absent (SR-TD2-14)
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains(CANARY_FRAGMENT_TD2));
+    }
+
+    /**
+     * T-A5b — Verifies that a TechnicalEvent.Closed logs the numeric close code
+     * and does NOT log the peer-controlled reason string (SR-TD2-14).
+     *
+     * <p>Arrange: mocked Closed with code=1011 and reason=CANARY_FRAGMENT_TD2.
+     * Act:     invoke onEvent.
+     * Assert:  at least one log message contains "1011";
+     *          no log message contains CANARY_FRAGMENT_TD2 (the peer reason).
+     */
+    @Test
+    public void closedEvent_logsCodeNotReason() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+        TechnicalEvent.Closed closedEvent = mock(TechnicalEvent.Closed.class);
+        when(closedEvent.getCode()).thenReturn(1011);
+        when(closedEvent.getReason()).thenReturn(CANARY_FRAGMENT_TD2);
+
+        // Act
+        callback.onEvent(closedEvent);
+
+        // Assert: numeric code is present in the log (ADR-TD2-03)
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("1011"));
+        // Assert: peer-controlled reason string must be fully absent (SR-TD2-14)
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains(CANARY_FRAGMENT_TD2));
+    }
+
+    // -------------------------------------------------------------------------
+    // TD-2 — Lane B test  (T-B1)
+    //
+    // Parameterised injection canary: seven adversarial fragment variants are
+    // embedded as the IOException message and fed through the Failure event path.
+    // The test verifies that none of the attacker-controlled bytes surface in any
+    // ILoggingEvent (formatted message, argument array, throwable proxy, or MDC).
+    //
+    // SR coverage: SR-TD2-01 (peer-controlled byte), SR-TD2-09 (no Throwable),
+    //              SR-TD2-10 (CRLF injection), SR-TD2-11 (ANSI injection),
+    //              SR-TD2-12 (AUDIT zero events).
+    // -------------------------------------------------------------------------
+
+    /**
+     * Provides seven adversarial injection variants for T-B1 (TD-2 lane).
+     * <p>
+     * Each variant represents a distinct attack surface:
+     * <ul>
+     *   <li>ASCII sentinel — baseline canary to detect direct getMessage() leak</li>
+     *   <li>Realistic error message — real-looking network error that OkHttp may produce</li>
+     *   <li>CRLF — log-injection via embedded newline (SR-TD2-10)</li>
+     *   <li>ANSI escape — terminal colour injection (SR-TD2-11)</li>
+     *   <li>Null-byte prefix — null-byte injection (SR-TD2-01)</li>
+     *   <li>HTTP/2 error with host — peer-controlled host name embedded in message</li>
+     *   <li>JSON fragment — JSON-breaking injection attempting structured log poisoning</li>
+     * </ul>
+     */
+    private static Stream<Arguments> injectionVariantsTD2() {
+        return Stream.of(
+                Arguments.of("__ASCII_CANARY_TD2__"),
+                Arguments.of("failed to connect to attacker.example.com:31337"),
+                Arguments.of("\r\nFAKE_LOG_LINE: evil=injected"),
+                Arguments.of("[31mANSI_RED_INJECT[0m"),
+                Arguments.of(" NULL_BYTE_INJECT"),
+                Arguments.of("http2 connection error: PROTOCOL_ERROR (code=1) host=victim.example"),
+                Arguments.of("\"}\n\"injected\":\"value")
+        );
+    }
+
+    /**
+     * T-B1 — Verifies that no attacker-controlled fragment (from the IOException message)
+     * leaks into any log record when a {@link TechnicalEvent.Failure} is processed.
+     * <p>
+     * The production fix (ADR-TD2-03) logs {@code failure.getError().getClass().getSimpleName()}
+     * instead of {@code failure.getError().getMessage()}, so the class name {@code "IOException"}
+     * must appear in the log, but the peer-controlled message text must not.
+     * <p>
+     * Seven injection variants are tested: plain ASCII, realistic network error, CRLF, ANSI
+     * escape, null-byte prefix, HTTP/2 error with embedded host, and JSON-breaking fragment.
+     * For each variant the test asserts:
+     * <ol>
+     *   <li>Positive signal: at least one formatted message contains {@code "got a Failure event"}
+     *       to confirm the failure path actually fired (not a silent no-op).</li>
+     *   <li>SR-TD2-01 / SR-TD2-10 / SR-TD2-11: no {@link ILoggingEvent#getFormattedMessage()}
+     *       contains the attacker-controlled fragment.</li>
+     *   <li>SR-TD2-01: no element in {@link ILoggingEvent#getArgumentArray()}, when converted
+     *       to String, contains the fragment.</li>
+     *   <li>SR-TD2-09: every event has {@link ILoggingEvent#getThrowableProxy()} {@code == null}
+     *       (strict — the exception must not be attached to any log record).</li>
+     *   <li>MDC: no MDC copy value contains the fragment (prevents structured-log poisoning via
+     *       contextual fields).</li>
+     *   <li>SR-TD2-12: AUDIT appender received zero events — network failures are not
+     *       security audit events.</li>
+     * </ol>
+     *
+     * <p>Uses {@code new IOException(fragment)} (not a mock) so that
+     * {@code getClass().getSimpleName()} returns the real {@code "IOException"} string.
+     * This ensures we test the production path exactly: the class name IS logged, the
+     * peer-controlled message IS NOT logged.
+     *
+     * @param fragment the adversarial string injected as the IOException message
+     */
+    @ParameterizedTest(name = "fragment={0}")
+    @MethodSource("injectionVariantsTD2")
+    public void failureEvent_doesNotLeakAttackerControlledFragment(String fragment) {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        TestLogAppender auditAppender = getAuditLogAppender();
+        MDC.clear();
+
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+
+        // Use a real IOException (not mock) so getClass().getSimpleName() returns "IOException",
+        // the exact string the production code logs. The fragment is the getMessage() content
+        // that the fix must NOT include in the log output. (SR-TD2-01 / SR-TD2-09)
+        TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
+        IOException throwable = new IOException(fragment);
+        when(failureEvent.getError()).thenReturn(throwable);
+
+        // Act
+        callback.onEvent(failureEvent);
+
+        // Collect events from both the StompCallback logger and the AUDIT logger
+        List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());
+        allEvents.addAll(auditAppender.getLoggedEvents());
+
+        // Positive signal: the failure path must have fired — confirms the test is exercising
+        // the right code, not passing trivially because onEvent was a no-op.
+        assertThat(logAppender.getLoggedEvents())
+                .anySatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .contains("got a Failure event"));
+
+        // SR-TD2-01 / SR-TD2-10 / SR-TD2-11: no formatted message may contain the fragment
+        assertThat(allEvents)
+                .allSatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .doesNotContain(fragment));
+
+        // SR-TD2-01: no SLF4J argument in the argument array may resolve to the fragment
+        assertThat(allEvents)
+                .allSatisfy(event -> {
+                    Object[] args = event.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .doesNotContain(fragment);
+                        }
+                    }
+                });
+
+        // SR-TD2-09: no Throwable may be attached — prevents Logback's ThrowableProxyConverter
+        // from rendering IOException.getMessage() (which contains the fragment) into the JSON log.
+        assertThat(allEvents)
+                .allSatisfy(event ->
+                        assertThat(event.getThrowableProxy()).isNull());
+
+        // MDC: peer-controlled bytes must not appear in any contextual field of any log event.
+        // Captured MDC snapshots are stored inside ILoggingEvent at append time.
+        assertThat(allEvents)
+                .allSatisfy(event -> {
+                    java.util.Map<String, String> mdcCopy = event.getMDCPropertyMap();
+                    if (mdcCopy != null && !mdcCopy.isEmpty()) {
+                        assertThat(mdcCopy.values())
+                                .noneMatch(value -> value != null && value.contains(fragment));
+                    }
+                });
+
+        // SR-TD2-12: AUDIT logger must receive zero events — network-layer failures are
+        // operational events, not security audit events.
+        assertThat(auditAppender.getLoggedEvents()).isEmpty();
     }
 
     // -------------------------------------------------------------------------
