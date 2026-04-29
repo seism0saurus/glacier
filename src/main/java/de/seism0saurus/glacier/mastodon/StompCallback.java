@@ -241,7 +241,7 @@ public class StompCallback implements WebSocketCallback {
                         LogScrubber.safeEventName(genericMessageContent.getEvent()));
             }
         } catch (JsonProcessingException e) {
-            LOGGER.error("Could not parse GenericMessage", e);
+            LOGGER.error("Could not parse GenericMessage — exception={}", e.getClass().getSimpleName());
         }
     }
 
