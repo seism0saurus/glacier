@@ -394,6 +394,8 @@ Write `docs/decisions/YYYY-MM-DD-release-readiness-[feature-slug].md` with the v
 
 ## Formats
 
+> **Linking convention for all document templates below**: every cross-reference to another document — feature descriptions, requirements, plans, decision records, external standards — must use Markdown link syntax `[display text](relative/path)`. Plain backtick-quoted paths are for code identifiers and class names only, not for document references. Directory-relative paths: from `docs/decisions/` to `docs/feature/` use `../feature/slug.md`; from `docs/decisions/` to `docs/requirements/` use `../requirements/slug.md`; from `docs/decisions/` to `docs/plan/` use `../plan/slug.md`; documents in the same directory link with just the filename. This makes the entire `docs/` corpus navigable as a semantic web.
+
 ### Phase Approval Gate Format
 
 ```
@@ -484,7 +486,11 @@ Approval message (verbatim): "[user's approval]"
 [risks explicitly accepted, with rationale]
 
 ## References
-[links to related decision docs, plan sections, standards]
+- [Feature Description](../feature/[slug].md)
+- [Requirements Document](../requirements/[slug].md)
+- [Implementation Plan](../plan/[slug].md)
+- [Planning Decision](YYYY-MM-DD-planning-[slug].md) *(or Implementation / Acceptance / Release-Readiness decisions in the same directory)*
+- [OWASP A09:2021 — Security Logging and Monitoring](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) *(external standards as applicable)*
 ```
 
 ### Feature Description Template
@@ -524,7 +530,7 @@ Distinguish end-user benefit from operator benefit when they differ.]
 
 ## Context and background
 
-[Relevant prior decisions, related features, technical context that influenced the request. Link to existing decision docs if applicable.]
+[Relevant prior decisions, related features, technical context that influenced the request. Link to related documents using Markdown links, e.g. `[Prior Pentest Findings](../decisions/2026-04-28-acceptance-pentest-findings.md)` or `[QR Share Link feature](qr-share-link.md)`.]
 
 ## Open questions for planning
 
@@ -535,8 +541,8 @@ Distinguish end-user benefit from operator benefit when they differ.]
 ## References
 
 - Feature request: [description or issue link]
-- Related decision docs: [paths, or "none"]
-- Related features: [paths, or "none"]
+- Related decision docs: [e.g. `[Prior Decision Title](../decisions/YYYY-MM-DD-phase-slug.md)`, or "none"]
+- Related features: [e.g. `[Other Feature Name](other-slug.md)`, or "none"]
 ```
 
 ---
@@ -553,7 +559,7 @@ Use this template when `ddd-tdd-architect` produces the Requirements Document in
 **Phase 1 contributors**: ddd-tdd-architect, secure-feature-planner[, ux-ui-designer]
 **Status**: Draft | Approved | Superseded
 **Version**: v1 *(bump on post-Phase-1 revision)*
-**Derived from**: `docs/feature/[slug].md`
+**Derived from**: [Feature Description](../feature/[slug].md)
 
 ## Functional Requirements
 
@@ -626,11 +632,11 @@ Use this template when `ddd-tdd-architect` produces the Requirements Document in
 
 ## References
 
-- Feature description: `docs/feature/[slug].md`
-- Phase 1 Decision Document: `docs/decisions/YYYY-MM-DD-planning-[slug].md` *(written after approval)*
-- Related requirements: [paths, or "none"]
-- Related prior decisions: [paths, or "none"]
-- External standards: [OWASP control IDs, BFSG/EAA clauses, RFCs, etc.]
+- Feature description: [Feature Description](../feature/[slug].md)
+- Phase 1 Decision Document: [Planning Decision](../decisions/YYYY-MM-DD-planning-[slug].md) *(written after approval)*
+- Related requirements: [e.g. `[Other Feature Requirements](other-slug.md)`, or "none"]
+- Related prior decisions: [e.g. `[Prior Decision Title](../decisions/YYYY-MM-DD-phase-slug.md)`, or "none"]
+- External standards: [e.g. `[OWASP A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)`, or "none"]
 
 ## Revision History
 
@@ -652,7 +658,7 @@ Use this template when `ddd-tdd-architect` produces the Implementation Plan in P
 **Author**: ddd-tdd-architect (Phase 1 Round 3)
 **Status**: Draft | Approved | Superseded
 **Version**: v1 *(bump on post-Phase-1 revision)*
-**Satisfies**: `docs/requirements/[slug].md`
+**Satisfies**: [Requirements Document](../requirements/[slug].md)
 
 ## Overview
 
@@ -736,9 +742,9 @@ Use this template when `ddd-tdd-architect` produces the Implementation Plan in P
 
 ## References
 
-- Requirements: `docs/requirements/[slug].md`
-- Feature description: `docs/feature/[slug].md`
-- Phase 1 Decision Document: `docs/decisions/YYYY-MM-DD-planning-[slug].md` *(written after approval)*
+- Requirements: [Requirements Document](../requirements/[slug].md)
+- Feature description: [Feature Description](../feature/[slug].md)
+- Phase 1 Decision Document: [Planning Decision](../decisions/YYYY-MM-DD-planning-[slug].md) *(written after approval)*
 
 ## Revision History
 
