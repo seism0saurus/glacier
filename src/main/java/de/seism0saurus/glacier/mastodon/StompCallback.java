@@ -160,7 +160,7 @@ public class StompCallback implements WebSocketCallback {
                 LOGGER.warn("Not an update event for the subscribed hashtag: {}", genericMessageContent);
             }
         } catch (JsonProcessingException e) {
-            LOGGER.error("Could not parse GenericMessage", e);
+            LOGGER.error("Could not parse GenericMessage — exception={}", e.getClass().getSimpleName());
         }
     }
 
