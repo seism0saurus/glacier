@@ -542,7 +542,7 @@ public class StompCallback implements WebSocketCallback {
     private void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
-                    logEvent("got an Open event: %s".formatted(open));
+                    logEvent("got an Open event (class=%s)".formatted(open.getClass().getSimpleName()));
             case TechnicalEvent.Closing closing ->
                     logEvent("got a Closing event — code=%d".formatted(closing.getCode()));
             case TechnicalEvent.Closed closed ->
@@ -552,7 +552,7 @@ public class StompCallback implements WebSocketCallback {
                 this.subscriptionManager.terminateSubscription(principal, hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
-            default -> logEvent("got an unknown WebSocketEvent: %s".formatted(event));
+            default -> logEvent("got an unknown WebSocketEvent (class=%s)".formatted(event.getClass().getSimpleName()));
         }
     }
 

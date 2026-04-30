@@ -454,7 +454,12 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes a Technical Open event correctly
+     * Tests if the event handler processes a Technical Open event correctly.
+     *
+     * <p>Updated for TD-5-B (ADR-TD5-B): the log now contains only the class name
+     * via {@code (class=%s).formatted(open.getClass().getSimpleName())}, never the
+     * peer-controlled {@code toString()} representation of the {@link TechnicalEvent.Open}
+     * object (CWE-117 / D-13 / SR-8).
      */
     @Test
     public void onEvent_EventTechnicalOpen() {
@@ -469,9 +474,9 @@ public class StompCallbackTest {
         // Execute
         callback.onEvent(mockEvent);
 
-        // Verify
+        // Verify: new bounded format — class= prefix, never raw toString() (ADR-TD5-B)
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got an Open event: Mock for Open"));
+                .anySatisfy(msg -> assertThat(msg).contains("got an Open event (class="));
     }
 
     /**
@@ -527,7 +532,12 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes an unknown Technical event correctly
+     * Tests if the event handler processes an unknown Technical event correctly.
+     *
+     * <p>Updated for TD-5-A (ADR-TD5-A): the log now contains only the class name
+     * via {@code (class=%s).formatted(event.getClass().getSimpleName())}, never the
+     * peer-controlled {@code toString()} representation of the unknown event object
+     * (CWE-117 / D-13 / SR-8).
      */
     @Test
     public void onEvent_EventTechnicalUnknown() {
@@ -542,9 +552,9 @@ public class StompCallbackTest {
         // Execute
         callback.onEvent(mockEvent);
 
-        // Verify
+        // Verify: new bounded format — class= prefix, never raw toString() (ADR-TD5-A)
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got an unknown WebSocketEvent:"));
+                .anySatisfy(msg -> assertThat(msg).contains("got an unknown WebSocketEvent (class="));
     }
 
     /**

@@ -203,6 +203,12 @@ public final class LogScrubber {
      * <p>null elements count toward {@code xfo-values} (slot count) and contribute 0 to
      * {@code xfo-totallen} (length).
      *
+     * <p>The {@code xfo-totallen} accumulator is a {@code long} to avoid overflow when a
+     * peer-supplied list contains many large values (theoretical: M can exceed
+     * {@code Integer.MAX_VALUE} if enough large header values are provided). The element
+     * count ({@code xfo-values}) is bounded by {@link java.util.List#size()}, which is
+     * an {@code int}. TD-5-C / ADR-TD5-C.
+     *
      * <p>Always use this method when a log statement would otherwise include the raw
      * {@code X-Frame-Options} list as an argument.
      *
@@ -214,7 +220,7 @@ public final class LogScrubber {
             return "xfo-values=0 xfo-totallen=0";
         }
         int count = values.size();
-        int totalLen = 0;
+        long totalLen = 0L;
         for (String value : values) {
             if (value != null) {
                 totalLen += value.length();
