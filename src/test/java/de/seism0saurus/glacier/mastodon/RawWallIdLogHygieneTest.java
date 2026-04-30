@@ -24,7 +24,9 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import social.bigbone.api.entity.streaming.MastodonApiEvent;
+import social.bigbone.api.entity.streaming.ParsedStreamEvent;
 import social.bigbone.api.entity.streaming.TechnicalEvent;
+import social.bigbone.api.entity.streaming.WebSocketEvent;
 
 import java.net.URI;
 import java.security.Principal;
@@ -765,6 +767,160 @@ class RawWallIdLogHygieneTest {
 
         // SR-F6-01: raw hashtag must not appear in any log line
         assertNoRawHashtag(events, CANARY_HASHTAG);
+    }
+
+    // -------------------------------------------------------------------------
+    // T7c — default branch of inner StreamEvent switch must not log Class.toString()
+    // -------------------------------------------------------------------------
+
+    /**
+     * T7c (SR-TD5-FU-01, CWE-117, D-13/SR-8): the default branch of the {@code streamEvent.getEvent()}
+     * switch at {@code StompCallback.java:218} must log only the SimpleName of the event class, not the
+     * raw {@link Class#toString()} form (which would include the package prefix: {@code "class
+     * fully.qualified.Name"}).
+     *
+     * <p>The vulnerable pattern {@code streamEvent.getEvent().getClass()} passes the {@link Class}
+     * object to {@link String#formatted}, which calls {@link Class#toString()} producing
+     * {@code "class social.bigbone.api.entity.streaming.ParsedStreamEvent$UnknownType"}.
+     * The fix requires {@code getClass().getSimpleName()}, which returns {@code "UnknownType"}.
+     *
+     * <p>Arrange: construct a {@link MastodonApiEvent.StreamEvent} whose {@code getEvent()} returns a
+     *             {@link ParsedStreamEvent.UnknownType} instance (matches none of the handled cases:
+     *             {@code StatusCreated}, {@code StatusEdited}, {@code StatusDeleted}) — triggers the
+     *             {@code default} branch at line 218.
+     * Act: {@code callback.onEvent(streamEvent)}.
+     * Assert (SR-TD5-FU-01):
+     * <ol>
+     *   <li>{@link ILoggingEvent#getFormattedMessage()} DOES contain
+     *       {@code "got an unknown StreamEvent: "} — the operational log line is present.</li>
+     *   <li>{@link ILoggingEvent#getFormattedMessage()} does NOT match {@code "class .*\\..*"} —
+     *       the {@code Class.toString()} format (with package) must not reach the encoder.</li>
+     *   <li>{@link ILoggingEvent#getArgumentArray()} elements (stringified) do NOT match
+     *       {@code "class .*\\..*"} (defence-in-depth, Gap 2 / SR-F6-10).</li>
+     * </ol>
+     */
+    @Test
+    void T7c_stompCallback_unknownStreamEvent_defaultBranch_doesNotLogClassToString() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
+        MessageCache messageCache = mock(MessageCache.class);
+        ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
+
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+        stompCallbackAppender.list.clear();
+
+        // Arrange: use ParsedStreamEvent.UnknownType — a real type that does not match
+        // StatusCreated/StatusEdited/StatusDeleted, routing to the default branch at line 218.
+        // List.of() is the stream-type list; it must be non-null per the constructor contract.
+        ParsedStreamEvent.UnknownType unknownParsed = new ParsedStreamEvent.UnknownType("__TD5FU_CANARY__", "{}");
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(unknownParsed, List.of());
+
+        // Act — triggers the default branch: logEvent("got an unknown StreamEvent: %s".formatted(…))
+        callback.onEvent(streamEvent);
+
+        List<ILoggingEvent> events = stompCallbackAppender.list;
+
+        // Positive assertion: the operational log line must be present
+        assertThat(events)
+                .as("SR-TD5-FU-01: logEvent('got an unknown StreamEvent: ...') must be emitted")
+                .anySatisfy(e -> assertThat(e.getFormattedMessage())
+                        .contains("got an unknown StreamEvent: "));
+
+        // Negative assertion SR-TD5-FU-01: Class.toString() pattern must not appear in any message
+        // Class.toString() produces "class fully.qualified.Name" — a dotted fully-qualified class name.
+        for (ILoggingEvent e : events) {
+            assertThat(e.getFormattedMessage())
+                    .as("SR-TD5-FU-01: Class.toString() (\"class ...\") must not appear — " +
+                        "getSimpleName() must be used, not getClass() bare (CWE-117/D-13/SR-8). " +
+                        "Message: [%s]", e.getFormattedMessage())
+                    .doesNotMatch(".*class .*\\..*");
+            // Gap 2: check argument array elements too
+            Object[] args = e.getArgumentArray();
+            if (args != null) {
+                for (Object arg : args) {
+                    assertThat(String.valueOf(arg))
+                            .as("SR-TD5-FU-01: Class.toString() must not appear in log argument array")
+                            .doesNotMatch(".*class .*\\..*");
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // T7d — default branch of outer event switch must not log Class.toString()
+    // -------------------------------------------------------------------------
+
+    /**
+     * T7d (SR-TD5-FU-02, CWE-117, D-13/SR-8): the default branch of the outer {@code event} switch at
+     * {@code StompCallback.java:223} must log only the SimpleName of the event class, not the raw
+     * {@link Class#toString()} form.
+     *
+     * <p>The vulnerable pattern {@code event.getClass()} passes the {@link Class} object to
+     * {@link String#formatted}, which calls {@link Class#toString()} and produces
+     * {@code "class social.bigbone.api.entity.streaming.MastodonApiEvent$..."}.
+     * The fix requires {@code getClass().getSimpleName()}.
+     *
+     * <p>Arrange: mock a {@link WebSocketEvent} that also implements {@link MastodonApiEvent} but
+     *             is NOT a {@link MastodonApiEvent.StreamEvent}, {@code TechnicalEvent}, or
+     *             {@link MastodonApiEvent.GenericMessage} — triggers the outer {@code default}
+     *             branch at line 223.
+     * Act: {@code callback.onEvent(unknownMastodonEvent)}.
+     * Assert (SR-TD5-FU-02):
+     * <ol>
+     *   <li>{@link ILoggingEvent#getFormattedMessage()} DOES contain
+     *       {@code "got an unknown event: "} — the operational log line is present.</li>
+     *   <li>{@link ILoggingEvent#getFormattedMessage()} does NOT match {@code "class .*\\..*"} —
+     *       the {@code Class.toString()} format (with package) must not reach the encoder.</li>
+     *   <li>{@link ILoggingEvent#getArgumentArray()} elements (stringified) do NOT match
+     *       {@code "class .*\\..*"} (defence-in-depth, Gap 2 / SR-F6-10).</li>
+     * </ol>
+     */
+    @Test
+    void T7d_stompCallback_unknownOuterEvent_defaultBranch_doesNotLogClassToString() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
+        MessageCache messageCache = mock(MessageCache.class);
+        ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
+
+        StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+        stompCallbackAppender.list.clear();
+
+        // Arrange: mock a WebSocketEvent that also implements MastodonApiEvent.
+        // Mockito creates a subtype that matches MastodonApiEvent pattern but is not
+        // StreamEvent, TechnicalEvent, or GenericMessage — triggers the outer default at line 223.
+        MastodonApiEvent unknownMastodonEvent = mock(MastodonApiEvent.class);
+
+        // Act — triggers the outer default branch: logEvent("got an unknown event: %s".formatted(…))
+        callback.onEvent(unknownMastodonEvent);
+
+        List<ILoggingEvent> events = stompCallbackAppender.list;
+
+        // Positive assertion: the operational log line must be present
+        assertThat(events)
+                .as("SR-TD5-FU-02: logEvent('got an unknown event: ...') must be emitted")
+                .anySatisfy(e -> assertThat(e.getFormattedMessage())
+                        .contains("got an unknown event: "));
+
+        // Negative assertion SR-TD5-FU-02: Class.toString() pattern must not appear in any message.
+        // Class.toString() produces "class fully.qualified.Name" — recognizable by "class " prefix + dot.
+        for (ILoggingEvent e : events) {
+            assertThat(e.getFormattedMessage())
+                    .as("SR-TD5-FU-02: Class.toString() (\"class ...\") must not appear — " +
+                        "getSimpleName() must be used, not getClass() bare (CWE-117/D-13/SR-8). " +
+                        "Message: [%s]", e.getFormattedMessage())
+                    .doesNotMatch(".*class .*\\..*");
+            // Gap 2: check argument array elements too
+            Object[] args = e.getArgumentArray();
+            if (args != null) {
+                for (Object arg : args) {
+                    assertThat(String.valueOf(arg))
+                            .as("SR-TD5-FU-02: Class.toString() must not appear in log argument array")
+                            .doesNotMatch(".*class .*\\..*");
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
