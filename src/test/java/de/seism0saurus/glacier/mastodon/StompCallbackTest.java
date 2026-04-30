@@ -2948,6 +2948,256 @@ public class StompCallbackTest {
     }
 
     // -----------------------------------------------------------------
+    // SR-TD4-05: T6b-struct — parameterised injection fuzz
+    // -----------------------------------------------------------------
+
+    /**
+     * Provides 8 adversarial {@code X-Frame-Options} header values for the T6b-struct
+     * injection fuzz test (SR-TD4-05 / CWE-117 / D-13).
+     *
+     * <p>Each row is a tuple of:
+     * <ol>
+     *   <li>The full adversarial XFO header value to inject.</li>
+     *   <li>The specific fragment that MUST NOT appear in any log output if the fix holds.</li>
+     *   <li>A human-readable description used as the parameterised-test display name.</li>
+     * </ol>
+     *
+     * <p>Row design follows the TD-2 T-B1 injection-fuzz discipline: every adversarial class
+     * (ASCII canary, CRLF injection, oversized blob, ANSI escape, NUL byte, Unicode line
+     * separators, RTL override, BOM) is represented exactly once.
+     */
+    private static Stream<Arguments> xfoInjectionFuzzVariants() {
+        return Stream.of(
+                // Row 1: ASCII canary — the fragment itself must not appear in any log field
+                Arguments.of("__CANARY_TD4_STRUCT__",
+                        "__CANARY_TD4_STRUCT__",
+                        "ASCII canary"),
+                // Row 2: CRLF injection — "INJECTED" must not appear (would indicate a fake log line was accepted)
+                Arguments.of("foo\r\nWARN INJECTED FAKE LINE",
+                        "INJECTED",
+                        "CRLF injection"),
+                // Row 3: Oversized value (5000 'A' chars) — 10-char run must not appear
+                Arguments.of("A".repeat(5000),
+                        "AAAAAAAAAA",
+                        "oversized value 5000 chars"),
+                // Row 4: ANSI escape sequence — ESC byte must not appear
+                Arguments.of("MAYBE[31mANSI",
+                        "",
+                        "ANSI escape (ESC)"),
+                // Row 5: NUL byte — NUL must not appear
+                Arguments.of("MAYBE NULL",
+                        " ",
+                        "NUL byte"),
+                // Row 6: Unicode LINE SEPARATOR (U+2028) — must not appear
+                Arguments.of("MAYBE LINE_SEP",
+                        " ",
+                        "Unicode LINE SEPARATOR U+2028"),
+                // Row 7: Right-to-left override (U+202E) — must not appear
+                Arguments.of("MAYBE‮RLO",
+                        "‮",
+                        "Right-to-left override U+202E"),
+                // Row 8: BOM / zero-width no-break space (U+FEFF) — must not appear
+                Arguments.of("MAYBE﻿BOM",
+                        "﻿",
+                        "BOM U+FEFF")
+        );
+    }
+
+    /**
+     * T6b-struct (SR-TD4-05) — parameterised injection fuzz: for each adversarial
+     * {@code X-Frame-Options} value, the bounded {@code LogScrubber.xfoSummary} output must
+     * never leak the attacker-controlled bytes into any log field.
+     *
+     * <p>Mirrors the TD-2 T-B1 injection-fuzz discipline. The "unknown or invalid value"
+     * branch in {@code StompCallback.isLoadable} is triggered because none of the adversarial
+     * values match DENY, SAMEORIGIN, or ALLOWALL.
+     *
+     * <p>Arrange: set {@code X-Frame-Options} to the adversarial value (no CSP).
+     *             Feed a {@link ParsedStreamEvent.StatusCreated} event through the callback.
+     * Assert for each row:
+     * <ol>
+     *   <li>No captured {@link ILoggingEvent#getFormattedMessage()} contains the adversarial
+     *       fragment (e.g. the canary, {@code "INJECTED"}, 10-char {@code "AAAAAAAAAA"},
+     *       ESC byte, NUL byte, U+2028, U+202E, U+FEFF).</li>
+     *   <li>No element in any {@link ILoggingEvent#getArgumentArray()} (stringified via
+     *       {@link String#valueOf}) contains the adversarial fragment.</li>
+     *   <li>No captured event has a non-null {@link ch.qos.logback.classic.spi.IThrowableProxy}
+     *       attached — no exception thrown by the logging path.</li>
+     * </ol>
+     *
+     * @param adversarialXfoValue the full header value to inject via {@code X-Frame-Options}
+     * @param forbiddenFragment   the specific string fragment that must not appear in log output
+     * @param description         human-readable row label used as test display name
+     */
+    @ParameterizedTest(name = "xfo-injection-fuzz: {2}")
+    @MethodSource("xfoInjectionFuzzVariants")
+    public void isLoadable_unknownXFrameOptions_neverLeaksAttackerBytes(
+            String adversarialXfoValue, String forbiddenFragment, String description) {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+
+        // Set X-Frame-Options to the adversarial value — unknown value triggers the
+        // "unknown or invalid" branch which calls LogScrubber.xfoSummary (TD-4 fix).
+        HttpHeaders xfoHeaders = new HttpHeaders();
+        xfoHeaders.set("X-Frame-Options", adversarialXfoValue);
+        when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(xfoHeaders);
+
+        Account account = mock(Account.class);
+        when(account.getDisplayName()).thenReturn("user@example.com");
+        when(mockStatus.getId()).thenReturn("12345");
+        when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/12345");
+        when(mockStatus.getAccount()).thenReturn(account);
+
+        ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
+
+        // Act — must not throw
+        callback.onEvent(streamEvent);
+
+        // Assert 1 (SR-TD4-05): no formatted message may contain the forbidden fragment
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e ->
+                        assertThat(e.getFormattedMessage())
+                                .as("SR-TD4-05: formatted message must not contain adversarial fragment [%s] — row: %s",
+                                        forbiddenFragment, description)
+                                .doesNotContain(forbiddenFragment));
+
+        // Assert 2 (SR-TD4-05): no argument array element (stringified) may contain the forbidden fragment
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e -> {
+                    Object[] args = e.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .as("SR-TD4-05: argument array element must not contain adversarial fragment [%s] — row: %s",
+                                            forbiddenFragment, description)
+                                    .doesNotContain(forbiddenFragment);
+                        }
+                    }
+                });
+
+        // Assert 3 (SR-TD4-05): no log event may carry an attached throwable
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e ->
+                        assertThat(e.getThrowableProxy())
+                                .as("SR-TD4-05: no exception must be attached to any log event — row: %s", description)
+                                .isNull());
+    }
+
+    // -----------------------------------------------------------------
+    // SR-TD4-07, SR-TD4-08, SR-TD4-10: T6b-gate — structural regression gate
+    // -----------------------------------------------------------------
+
+    /**
+     * T6b-gate (SR-TD4-07 / SR-TD4-10) — structural regression gate: no {@code LOGGER.*}
+     * call in {@code StompCallback.java} passes the bare {@code xFrameOptions} or {@code csp}
+     * variable directly, and the original vulnerable format-string fragment is absent.
+     *
+     * <p>This test reads {@code StompCallback.java} as source text and asserts three invariants
+     * that would be violated by a regression of the TD-4 fix (CWE-117 / D-13 / SR-8):
+     *
+     * <ol>
+     *   <li>(SR-TD4-07 / SR-TD4-10 primary): No source line containing {@code LOGGER.} also
+     *       contains a bare {@code xFrameOptions} token not followed by {@code .} —
+     *       regex {@code \bxFrameOptions\b(?!\.)}. The fix replaced bare {@code xFrameOptions}
+     *       with {@code LogScrubber.xfoSummary(xFrameOptions)}, so the bare token must never
+     *       appear on a logger call line again.</li>
+     *   <li>(SR-TD4-07 / SR-TD4-10 primary): No source line containing {@code LOGGER.} also
+     *       contains a bare {@code csp} token not followed by {@code .} —
+     *       regex {@code \bcsp\b(?!\.)}.  The {@code csp} variable is also peer-controlled
+     *       input from the remote instance response; passing it bare to a logger would
+     *       re-introduce the same CWE-117 vulnerability.</li>
+     *   <li>(SR-TD4-10 secondary / belt-and-braces): The entire source file does not contain
+     *       the original format-string fragment {@code "unknown or invalid value: {}"} — the
+     *       exact vulnerable format string that was replaced by the TD-4 fix.  Its presence
+     *       would indicate either a revert or a copy-paste regression.</li>
+     * </ol>
+     *
+     * <p>Note: SR-TD4-08 routing (WARN level / not AUDIT) is verified behaviourally by the
+     * existing T6b test ({@code isLoadable_unknownXFrameOptions_logsBoundedFieldsAtWarnNotAudit});
+     * this gate provides complementary structural coverage at the source level.
+     *
+     * <p>The source file is located via the same
+     * {@link Class#getProtectionDomain()} pattern used by the SR-TD3-10 gate.
+     *
+     * <p>Note: this gate scans physical lines. A future multi-line LOGGER.*(...) statement
+     * with xFrameOptions or csp on a continuation line would not be caught.
+     * All current logger calls in StompCallback.java are single-line (verified TD-4 2026-04-30).
+     *
+     * @throws Exception if the source file cannot be read — treated as a test failure
+     */
+    @Test
+    public void isLoadable_structuralRegressionGate_noRawXfoOrCspOnLoggerLines()
+            throws Exception {
+        // Locate StompCallback.java from the compiled class location.
+        // The class file sits at …/target/classes/de/seism0saurus/glacier/mastodon/StompCallback.class;
+        // navigate to the Maven project root and then to the source tree.
+        java.net.URL classUrl = StompCallback.class.getProtectionDomain().getCodeSource().getLocation();
+        // classUrl is .../target/classes/ — resolve to the project root (parent of target/) then to source
+        java.nio.file.Path classesDir = Paths.get(classUrl.toURI());
+        // Walk up from target/classes to the Maven project root (parent of target/)
+        java.nio.file.Path projectRoot = classesDir.getParent().getParent();
+        java.nio.file.Path sourceFile = projectRoot
+                .resolve("src/main/java/de/seism0saurus/glacier/mastodon/StompCallback.java");
+
+        assertThat(sourceFile).as("StompCallback.java must exist at resolved path").exists();
+
+        List<String> lines = Files.readAllLines(sourceFile);
+        String fullSource = String.join("\n", lines);
+
+        // Invariant 3 / SR-TD4-10 secondary (belt-and-braces):
+        // The original vulnerable format-string fragment must not appear anywhere in the file.
+        // Its presence would indicate the fix was reverted or a similar vulnerable call was added.
+        assertThat(fullSource)
+                .as("SR-TD4-10: the old vulnerable fragment \"unknown or invalid value: {}\" must not " +
+                    "appear in StompCallback.java — its presence indicates a raw peer-controlled list " +
+                    "is being passed to the log encoder (CWE-117 / D-13 / SR-8)")
+                .doesNotContain("unknown or invalid value: {}");
+
+        // Patterns for Invariants 1 and 2 (SR-TD4-07 / SR-TD4-10 primary):
+        //
+        // \bxFrameOptions\b(?!\.) — xFrameOptions as a whole word NOT followed by a dot.
+        // Allowed:  LogScrubber.xfoSummary(xFrameOptions)   → xFrameOptions is the arg, not on LOGGER line
+        //           xFrameOptions.stream()                  → method call, dot follows
+        //           xFrameOptions != null                   → safe boolean check, not on LOGGER line
+        // Forbidden: LOGGER.warn("...", xFrameOptions)      → raw list passed directly
+        //
+        // \bcsp\b(?!\.) — csp as a whole word NOT followed by a dot.
+        // Allowed:  csp.getFirst()                          → method call, dot follows
+        //           csp != null                             → safe boolean check, not on LOGGER line
+        // Forbidden: LOGGER.warn("...", csp)                → raw peer-controlled list passed directly
+        Pattern bareXfoOnLoggerLine = Pattern.compile("\\bxFrameOptions\\b(?!\\.)");
+        Pattern bareCspOnLoggerLine = Pattern.compile("\\bcsp\\b(?!\\.)");
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            // Only inspect active logger call lines — skip comments and Javadoc
+            if (trimmed.startsWith("//") || trimmed.startsWith("*")) {
+                continue;
+            }
+            if (trimmed.contains("LOGGER.")) {
+                // Invariant 1 (SR-TD4-07 / SR-TD4-10): no bare xFrameOptions on a logger line
+                assertThat(bareXfoOnLoggerLine.matcher(trimmed).find())
+                        .as("SR-TD4-07/SR-TD4-10: logger call line must not pass bare xFrameOptions — " +
+                            "peer-controlled list must go through LogScrubber.xfoSummary() " +
+                            "(CWE-117 / D-13 / SR-8). Offending line: [" + trimmed + "]")
+                        .isFalse();
+
+                // Invariant 2 (SR-TD4-07 / SR-TD4-10): no bare csp on a logger line
+                assertThat(bareCspOnLoggerLine.matcher(trimmed).find())
+                        .as("SR-TD4-07/SR-TD4-10: logger call line must not pass bare csp — " +
+                            "peer-controlled CSP header list must be scrubbed before logging " +
+                            "(CWE-117 / D-13 / SR-8). Offending line: [" + trimmed + "]")
+                        .isFalse();
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
     // SR-TD3-10: Structural regression gate
     // -----------------------------------------------------------------
 
