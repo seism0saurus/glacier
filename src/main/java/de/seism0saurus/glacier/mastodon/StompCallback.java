@@ -215,12 +215,18 @@ public class StompCallback implements WebSocketCallback {
                             processStatusEditedEvent(statusEditedEvent.getEditedStatus(), baseDestination);
                     case ParsedStreamEvent.StatusDeleted statusDeletedEvent ->
                             procesStatusDeletedEvent(statusDeletedEvent.getDeletedStatusId(), baseDestination);
-                    default -> logEvent("got an unknown StreamEvent: %s".formatted(streamEvent.getEvent().getClass()));
+                    // D-13/SR-8/CWE-117 (TD-5-FU-1/SR-TD5-FU-01): use getSimpleName(), not getClass() bare.
+                    // Class.toString() produces "class fully.qualified.Name" — peer-controlled package
+                    // metadata reaching the log encoder. getSimpleName() is JVM-controlled and bounded.
+                    default -> logEvent("got an unknown StreamEvent: %s".formatted(streamEvent.getEvent().getClass().getSimpleName()));
                 }
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
             case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
-            default -> logEvent("got an unknown event: %s".formatted(event.getClass()));
+            // D-13/SR-8/CWE-117 (TD-5-FU-1/SR-TD5-FU-02): use getSimpleName(), not getClass() bare.
+            // Class.toString() produces "class fully.qualified.Name" — peer-controlled package
+            // metadata reaching the log encoder. getSimpleName() is JVM-controlled and bounded.
+            default -> logEvent("got an unknown event: %s".formatted(event.getClass().getSimpleName()));
         }
     }
 
@@ -342,6 +348,50 @@ public class StompCallback implements WebSocketCallback {
         } else {
             LOGGER.info("Toot not loadable by this glacier instance. Ignoring");
         }
+    }
+
+    /**
+     * Determines whether the status has opted in to the glacier wall by mentioning the bot.
+     *
+     * <p>Defence-in-depth (ADR-PT-A04-01): this check is enforced at the Glacier layer on every
+     * event path — typed ({@code processStatusCreatedEvent}, {@code processStatusEditedEvent}) and
+     * generic ({@code sendMessage}) — so that a future Bigbone API change or subscription
+     * misconfiguration cannot bypass the opt-in invariant.
+     *
+     * <p>Null-safe: if {@code payload.getMentions()} returns {@code null} or is empty, the method
+     * returns {@code false} without throwing an NPE.
+     *
+     * <p>Exact-match semantics: the comparison uses {@code String#equals}, not
+     * {@code String#startsWith} or {@code String#contains}, so a mention of
+     * {@code "glacier@otherinstance.social"} does NOT satisfy a {@code shortHandle} of
+     * {@code "glacier"}. This is intentional — partial matches would allow impersonation.
+     *
+     * <p>D-13/SR-8: when the check fails, only the hashed hashtag length is logged — never the
+     * raw hashtag, raw wallId, or raw mention content.
+     *
+     * @param mentions     the list of mentions from the status; may be {@code null}
+     * @param shortHandle  the bot's short name (local part only, e.g. {@code "glacier"}) —
+     *                     derived from the configured mastodon handle at construction time
+     * @return {@code true} if any mention's {@code acct} exactly equals {@code shortHandle};
+     *         {@code false} otherwise (including null-mentions case)
+     */
+    private boolean isOptedIn(final List<? extends Object> mentions, final String shortHandle) {
+        if (mentions == null) {
+            LOGGER.debug("opt-in.check mentions=null hashtag-len={} — treating as not-opted-in",
+                    LogScrubber.hashtagLen(hashtag));
+            return false;
+        }
+        return mentions.stream()
+                .filter(m -> m != null)
+                .anyMatch(m -> {
+                    if (m instanceof social.bigbone.api.entity.Status.Mention bm) {
+                        return shortHandle.equals(bm.getAcct());
+                    }
+                    if (m instanceof de.seism0saurus.glacier.webservice.messaging.messages.Mention gm) {
+                        return shortHandle.equals(gm.getAcct());
+                    }
+                    return false;
+                });
     }
 
     /**
