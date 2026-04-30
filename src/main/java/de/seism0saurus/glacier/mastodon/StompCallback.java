@@ -205,16 +205,15 @@ public class StompCallback implements WebSocketCallback {
         // D-13/SR-8 / ADR-F6-02: event.toString() is uncontrolled output that can include raw URLs,
         // hashtags, account handles, and raw HTML toot content — demoted to DEBUG, type-only rendering
         LOGGER.debug("stream.event type={}", event.getClass().getSimpleName());
-        String baseDestination = "/topic/hashtags/" + principal + "/" + hashtag;
         switch (event) {
             case MastodonApiEvent.StreamEvent streamEvent -> {
                 switch (streamEvent.getEvent()) {
                     case ParsedStreamEvent.StatusCreated statusCreatedEvent ->
-                            processStatusCreatedEvent(statusCreatedEvent.getCreatedStatus(), baseDestination);
+                            processStatusCreatedEvent(statusCreatedEvent.getCreatedStatus());
                     case ParsedStreamEvent.StatusEdited statusEditedEvent ->
-                            processStatusEditedEvent(statusEditedEvent.getEditedStatus(), baseDestination);
+                            processStatusEditedEvent(statusEditedEvent.getEditedStatus());
                     case ParsedStreamEvent.StatusDeleted statusDeletedEvent ->
-                            procesStatusDeletedEvent(statusDeletedEvent.getDeletedStatusId(), baseDestination);
+                            procesStatusDeletedEvent(statusDeletedEvent.getDeletedStatusId());
                     // D-13/SR-8/CWE-117 (TD-5-FU-1/SR-TD5-FU-01): use getSimpleName(), not getClass() bare.
                     // Class.toString() produces "class fully.qualified.Name" — peer-controlled package
                     // metadata reaching the log encoder. getSimpleName() is JVM-controlled and bounded.
@@ -222,7 +221,7 @@ public class StompCallback implements WebSocketCallback {
                 }
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
-            case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
+            case GenericMessage genericMessage -> processGenericEvent(genericMessage);
             // D-13/SR-8/CWE-117 (TD-5-FU-1/SR-TD5-FU-02): use getSimpleName(), not getClass() bare.
             // Class.toString() produces "class fully.qualified.Name" — peer-controlled package
             // metadata reaching the log encoder. getSimpleName() is JVM-controlled and bounded.
@@ -234,9 +233,8 @@ public class StompCallback implements WebSocketCallback {
      * Process a generic event.
      *
      * @param genericMessage The GenericMessage event to process.
-     * @param destination    The destination to send the processed event.
      */
-    private void processGenericEvent(GenericMessage genericMessage, String destination) {
+    private void processGenericEvent(GenericMessage genericMessage) {
         logEvent("got a GenericMessage event");
         String text = genericMessage.getText();
         ObjectMapper mapper = new ObjectMapper();
@@ -249,7 +247,7 @@ public class StompCallback implements WebSocketCallback {
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
                     || "status.delete".equals(genericMessageContent.getEvent()))) {
-                procesStatusDeletedEvent(genericMessageContent.getPayload().textValue(), destination);
+                procesStatusDeletedEvent(genericMessageContent.getPayload().textValue());
             } else {
                 // D-13/SR-8 / ADR-F6-03: genericMessageContent full dump contains raw URLs,
                 // hashtags, and payload — emit only stream size and allowlisted event name
@@ -483,10 +481,9 @@ public class StompCallback implements WebSocketCallback {
      * the bot opt-in mention — it relies on the Mastodon subscription filter having already
      * narrowed the stream to the configured hashtag.
      *
-     * @param status      The newly created status.
-     * @param destination The base STOMP destination; /creation suffix is appended (informational).
+     * @param status The newly created status.
      */
-    private void processStatusCreatedEvent(final Status status, final String destination) {
+    private void processStatusCreatedEvent(final Status status) {
         logEvent("got a StatusCreated event");
 
         // 1. SSRF guard: validate the toot URL before issuing any outbound request or cache write
@@ -536,10 +533,9 @@ public class StompCallback implements WebSocketCallback {
      * <p>Note: no {@code HEAD} request is issued for edited statuses — the toot URL was already
      * validated when the toot was first created.
      *
-     * @param status      The edited status.
-     * @param destination The base STOMP destination; /modification suffix is appended (informational).
+     * @param status The edited status.
      */
-    private void processStatusEditedEvent(final Status status, final String destination) {
+    private void processStatusEditedEvent(final Status status) {
         logEvent("got a StatusEdited event");
 
         // 1. SSRF guard: validate the toot URL before publishing any message to the cache
@@ -568,10 +564,9 @@ public class StompCallback implements WebSocketCallback {
      *
      * <p>Deletion events carry only a status ID — no URL — so no SSRF guard is required here.</p>
      *
-     * @param statusId    The ID of the deleted status.
-     * @param destination The base STOMP destination; /deletion suffix is appended (informational).
+     * @param statusId The ID of the deleted status.
      */
-    private void procesStatusDeletedEvent(final String statusId, final String destination) {
+    private void procesStatusDeletedEvent(final String statusId) {
         logEvent("got a StatusDeleted event");
         CacheEntry partial = new CacheEntry(EventType.DELETED, statusId, null, null, 0L);
         CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);

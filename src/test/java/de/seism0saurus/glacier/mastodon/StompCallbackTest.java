@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -3860,6 +3861,94 @@ public class StompCallbackTest {
                             "Offending line: [" + trimmed + "]")
                         .isFalse();
             }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // SR-F6INFO2-R1-01: R-1-gate — private methods must not carry String destination
+    // Security: CWE-532 (Information Exposure Through Log Files), SI-11, AU-9, D-13/SR-8
+    // -----------------------------------------------------------------
+
+    /**
+     * R-1-gate (SR-F6INFO2-R1-01) — structural regression gate: none of the four private
+     * event-processing methods in {@code StompCallback.java} may declare a
+     * {@code String destination} parameter.
+     *
+     * <p>The {@code destination} string contains {@code /{wallId}/{hashtag}} path segments
+     * that are D-13-sensitive bytes. Before F-6-INFO-2 R-1, the parameter was passed from
+     * {@code onEvent} into each private method despite never being used there — creating a
+     * propagation vector where a future developer could accidentally log the raw destination
+     * string (CWE-532 / SI-11 / AU-9).
+     *
+     * <p>The fix removes the {@code String destination} parameter from all four private methods
+     * and the {@code String baseDestination} local variable from {@code onEvent}. This gate
+     * ensures the parameter does not reappear.
+     *
+     * <p>Verify: run with each method name; gate must be GREEN immediately after the
+     * F-6-INFO-2 R-1 refactor. Destructive verification: temporarily re-add
+     * {@code String destination} to one of the method signatures and confirm this gate fires.
+     *
+     * @param methodName one of the four private event-processing method names
+     * @throws Exception if the source file cannot be read — treated as a test failure
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "processStatusCreatedEvent",
+            "processStatusEditedEvent",
+            "procesStatusDeletedEvent",
+            "processGenericEvent"
+    })
+    public void R1_gate_privateEventMethod_mustNotDeclareStringDestinationParameter(String methodName)
+            throws Exception {
+        List<String> lines = Files.readAllLines(
+                java.nio.file.Path.of(System.getProperty("user.dir"),
+                        "src", "main", "java", "de", "seism0saurus", "glacier", "mastodon", "StompCallback.java"));
+
+        // Locate the signature line(s): a private method declaration containing the method name.
+        // A signature line starts with optional whitespace then "private" and contains the method name.
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("private") && trimmed.contains(methodName + "(")) {
+                assertThat(trimmed)
+                        .as("SR-F6INFO2-R1-01: method [%s] must not carry String destination — "
+                                + "D-13-sensitive bytes (/{wallId}/{hashtag}) must not propagate "
+                                + "past onEvent into private methods. CWE-532/SI-11/AU-9.",
+                                methodName)
+                        .doesNotMatch(".*\\bdestination\\b.*");
+            }
+        }
+    }
+
+    /**
+     * R-1-gate sibling (SR-F6INFO2-R1-01) — structural regression gate: the local variable
+     * {@code String baseDestination} must not appear in the body of {@code onEvent} in
+     * {@code StompCallback.java}.
+     *
+     * <p>Before F-6-INFO-2 R-1, {@code onEvent} constructed
+     * {@code String baseDestination = "/topic/hashtags/" + principal + "/" + hashtag}
+     * and passed it to each of the four private methods. After the refactor the variable
+     * is unused and was removed. Its reappearance would close the regression class at the
+     * local-variable level (same CWE-532 / SI-11 / AU-9 / D-13 scope as R-1-gate).
+     *
+     * @throws Exception if the source file cannot be read — treated as a test failure
+     */
+    @Test
+    public void baseDestination_isRemovedFromOnEvent() throws Exception {
+        List<String> lines = Files.readAllLines(
+                java.nio.file.Path.of(System.getProperty("user.dir"),
+                        "src", "main", "java", "de", "seism0saurus", "glacier", "mastodon", "StompCallback.java"));
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            // Skip comments and Javadoc — they may mention the variable name for documentation
+            if (trimmed.startsWith("//") || trimmed.startsWith("*")) {
+                continue;
+            }
+            assertThat(trimmed)
+                    .as("SR-F6INFO2-R1-01: 'String baseDestination' must not appear in StompCallback.java — "
+                            + "D-13-sensitive bytes (/{wallId}/{hashtag}) must not be materialised as a "
+                            + "local variable that could be accidentally logged. CWE-532/SI-11/AU-9.")
+                    .doesNotContain("String baseDestination");
         }
     }
 
