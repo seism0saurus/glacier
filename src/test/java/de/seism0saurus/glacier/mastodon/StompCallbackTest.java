@@ -1182,7 +1182,12 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes an unknown Websocket event correctly
+     * Tests if the event handler processes an unknown Websocket event correctly.
+     *
+     * <p>TD-5-FU-1 fix (SR-TD5-FU-02): the log message now uses {@code getClass().getSimpleName()}
+     * instead of bare {@code getClass()}, so the fully-qualified class name is no longer emitted.
+     * The assertion is updated to verify the prefix and the absence of the package-qualified form
+     * (D-13/SR-8/CWE-117).
      */
     @Test
     public void onEvent_WebsocketEventUnknown() {
@@ -1197,9 +1202,16 @@ public class StompCallbackTest {
         // Execute
         callback.onEvent(mockEvent);
 
-        // Verify
+        // Verify: the operational message prefix is preserved
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got an unknown event: class social.bigbone.api.entity.streaming.WebSocketEvent$"));
+                .anySatisfy(msg -> assertThat(msg).contains("got an unknown event: "));
+
+        // TD-5-FU-1 (SR-TD5-FU-02): Class.toString() ("class fully.qualified.Name") must NOT appear.
+        // getSimpleName() is used — the Mockito proxy simple name is JVM-controlled and bounded.
+        assertThat(logAppender.getLoggedMessages())
+                .allSatisfy(msg -> assertThat(msg)
+                        .as("D-13/SR-8/CWE-117: fully-qualified class name must not appear in log output")
+                        .doesNotMatch(".*class social\\.bigbone\\..*"));
     }
 
     // -------------------------------------------------------------------------
@@ -3676,6 +3688,87 @@ public class StompCallbackTest {
                             " — open.getClass().getSimpleName() must be used, not open.toString() " +
                             "(CWE-117 / D-13 / SR-8 / ADR-TD5-B)")
                         .doesNotContain(".formatted(open)");
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // TD-5-FU-1 — T7-gate-FU: structural gate banning bare .getClass()) on logEvent lines
+    //
+    // T7-gate-FU: extends T7-gate to detect the TD-5-FU-1 vulnerability pattern —
+    //             .getClass()) without .getSimpleName() on lines containing LOGGER. or logEvent(.
+    //
+    // SR coverage: SR-TD5-FU-03 (structural source gate)
+    // Security: CWE-117 (log injection), D-13/SR-8, SR-8
+    // -----------------------------------------------------------------
+
+    /**
+     * T7-gate-FU (SR-TD5-FU-03) — structural regression gate: no line in {@code StompCallback.java}
+     * that contains {@code LOGGER.} or {@code logEvent(} may contain {@code .getClass())} (bare,
+     * without {@code .getSimpleName()}).
+     *
+     * <p>This gate extends T7-gate (SR-TD5-04) to ban the TD-5-FU-1 vulnerability pattern.
+     * The pattern {@code .getClass())} (closing paren immediately after {@code getClass()})
+     * without an immediately-following {@code .getSimpleName()} call causes
+     * {@link String#formatted} to invoke {@link Class#toString()}, which produces
+     * {@code "class fully.qualified.Name"} — peer-controlled package metadata that must
+     * never reach the log encoder (CWE-117 / D-13 / SR-8).
+     *
+     * <p>Trigger condition: line contains {@code LOGGER.} OR {@code logEvent(}
+     * AND line contains {@code .getClass())} (note: closing paren, i.e. {@code getClass()}
+     * is the terminal method call, not chained to {@code .getSimpleName()})
+     * AND line does NOT contain {@code .getSimpleName()} (allowlist for already-safe uses
+     * such as the DEBUG line at {@code StompCallback.java:207}).
+     *
+     * <p>This gate is GREEN immediately after the commit-2 fix. Destructive verification:
+     * temporarily revert one of the two fixed lines back to bare {@code .getClass())} to confirm
+     * the gate fires, then revert back.
+     *
+     * <p>Note: this gate covers single-line logger calls only (same limitation as T7-gate).
+     * All logger and logEvent calls in {@code StompCallback.java} are currently single-line
+     * (verified 2026-04-30).
+     *
+     * @throws Exception if the source file cannot be read — treated as a test failure
+     */
+    @Test
+    public void noLogEventLine_usesBareDotGetClass_withoutGetSimpleName() throws Exception {
+        // Locate StompCallback.java using the class-location pattern established in T7-gate and SR-TD3-10-gate.
+        java.net.URL classUrl = StompCallback.class.getProtectionDomain().getCodeSource().getLocation();
+        java.nio.file.Path classesDir = Paths.get(classUrl.toURI());
+        // Walk up from target/classes to the Maven project root (parent of target/)
+        java.nio.file.Path projectRoot = classesDir.getParent().getParent();
+        java.nio.file.Path source = projectRoot
+                .resolve("src/main/java/de/seism0saurus/glacier/mastodon/StompCallback.java");
+
+        assertThat(source).as("StompCallback.java must exist at resolved path").exists();
+
+        List<String> lines = Files.readAllLines(source);
+        for (int i = 0; i < lines.size(); i++) {
+            String normalised = lines.get(i).strip();
+            // Skip comment lines and Javadoc — they may reference the pattern for documentation.
+            if (normalised.startsWith("//") || normalised.startsWith("*")) {
+                continue;
+            }
+            // Gate trigger: line is a logger call or logEvent wrapper call
+            if (normalised.contains("LOGGER.") || normalised.contains("logEvent(")) {
+                String lineRef = "line " + (i + 1);
+                // Trigger condition: bare .getClass()) AND no .getSimpleName() on the same line.
+                // .getClass()) without .getSimpleName() means Class.toString() will be invoked by
+                // String.formatted() or SLF4J argument rendering — peer-controlled package metadata
+                // reaches the log encoder (CWE-117 / D-13 / SR-8 / SR-TD5-FU-03).
+                boolean hasBareGetClass = normalised.contains(".getClass())");
+                boolean hasGetSimpleName = normalised.contains(".getSimpleName()");
+                if (hasBareGetClass && !hasGetSimpleName) {
+                    // Fail with a message citing the standard and the offending line
+                    assertThat(false)
+                            .as("SR-TD5-FU-03 / CWE-117 / D-13 / SR-8: logger/logEvent line at %s " +
+                                "uses bare .getClass()) without .getSimpleName() — Class.toString() " +
+                                "would emit \"class fully.qualified.Name\" into the log encoder. " +
+                                "Use .getClass().getSimpleName() instead. " +
+                                "Extends T7-gate to ban this pattern (TD-5-FU-1). " +
+                                "Offending line: [%s]", lineRef, normalised)
+                            .isTrue();
+                }
             }
         }
     }
