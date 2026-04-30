@@ -65,6 +65,17 @@ public class StompCallback implements WebSocketCallback {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Maps a {@link StatusMessage} subtype to its {@link StompEventType} (F-6-INFO-2).
+     * Returns empty for unknown subtypes — callers must log and return early to preserve
+     * the Bigbone virtual-thread stream (ADR-F6-INFO-2-D).
+     */
+    private static Optional<StompEventType> eventTypeFor(Class<? extends StatusMessage> clazz) {
+        if (StatusCreatedMessage.class.equals(clazz)) return Optional.of(StompEventType.CREATION);
+        if (StatusUpdatedMessage.class.equals(clazz)) return Optional.of(StompEventType.MODIFICATION);
+        return Optional.empty();
+    }
+
+    /**
      * Represents a callback for handling WebSocket events related to subscriptions.
      * This class is used in conjunction with SubscriptionManager to manage hashtag subscriptions on Mastodon.
      */
@@ -226,9 +237,9 @@ public class StompCallback implements WebSocketCallback {
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
             if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())) {
-                sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent, destination + "/creation");
+                sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent);
             } else if (genericMessageContent.getStream().contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
-                sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent, destination + "/modification");
+                sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent);
             } else if (genericMessageContent.getStream().contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
                     || "status.delete".equals(genericMessageContent.getEvent()))) {
@@ -260,14 +271,21 @@ public class StompCallback implements WebSocketCallback {
      * </ol>
      *
      * @param mapper                Jackson mapper for deserialising the payload
-     * @param statusMessageClass    the concrete {@link StatusMessage} subtype to build
+     * @param statusMessageClass    the concrete {@link StatusMessage} subtype to build;
+     *                              determines the {@link StompEventType} via {@link #eventTypeFor}
      * @param genericMessageContent the envelope containing the raw payload JSON
-     * @param destination           the STOMP topic destination (informational only — publishing
-     *                              is delegated to {@link MessageCache})
      * @throws JsonProcessingException if the payload JSON cannot be parsed
      */
     private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass,
-                             GenericMessageContent genericMessageContent, String destination) throws JsonProcessingException {
+                             GenericMessageContent genericMessageContent) throws JsonProcessingException {
+        // Resolve type from message class — safe; never derived from destination or wire bytes (F-6-INFO-2)
+        Optional<StompEventType> typeOpt = eventTypeFor(statusMessageClass);
+        if (typeOpt.isEmpty()) {
+            LOGGER.error("stomp.message.unknown_status_class class={}", statusMessageClass.getSimpleName());
+            return;
+        }
+        StompEventType type = typeOpt.get();
+
         GenericMessageContentPayload payload = mapper.readValue(
                 genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
 
@@ -312,14 +330,12 @@ public class StompCallback implements WebSocketCallback {
                 CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
                 // 6. ADR-SHARE-04: relay to viewer share topics after successful cache write
                 if (shareViewStompRelay != null && stored != null) {
-                    String eventType = StatusCreatedMessage.class.equals(statusMessageClass) ? "creation" : "modification";
-                    shareViewStompRelay.relayTootEvent(principal, hashtag, eventType, stored);
+                    shareViewStompRelay.relayTootEvent(principal, hashtag, type.suffix(), stored);
                 }
-                // D-13/SR-8 / ADR-F6-05: emit structured triple instead of raw STOMP destination
-                // (which embeds principal UUID and raw hashtag)
-                String eventType = destination.substring(destination.lastIndexOf('/') + 1);
+                // D-13/SR-8 / ADR-F6-05: emit structured triple — type derived from statusMessageClass,
+                // never from destination bytes (F-6-INFO-2, SR-F6INFO2-03)
                 LOGGER.info("stomp.message.published principal-hash={} hashtag-len={} event-type={}",
-                        LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag), eventType);
+                        LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag), type.suffix());
             } else {
                 LOGGER.info("No opt in. Ignoring");
             }
@@ -448,7 +464,7 @@ public class StompCallback implements WebSocketCallback {
             CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
             // 5. ADR-SHARE-04: relay to viewer share topics after successful cache write
             if (shareViewStompRelay != null && stored != null) {
-                shareViewStompRelay.relayTootEvent(principal, hashtag, "creation", stored);
+                shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.CREATION.suffix(), stored);
             }
         }
     }
@@ -490,7 +506,7 @@ public class StompCallback implements WebSocketCallback {
         CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
         // 4. ADR-SHARE-04: relay to viewer share topics
         if (shareViewStompRelay != null && stored != null) {
-            shareViewStompRelay.relayTootEvent(principal, hashtag, "modification", stored);
+            shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.MODIFICATION.suffix(), stored);
         }
     }
 
@@ -508,7 +524,7 @@ public class StompCallback implements WebSocketCallback {
         CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
         // ADR-SHARE-04: relay to viewer share topics
         if (shareViewStompRelay != null && stored != null) {
-            shareViewStompRelay.relayTootEvent(principal, hashtag, "deletion", stored);
+            shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.DELETION.suffix(), stored);
         }
     }
 

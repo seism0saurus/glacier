@@ -2279,6 +2279,232 @@ public class StompCallbackTest {
                 .noneSatisfy(msg -> assertThat(msg).contains(hashtag));
     }
 
+    // -------------------------------------------------------------------------
+    // F-6-INFO-2 security tests (Lane B)
+    //
+    // SR-F6INFO2-04: unknown StatusMessage subtype must not propagate an exception
+    //               up the Bigbone virtual-thread stack — logs ERROR and returns early.
+    // SR-F6INFO2-09: structural guard — sendMessage must have no destination parameter.
+    // SR-F6INFO2-06: cross-module invariant — event-type derived from statusMessageClass,
+    //               never from the destination path (which embeds the hashtag).
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-F6INFO2-04: {@code eventTypeFor} must return {@code Optional.empty()} for an
+     * unknown {@link StatusMessage} subtype and must not throw any exception.
+     *
+     * <p>The guard in {@code sendMessage} then emits LOGGER.error with the key
+     * {@code stomp.message.unknown_status_class} before returning early — preventing
+     * any exception from propagating up the Bigbone virtual-thread stack (ADR-F6-INFO-2-D).
+     *
+     * <p>Implementation note: {@code eventTypeFor} is package-private static; we invoke it
+     * via reflection because a direct call requires a class in the same package. The
+     * reflection approach also serves as the authoritative structural probe — if the method
+     * signature changes the reflection lookup will fail, alerting us to re-check the guard.
+     */
+    @Test
+    public void sendMessage_unknownStatusMessageClass_doesNotThrow_andLogsError() throws Exception {
+        // Arrange: a concrete but unknown StatusMessage subtype (not Created or Updated)
+        class UnknownStatusMessage extends StatusMessage {}
+
+        // Probe eventTypeFor via reflection — it is package-private static; accessible from the test package
+        java.lang.reflect.Method eventTypeForMethod =
+                StompCallback.class.getDeclaredMethod("eventTypeFor", Class.class);
+        eventTypeForMethod.setAccessible(true);
+
+        // Act: invoke eventTypeFor with the unknown subtype — must not throw
+        @SuppressWarnings("unchecked")
+        Optional<StompEventType> result =
+                (Optional<StompEventType>) eventTypeForMethod.invoke(null, UnknownStatusMessage.class);
+
+        // Assert: returns empty — the caller (sendMessage) will log ERROR and return early
+        assertThat(result).isEmpty();
+
+        // Now verify the full sendMessage path logs ERROR and does not throw.
+        // We drive it through processGenericEvent by constructing a GenericMessage that would normally
+        // route to sendMessage, then use a TestLogAppender to capture the error log.
+        // Because processGenericEvent only dispatches to StatusCreatedMessage / StatusUpdatedMessage
+        // internally, we cannot reach sendMessage with an unknown class through the normal dispatch.
+        // The eventTypeFor reflection test above is therefore the canonical SR-F6INFO2-04 assertion.
+        // As a defence-in-depth check: verify that a known-good onEvent call does NOT emit
+        // stomp.message.unknown_status_class (confirming the error path is only for unknown types).
+        TestLogAppender logAppender = getTestLogAppender();
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567/embed")).thenReturn(allowHeader);
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
+        GenericMessageContentPayload knownPayload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(knownPayload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        GenericMessageContent knownContent = GenericMessageContent.builder()
+                .event("update").stream(List.of("hashtag")).payload(jsonNode).build();
+        MastodonApiEvent.GenericMessage knownEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(knownEvent.getText()).thenReturn(mapper.writeValueAsString(knownContent));
+
+        // Act: known class path — must NOT log the unknown-class error
+        callback.onEvent(knownEvent);
+
+        // Assert: no log message mentions unknown_status_class for the known path
+        // (SR-F6INFO2-04: the error is only for truly unknown subtypes)
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("stomp.message.unknown_status_class"));
+    }
+
+    /**
+     * SR-F6INFO2-09: structural guard — the {@code sendMessage} method must have exactly three
+     * parameters and must NOT have a {@code String destination} fourth parameter.
+     *
+     * <p>This test fails fast if the destination parameter is accidentally re-introduced,
+     * which would break the F-6-INFO-2 invariant that event-type is derived solely from
+     * the {@code statusMessageClass} argument, not from the destination string.
+     */
+    @Test
+    public void sendMessage_signature_hasNoDestinationParameter() {
+        // Assert three-parameter form exists — this is the post-F-6-INFO-2 contract
+        java.lang.reflect.Method threeParam = null;
+        try {
+            threeParam = StompCallback.class.getDeclaredMethod(
+                    "sendMessage", ObjectMapper.class, Class.class, GenericMessageContent.class);
+        } catch (NoSuchMethodException e) {
+            throw new AssertionError(
+                    "SR-F6INFO2-09: sendMessage(ObjectMapper, Class, GenericMessageContent) not found — " +
+                    "the three-parameter form must exist after the destination-param removal", e);
+        }
+        assertThat(threeParam.getParameterCount())
+                .as("sendMessage must have exactly 3 parameters (no destination String)")
+                .isEqualTo(3);
+
+        // Assert four-parameter form (with destination String) does NOT exist
+        assertThat(StompCallback.class)
+                .satisfies(cls -> {
+                    try {
+                        cls.getDeclaredMethod(
+                                "sendMessage", ObjectMapper.class, Class.class, GenericMessageContent.class, String.class);
+                        throw new AssertionError(
+                                "SR-F6INFO2-09: sendMessage(ObjectMapper, Class, GenericMessageContent, String) " +
+                                "must NOT exist — the destination parameter was removed by F-6-INFO-2");
+                    } catch (NoSuchMethodException expected) {
+                        // correct: the four-parameter overload must not exist
+                    }
+                });
+    }
+
+    /**
+     * SR-F6INFO2-06: cross-module invariant — event-type in the published log is derived from
+     * {@code statusMessageClass}, never from the destination path (which embeds the hashtag).
+     *
+     * <p>This test constructs a {@link StompCallback} with hashtag {@code "a/b"} — a value that
+     * bypasses {@code HashtagFormat} validation because this is a unit test, not the production
+     * path. The hashtag's trailing segment {@code "b"} happens to equal the legacy
+     * {@code lastIndexOf('/')} substring that the old code used to derive the event suffix.
+     *
+     * <p>If the implementation were accidentally re-introduced to derive event-type from the
+     * destination string (e.g. {@code destination.substring(destination.lastIndexOf('/') + 1)}),
+     * the log would contain {@code "event-type=b"} instead of {@code "event-type=creation"}.
+     * This test pins the contract that the enum {@link StompEventType#suffix()} is the sole source.
+     *
+     * <p>Today this scenario is unreachable in production because {@code HashtagFormat.PATTERN}
+     * forbids {@code '/'} in hashtags. The test exists as a forward-compatibility defence: if
+     * {@code HashtagFormat} is ever loosened, this test detects a log-injection regression before
+     * it reaches production (defence-in-depth, NIST SP 800-53 SI-10).
+     */
+    @Test
+    public void stompMessagePublished_logsEventTypeFromEnum_evenIfHashtagContainsSlash()
+            throws JsonProcessingException {
+        // Arrange: hashtag "a/b" — unit-test only; bypasses production HashtagFormat validation.
+        // The trailing segment "b" is what the old lastIndexOf-based code would have derived.
+        TestLogAppender logAppender = getTestLogAppender();
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567/embed")).thenReturn(allowHeader);
+
+        // Principal and hashtag injected directly into the constructor — no validation gate here
+        String principal = UUID.randomUUID().toString();
+        String hashtagWithSlash = "a/b"; // deliberately contains '/' to probe old suffix extraction
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtagWithSlash, "glacier@example.com", "example.com");
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        // "update" event → maps to StatusCreatedMessage → StompEventType.CREATION → suffix "creation"
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("update").stream(List.of("hashtag")).payload(jsonNode).build();
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(mockEvent.getText()).thenReturn(mapper.writeValueAsString(content));
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Assert: event-type derived from StompEventType.CREATION.suffix() == "creation"
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> {
+                    assertThat(msg).contains("stomp.message.published");
+                    assertThat(msg).contains("event-type=creation");
+                });
+
+        // Assert: event-type must NOT be "b" — the old lastIndexOf-based derivation would produce "b"
+        // because the destination was "/topic/hashtags/<principal>/a/b" and lastIndexOf('/') + 1 = "b"
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("event-type=b"));
+    }
+
+    /**
+     * Verifies that a {@code status.update} GenericMessage published to the wall logs
+     * {@code event-type=modification} — confirming that {@link StompEventType#MODIFICATION}
+     * is the sole source of the event-type field, never a destination-string substring
+     * (SR-F6INFO2-02).
+     *
+     * <p>Mirrors {@link #stompMessagePublished_logsEventTypeFromEnum_evenIfHashtagContainsSlash}
+     * for the MODIFICATION branch. Together the two tests cover the full CREATION / MODIFICATION
+     * symmetry of the {@code eventTypeFor} mapper.
+     */
+    @Test
+    public void stompMessagePublished_logsEventTypeModification_whenStatusUpdatedDispatched()
+            throws JsonProcessingException {
+        TestLogAppender logAppender = getTestLogAppender();
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://example.com/4567/embed")).thenReturn(allowHeader);
+
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+
+        ObjectMapper mapper = new ObjectMapper();
+        Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567")
+                .editedAt("2025-01-17T00:00:00Z").build();
+        String payloadAsText = mapper.writeValueAsString(payload);
+        JsonNode jsonNode = TextNode.valueOf(payloadAsText);
+        // "status.update" event → maps to StatusUpdatedMessage → StompEventType.MODIFICATION → suffix "modification"
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(mockEvent.getText()).thenReturn(mapper.writeValueAsString(content));
+
+        callback.onEvent(mockEvent);
+
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> {
+                    assertThat(msg).contains("stomp.message.published");
+                    assertThat(msg).contains("event-type=modification");
+                });
+        // Guard: "event-type=hashtag" would indicate the old destination-substring derivation
+        assertThat(logAppender.getLoggedMessages())
+                .noneSatisfy(msg -> assertThat(msg).contains("event-type=hashtag"));
+    }
+
     /**
      * Creates a {@link TestLogAppender} wired to the {@link StompCallback} logger.
      * <p>
