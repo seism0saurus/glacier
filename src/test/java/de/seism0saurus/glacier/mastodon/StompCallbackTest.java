@@ -3379,6 +3379,302 @@ public class StompCallbackTest {
     }
 
     // -----------------------------------------------------------------
+    // TD-5 — Lane B tests  (T7a-struct, T7b-struct, T7-gate)
+    //
+    // T7a-struct: parameterised injection fuzz for the default branch (TD-5-A)
+    // T7b-struct: parameterised injection fuzz for the Open branch (TD-5-B)
+    // T7-gate:    structural regression gate — no .formatted(event)/.formatted(open) on LOGGER lines
+    //
+    // SR coverage: SR-TD5-01 (default branch: no peer bytes), SR-TD5-02 (Open branch:
+    //              no peer bytes), SR-TD5-04 (structural source gate)
+    // -----------------------------------------------------------------
+
+    /**
+     * Provides 8 adversarial {@code toString()} values for the T7a-struct and T7b-struct
+     * injection fuzz tests (SR-TD5-01 / SR-TD5-02 / CWE-117 / D-13).
+     *
+     * <p>Each row is a single adversarial string that MUST NOT appear in any log output
+     * if the fix holds, because {@code getClass().getSimpleName()} is always called, never
+     * {@code toString()}.  The adversarial bytes are injected via {@code mock.toString()}
+     * — if the production code ever regresses to {@code %s}-formatting the event object,
+     * the sentinel surfaces in the log and the test fails.
+     *
+     * <p>Attack families covered (mirrors the TD-2 T-B1 discipline):
+     * <ul>
+     *   <li>ASCII canary — baseline signal for direct {@code toString()} leak detection</li>
+     *   <li>CRLF injection — SR-TD5-03: embedded newline that would create a fake log line</li>
+     *   <li>ANSI escape — terminal colour injection (ESC byte U+001B)</li>
+     *   <li>NUL byte — message-truncation injection (U+0000)</li>
+     *   <li>U+2028 LINE SEPARATOR — Unicode line break that some log frameworks interpret</li>
+     *   <li>U+202E RIGHT-TO-LEFT OVERRIDE — visual obfuscation / RTL spoofing</li>
+     *   <li>U+FEFF BOM / ZERO-WIDTH NO-BREAK SPACE — silent invisible injection</li>
+     *   <li>U+2029 PARAGRAPH SEPARATOR — Unicode paragraph break</li>
+     * </ul>
+     */
+    private static Stream<Arguments> td5StructInjectionVariants() {
+        return Stream.of(
+                // Row 1: ASCII canary — baseline toString() leak detector
+                Arguments.of("__CANARY_TD5_STRUCT__"),
+                // Row 2: CRLF injection — embedded newline producing a fake log line (SR-TD5-03)
+                Arguments.of("foo\r\nbar"),
+                // Row 3: ANSI escape sequence — ESC byte U+001B, colour injection
+                Arguments.of("foobar"),
+                // Row 4: NUL byte — message-truncation injection U+0000
+                Arguments.of("foo bar"),
+                // Row 5: U+2028 LINE SEPARATOR — Unicode line break
+                Arguments.of("foo bar"),
+                // Row 6: U+202E RIGHT-TO-LEFT OVERRIDE — RTL visual spoofing
+                Arguments.of("foo‮bar"),
+                // Row 7: U+FEFF BOM / ZERO-WIDTH NO-BREAK SPACE — invisible injection
+                Arguments.of("foo﻿bar"),
+                // Row 8: U+2029 PARAGRAPH SEPARATOR — Unicode paragraph break
+                Arguments.of("foo bar")
+        );
+    }
+
+    /**
+     * T7a-struct (SR-TD5-01) — parameterised injection fuzz for the TD-5-A default branch.
+     *
+     * <p>The production fix (ADR-TD5-A) uses {@code event.getClass().getSimpleName()}
+     * instead of {@code event.toString()} (or {@code %s} formatting) in the default branch
+     * of {@code processTechnicalEvent}. {@code getSimpleName()} returns the JVM-assigned
+     * simple class name — a constant string under JVM control, never peer-influenced.
+     *
+     * <p>This test verifies the invariant structurally by providing 8 adversarial strings
+     * as the return value of {@code mock.toString()} and confirming that none of them
+     * appear in any log output. The only thing that can appear is the class simple name.
+     *
+     * <p>Arrange: a mocked {@link TechnicalEvent} (not Open/Closing/Closed/Failure) whose
+     *             {@code toString()} returns each adversarial string in turn.
+     *             This routes through the {@code default} branch of the switch in
+     *             {@code processTechnicalEvent}.
+     * Act:     invoke {@code onEvent} with the mocked event.
+     * Assert (SR-TD5-01):
+     * <ol>
+     *   <li>No {@link ILoggingEvent#getFormattedMessage()} contains any adversarial fragment —
+     *       {@code toString()} is never called in the logging path.</li>
+     *   <li>No element of {@link ILoggingEvent#getArgumentArray()} (stringified via
+     *       {@link String#valueOf}) contains any adversarial fragment.</li>
+     *   <li>Positive shape: at least one formatted message contains {@code "class="} —
+     *       the operational signal is preserved via {@code getSimpleName()}.</li>
+     * </ol>
+     *
+     * <p>Note: {@code event.getClass().getSimpleName()} for a Mockito proxy will return a
+     * Mockito-generated class name (e.g. "TechnicalEvent$MockitoMock..."), not the adversarial
+     * string. This is the exact guarantee the fix relies on.
+     *
+     * @param adversarialToString the adversarial string returned by {@code mock.toString()}
+     */
+    @ParameterizedTest(name = "TD5-A-default-fuzz: fragment={0}")
+    @MethodSource("td5StructInjectionVariants")
+    public void processTechnicalEvent_defaultBranch_injectionFuzz_doesNotLeakToString(
+            String adversarialToString) {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        TestLogAppender auditAppender = getAuditLogAppender();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        // Mock a TechnicalEvent that routes to the default branch (not Open/Closing/Closed/Failure).
+        // Override toString() with the adversarial value: if the fix regresses to %s-formatting,
+        // the sentinel will appear in the log and the assertion below will catch it.
+        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
+        when(mockEvent.toString()).thenReturn(adversarialToString);
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Collect events from both the StompCallback logger and the AUDIT logger
+        List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());
+        allEvents.addAll(auditAppender.getLoggedEvents());
+
+        // Assert SR-TD5-01: adversarial bytes must not appear in any formatted message.
+        // getClass().getSimpleName() is always JVM-controlled — never peer-controlled.
+        assertThat(allEvents)
+                .as("SR-TD5-01: event.toString() adversarial fragment must not appear in any " +
+                    "formatted log message — getSimpleName() must be used, not toString() " +
+                    "(CWE-117 / D-13 / SR-8). Fragment: [%s]", adversarialToString)
+                .allSatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .doesNotContain(adversarialToString));
+
+        // Assert SR-TD5-01: adversarial bytes must not appear in any SLF4J argument
+        assertThat(allEvents)
+                .as("SR-TD5-01: event.toString() adversarial fragment must not appear in any " +
+                    "log argument array element. Fragment: [%s]", adversarialToString)
+                .allSatisfy(event -> {
+                    Object[] args = event.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .doesNotContain(adversarialToString);
+                        }
+                    }
+                });
+
+        // Assert positive shape (SR-TD5-05): the operational "class=" prefix must still appear —
+        // getSimpleName() produces the JVM class name, preserving the diagnostic signal.
+        assertThat(logAppender.getLoggedEvents())
+                .as("SR-TD5-05: at least one message must contain 'class=' — " +
+                    "getSimpleName() diagnostic signal must be preserved")
+                .anySatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .contains("class="));
+    }
+
+    /**
+     * T7b-struct (SR-TD5-02) — parameterised injection fuzz for the TD-5-B Open branch.
+     *
+     * <p>The production fix (ADR-TD5-B) uses {@code open.getClass().getSimpleName()} instead
+     * of {@code open.toString()} (or {@code %s} formatting) in the {@code TechnicalEvent.Open}
+     * branch of {@code processTechnicalEvent}. This is a preventive fix: the real singleton's
+     * {@code toString()} currently returns the bounded constant {@code "Open"}, but the
+     * D-13/SR-8 policy prohibits any {@code toString()} call on a peer library type in a
+     * logging path.
+     *
+     * <p>Structural confirmation: since {@code getSimpleName()} is used (never {@code toString()}),
+     * adversarial bytes set via {@code mock.toString()} must never appear in the log output.
+     * The formatted message must match the bounded format {@code "got an Open event (class=X)"}
+     * where {@code X} is the Mockito proxy class simple name — a JVM-controlled value.
+     *
+     * <p>Arrange: a mocked {@link TechnicalEvent.Open} whose {@code toString()} returns each
+     *             adversarial string in turn.
+     * Act:     invoke {@code onEvent} with the mock.
+     * Assert (SR-TD5-02):
+     * <ol>
+     *   <li>No {@link ILoggingEvent#getFormattedMessage()} contains any adversarial fragment —
+     *       the {@code toString()} value is never used in the logging path.</li>
+     *   <li>No element of {@link ILoggingEvent#getArgumentArray()} (stringified) contains
+     *       any adversarial fragment.</li>
+     *   <li>Positive shape: at least one formatted message contains
+     *       {@code "got an Open event (class="} — the bounded message format is preserved.</li>
+     *   <li>Structural confirmation: at least one formatted message matches the pattern
+     *       {@code "got an Open event (class=<anything>)"}, confirming {@code getSimpleName()}
+     *       — not {@code toString()} — is the argument source.</li>
+     * </ol>
+     *
+     * @param adversarialToString the adversarial string returned by {@code mock.toString()}
+     */
+    @ParameterizedTest(name = "TD5-B-open-fuzz: fragment={0}")
+    @MethodSource("td5StructInjectionVariants")
+    public void processTechnicalEvent_openBranch_injectionFuzz_doesNotLeakToString(
+            String adversarialToString) {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        TestLogAppender auditAppender = getAuditLogAppender();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        // Mock TechnicalEvent.Open and override toString() with the adversarial value.
+        // If the fix regresses to %s-formatting (expanding open.toString()), the adversarial
+        // string surfaces in the log and the assertion below detects the regression.
+        TechnicalEvent.Open mockOpen = mock(TechnicalEvent.Open.class);
+        when(mockOpen.toString()).thenReturn(adversarialToString);
+
+        // Act
+        callback.onEvent(mockOpen);
+
+        // Collect events from both the StompCallback logger and the AUDIT logger
+        List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());
+        allEvents.addAll(auditAppender.getLoggedEvents());
+
+        // Assert SR-TD5-02: adversarial bytes must not appear in any formatted message.
+        // open.getClass().getSimpleName() is JVM-controlled; toString() is never called.
+        assertThat(allEvents)
+                .as("SR-TD5-02: open.toString() adversarial fragment must not appear in any " +
+                    "formatted log message — getSimpleName() must be used, not toString() " +
+                    "(CWE-117 / D-13 / SR-8). Fragment: [%s]", adversarialToString)
+                .allSatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .doesNotContain(adversarialToString));
+
+        // Assert SR-TD5-02: adversarial bytes must not appear in any SLF4J argument
+        assertThat(allEvents)
+                .as("SR-TD5-02: open.toString() adversarial fragment must not appear in any " +
+                    "log argument array element. Fragment: [%s]", adversarialToString)
+                .allSatisfy(event -> {
+                    Object[] args = event.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .doesNotContain(adversarialToString);
+                        }
+                    }
+                });
+
+        // Assert SR-TD5-06 — positive shape (bounded message format preserved):
+        // The message must start with the bounded prefix "got an Open event (class="
+        // confirming getSimpleName() is the source of the class token, not toString().
+        assertThat(logAppender.getLoggedEvents())
+                .as("SR-TD5-06: at least one message must contain 'got an Open event (class=' — " +
+                    "bounded message format with getSimpleName() must be preserved")
+                .anySatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .contains("got an Open event (class="));
+    }
+
+    /**
+     * T7-gate (SR-TD5-04) — structural regression gate: no {@code LOGGER.*} call line in
+     * {@code StompCallback.java} contains {@code .formatted(event)} or {@code .formatted(open)}.
+     *
+     * <p>Primary check: for each physical line that contains {@code LOGGER.} (whitespace-normalised),
+     * the line must NOT contain the substrings {@code .formatted(event)} or {@code .formatted(open)}.
+     * These patterns would indicate that the production code is passing the peer-controlled
+     * {@code event.toString()} or {@code open.toString()} value directly to the log encoder
+     * via Java's {@link String#formatted} method, bypassing the {@code getSimpleName()} fix
+     * (CWE-117 / D-13 / SR-8 / ADR-TD5-A / ADR-TD5-B).
+     *
+     * <p>Note: this gate scans physical lines (same limitation as T6b-gate — a future
+     * multi-line LOGGER call could evade it). All current LOGGER calls in
+     * {@code StompCallback.java} are single-line (verified 2026-04-30).
+     *
+     * <p>Note: {@code logEvent(} is a wrapper over {@code LOGGER.info} — this gate only covers
+     * direct LOGGER calls. {@code logEvent} call sites are covered behaviourally by
+     * T7a-struct and T7b-struct above.
+     *
+     * @throws Exception if the source file cannot be read — treated as a test failure
+     */
+    @Test
+    public void stompCallback_noRawEventOrOpenToString_structuralGate() throws Exception {
+        // Locate StompCallback.java using the same pattern as T6b-gate and SR-TD3-10-gate.
+        // The class file sits at .../target/classes/...; navigate to the project root then source.
+        java.net.URL classUrl = StompCallback.class.getProtectionDomain().getCodeSource().getLocation();
+        java.nio.file.Path classesDir = Paths.get(classUrl.toURI());
+        // Walk up from target/classes to the Maven project root (parent of target/)
+        java.nio.file.Path projectRoot = classesDir.getParent().getParent();
+        java.nio.file.Path source = projectRoot
+                .resolve("src/main/java/de/seism0saurus/glacier/mastodon/StompCallback.java");
+
+        assertThat(source).as("StompCallback.java must exist at resolved path").exists();
+
+        List<String> lines = Files.readAllLines(source);
+        for (int i = 0; i < lines.size(); i++) {
+            String normalised = lines.get(i).strip();
+            if (normalised.contains("LOGGER.")) {
+                String lineRef = "line " + (i + 1);
+                // Primary check (SR-TD5-04 / ADR-TD5-A): no .formatted(event) on any LOGGER line.
+                // This pattern indicates the peer-controlled event object is passed to the log
+                // encoder via String.formatted(), expanding event.toString() into the log message.
+                assertThat(normalised)
+                        .as("SR-TD5-04 Primary: bare .formatted(event) on LOGGER line at " + lineRef +
+                            " — event.getClass().getSimpleName() must be used, not event.toString() " +
+                            "(CWE-117 / D-13 / SR-8 / ADR-TD5-A)")
+                        .doesNotContain(".formatted(event)");
+                // Primary check (SR-TD5-04 / ADR-TD5-B): no .formatted(open) on any LOGGER line.
+                // This pattern indicates the peer-controlled open object is passed to the log
+                // encoder via String.formatted(), expanding open.toString() into the log message.
+                assertThat(normalised)
+                        .as("SR-TD5-04 Primary: bare .formatted(open) on LOGGER line at " + lineRef +
+                            " — open.getClass().getSimpleName() must be used, not open.toString() " +
+                            "(CWE-117 / D-13 / SR-8 / ADR-TD5-B)")
+                        .doesNotContain(".formatted(open)");
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
     // SR-TD3-10: Structural regression gate
     // -----------------------------------------------------------------
 
