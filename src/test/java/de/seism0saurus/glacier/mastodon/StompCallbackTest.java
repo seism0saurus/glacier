@@ -2718,6 +2718,236 @@ public class StompCallbackTest {
     }
 
     // -----------------------------------------------------------------
+    // TD-4: xFrameOptions log hygiene — CWE-117 / D-13 / SR-8 canaries
+    // T6a: canary value must never appear in any log event
+    // T6b: log event contains bounded fields at WARN, never routed to AUDIT
+    // T6c: parameterised control-char payloads must not reach the log encoder
+    // -----------------------------------------------------------------
+
+    /**
+     * T6a — Verifies that a canary value injected via {@code X-Frame-Options} never appears
+     * in any captured log event when the "unknown or invalid value" branch fires.
+     *
+     * <p>The branch at {@code isLoadable} line 411 (pre-fix) logs the raw {@code xFrameOptions}
+     * list via {@code {}}, passing peer-controlled bytes to the JSON encoder. After the TD-4 fix
+     * the call must use {@code LogScrubber.xfoSummary}, so the canary never appears.
+     *
+     * <p>Arrange: {@link HttpHeaders} with {@code X-Frame-Options: __CANARY_TD4_XFO__} (no CSP).
+     *             This triggers the "unknown or invalid value" branch — neither DENY/SAMEORIGIN
+     *             (explicitlyNotAllowed) nor ALLOWALL (explicitlyAllowed).
+     * Act: feed a {@link ParsedStreamEvent.StatusCreated} event through
+     *      {@code callback.onEvent(streamEvent)}.
+     * Assert:
+     * <ol>
+     *   <li>At least one captured {@link ILoggingEvent} has {@link Level#WARN} and formatted
+     *       message containing {@code "xfo-values="} — the bounded summary is logged.</li>
+     *   <li>No captured event's {@link ILoggingEvent#getFormattedMessage()} contains
+     *       {@code "__CANARY_TD4_XFO__"}.</li>
+     *   <li>No element of any event's {@link ILoggingEvent#getArgumentArray()} (stringified via
+     *       {@link String#valueOf}) contains {@code "__CANARY_TD4_XFO__"}.</li>
+     *   <li>{@link MessageCache#recordThenPublish} is never called — the toot is dropped.</li>
+     * </ol>
+     */
+    @Test
+    public void isLoadable_unknownXFrameOptions_doesNotLogRawListValue() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+
+        // Set X-Frame-Options to a canary value that triggers the "unknown or invalid" branch.
+        // The branch fires because the value is not DENY, SAMEORIGIN, or ALLOWALL.
+        HttpHeaders xfoHeaders = new HttpHeaders();
+        xfoHeaders.set("X-Frame-Options", "__CANARY_TD4_XFO__");
+        when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(xfoHeaders);
+
+        Account account = mock(Account.class);
+        when(account.getDisplayName()).thenReturn("user@example.com");
+        when(mockStatus.getId()).thenReturn("12345");
+        when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/12345");
+        when(mockStatus.getAccount()).thenReturn(account);
+
+        ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert 1: the bounded summary must appear in at least one WARN event
+        assertThat(logAppender.getLoggedEvents())
+                .anySatisfy(e -> {
+                    assertThat(e.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(e.getFormattedMessage()).contains("xfo-values=");
+                });
+
+        // Assert 2: no formatted message may contain the raw canary
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e ->
+                        assertThat(e.getFormattedMessage()).doesNotContain("__CANARY_TD4_XFO__"));
+
+        // Assert 3: no argument array element (stringified) may contain the raw canary
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e -> {
+                    Object[] args = e.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg)).doesNotContain("__CANARY_TD4_XFO__");
+                        }
+                    }
+                });
+
+        // Assert 4: the toot is dropped — no cache write
+        verify(messageCache, never()).recordThenPublish(any(), any(), any());
+    }
+
+    /**
+     * T6b — Verifies that the "unknown X-Frame-Options" log event uses the bounded summary,
+     * is emitted at WARN level, and is never routed to the AUDIT logger.
+     *
+     * <p>Arrange: two XFO values {@code "MAYBE"} and {@code "ALSOMAYBE"} — both unknown,
+     *             triggering the same branch as T6a but with {@code xfo-values=2}.
+     * Act: feed a {@link ParsedStreamEvent.StatusCreated} event.
+     * Assert:
+     * <ol>
+     *   <li>Exactly one WARN event has formatted message containing {@code "xfo-values=2"} and
+     *       {@code "xfo-totallen="}.</li>
+     *   <li>That event's level is {@link Level#WARN}.</li>
+     *   <li>AUDIT logger receives zero events for this scenario.</li>
+     * </ol>
+     */
+    @Test
+    public void isLoadable_unknownXFrameOptions_logsBoundedFieldsAtWarnNotAudit() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        TestLogAppender auditAppender = getAuditLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+
+        HttpHeaders xfoHeaders = new HttpHeaders();
+        xfoHeaders.addAll("X-Frame-Options", List.of("MAYBE", "ALSOMAYBE"));
+        when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(xfoHeaders);
+
+        Account account = mock(Account.class);
+        when(account.getDisplayName()).thenReturn("user@example.com");
+        when(mockStatus.getId()).thenReturn("12345");
+        when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/12345");
+        when(mockStatus.getAccount()).thenReturn(account);
+
+        ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert 1 & 2: exactly one WARN event with the bounded summary for 2 values
+        List<ILoggingEvent> matchingEvents = logAppender.getLoggedEvents().stream()
+                .filter(e -> e.getLevel() == Level.WARN
+                        && e.getFormattedMessage().contains("xfo-values=2")
+                        && e.getFormattedMessage().contains("xfo-totallen="))
+                .toList();
+        assertThat(matchingEvents)
+                .as("Exactly one WARN event must contain 'xfo-values=2' and 'xfo-totallen='")
+                .hasSize(1);
+        assertThat(matchingEvents.get(0).getLevel()).isEqualTo(Level.WARN);
+
+        // Assert 3: AUDIT logger must not receive any events — unknown XFO is not a security audit event
+        assertThat(auditAppender.getLoggedEvents()).isEmpty();
+    }
+
+    /**
+     * Provides 8 adversarial X-Frame-Options values covering the control-character families
+     * that are most dangerous in log injection scenarios (TD-4 / T6c).
+     *
+     * <p>Each row is a single adversarial codepoint (or sequence) that MUST NOT appear in
+     * any formatted log message or argument array after the fix is applied.
+     */
+    private static Stream<Arguments> xfoControlCharVariants() {
+        return Stream.of(
+                Arguments.of("\r",        "CR (CARRIAGE RETURN)"),
+                Arguments.of("\n",        "LF (LINE FEED)"),
+                Arguments.of("",    "ESC (ANSI escape introducer)"),
+                Arguments.of(" ",    "NUL (null byte)"),
+                Arguments.of(" ",    "LINE SEPARATOR"),
+                Arguments.of(" ",    "PARAGRAPH SEPARATOR"),
+                Arguments.of("‮",    "RIGHT-TO-LEFT OVERRIDE"),
+                Arguments.of("﻿",    "BOM / ZERO-WIDTH NO-BREAK SPACE")
+        );
+    }
+
+    /**
+     * T6c — Parameterised: for each of 8 adversarial codepoints injected via
+     * {@code X-Frame-Options}, no captured log event may contain that codepoint.
+     *
+     * <p>The eight variants mirror the {@code malformedEditedAtVariants} discipline from TD-3
+     * and cover the control-character families most dangerous in CWE-117 injection scenarios.
+     *
+     * <p>Arrange: set {@code X-Frame-Options} to a value containing the adversarial codepoint;
+     *             feed a {@link ParsedStreamEvent.StatusCreated} event.
+     * Assert: for each row:
+     * <ol>
+     *   <li>No captured {@link ILoggingEvent#getFormattedMessage()} contains the codepoint.</li>
+     *   <li>No element in any {@link ILoggingEvent#getArgumentArray()} (stringified) contains it.</li>
+     * </ol>
+     *
+     * @param adversarialCodepoint the adversarial codepoint string injected in the XFO header
+     * @param description          human-readable description of the codepoint for test naming
+     */
+    @ParameterizedTest(name = "xfo-control-char: {1}")
+    @MethodSource("xfoControlCharVariants")
+    public void isLoadable_unknownXFrameOptions_neverLogsControlChars(
+            String adversarialCodepoint, String description) {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String principal = UUID.randomUUID().toString();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+
+        // Inject the adversarial codepoint as the XFO header value — wraps it in a minimal
+        // unknown value so neither DENY/SAMEORIGIN nor ALLOWALL match.
+        String xfoValue = "UNKNOWN" + adversarialCodepoint + "VALUE";
+        HttpHeaders xfoHeaders = new HttpHeaders();
+        xfoHeaders.set("X-Frame-Options", xfoValue);
+        when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(xfoHeaders);
+
+        Account account = mock(Account.class);
+        when(account.getDisplayName()).thenReturn("user@example.com");
+        when(mockStatus.getId()).thenReturn("12345");
+        when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/12345");
+        when(mockStatus.getAccount()).thenReturn(account);
+
+        ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
+        MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
+
+        // Act
+        callback.onEvent(streamEvent);
+
+        // Assert: no formatted message contains the adversarial codepoint
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e ->
+                        assertThat(e.getFormattedMessage())
+                                .as("Formatted message must not contain adversarial codepoint: %s", description)
+                                .doesNotContain(adversarialCodepoint));
+
+        // Assert: no argument array element (stringified) contains the adversarial codepoint
+        assertThat(logAppender.getLoggedEvents())
+                .allSatisfy(e -> {
+                    Object[] args = e.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .as("Argument must not contain adversarial codepoint: %s", description)
+                                    .doesNotContain(adversarialCodepoint);
+                        }
+                    }
+                });
+    }
+
+    // -----------------------------------------------------------------
     // SR-TD3-10: Structural regression gate
     // -----------------------------------------------------------------
 
