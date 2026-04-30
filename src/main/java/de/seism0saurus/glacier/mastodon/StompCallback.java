@@ -408,7 +408,10 @@ public class StompCallback implements WebSocketCallback {
                 LOGGER.info("FRAME-ANCESTORS header does not exists. X-Frame-Options explicitly allowed");
                 return true;
             } else {
-                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value: {}", xFrameOptions);
+                // D-13/SR-8/CWE-117 (TD-4 / ADR-TD4-01): xFrameOptions is a peer-controlled List<String>
+                // from the remote Mastodon instance HEAD response. Only the bounded summary is logged.
+                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value — {}",
+                        LogScrubber.xfoSummary(xFrameOptions));
                 return false;
             }
         }
