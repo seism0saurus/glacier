@@ -3616,23 +3616,26 @@ public class StompCallbackTest {
     }
 
     /**
-     * T7-gate (SR-TD5-04) — structural regression gate: no {@code LOGGER.*} call line in
-     * {@code StompCallback.java} contains {@code .formatted(event)} or {@code .formatted(open)}.
+     * T7-gate (SR-TD5-04) — structural regression gate: no {@code LOGGER.*} call line or
+     * {@code logEvent()} wrapper call line in {@code StompCallback.java} contains
+     * {@code .formatted(event)} or {@code .formatted(open)}.
      *
-     * <p>Primary check: for each physical line that contains {@code LOGGER.} (whitespace-normalised),
-     * the line must NOT contain the substrings {@code .formatted(event)} or {@code .formatted(open)}.
+     * <p>Primary check: for each physical line that contains {@code LOGGER.} or
+     * {@code logEvent(} (whitespace-normalised), the line must NOT contain the substrings
+     * {@code .formatted(event)} or {@code .formatted(open)}.
      * These patterns would indicate that the production code is passing the peer-controlled
      * {@code event.toString()} or {@code open.toString()} value directly to the log encoder
      * via Java's {@link String#formatted} method, bypassing the {@code getSimpleName()} fix
      * (CWE-117 / D-13 / SR-8 / ADR-TD5-A / ADR-TD5-B).
      *
-     * <p>Note: this gate scans physical lines (same limitation as T6b-gate — a future
-     * multi-line LOGGER call could evade it). All current LOGGER calls in
-     * {@code StompCallback.java} are single-line (verified 2026-04-30).
+     * <p>Covers both direct {@code LOGGER.*} calls and {@code logEvent()} wrapper calls;
+     * the {@code logEvent()} wrapper routes to {@code LOGGER.info} — scanning both ensures
+     * regression protection at the actual violation sites (lines 545, 555).
      *
-     * <p>Note: {@code logEvent(} is a wrapper over {@code LOGGER.info} — this gate only covers
-     * direct LOGGER calls. {@code logEvent} call sites are covered behaviourally by
-     * T7a-struct and T7b-struct above.
+     * <p>Note: this gate scans physical lines (same limitation as T6b-gate — a future
+     * multi-line {@code LOGGER.*()} call OR multi-line {@code logEvent()} call would not be
+     * caught). All current call sites in {@code StompCallback.java} are single-line
+     * (verified 2026-04-30).
      *
      * @throws Exception if the source file cannot be read — treated as a test failure
      */
@@ -3652,21 +3655,24 @@ public class StompCallbackTest {
         List<String> lines = Files.readAllLines(source);
         for (int i = 0; i < lines.size(); i++) {
             String normalised = lines.get(i).strip();
-            if (normalised.contains("LOGGER.")) {
+            // covers both direct LOGGER.* calls and logEvent() wrapper calls; logEvent() wrapper
+            // routes to LOGGER.info — scanning both ensures regression protection at the actual
+            // violation sites (lines 545, 555).
+            if (normalised.contains("LOGGER.") || normalised.contains("logEvent(")) {
                 String lineRef = "line " + (i + 1);
-                // Primary check (SR-TD5-04 / ADR-TD5-A): no .formatted(event) on any LOGGER line.
+                // Primary check (SR-TD5-04 / ADR-TD5-A): no .formatted(event) on any LOGGER or logEvent line.
                 // This pattern indicates the peer-controlled event object is passed to the log
                 // encoder via String.formatted(), expanding event.toString() into the log message.
                 assertThat(normalised)
-                        .as("SR-TD5-04 Primary: bare .formatted(event) on LOGGER line at " + lineRef +
+                        .as("SR-TD5-04 Primary: bare .formatted(event) on LOGGER/logEvent line at " + lineRef +
                             " — event.getClass().getSimpleName() must be used, not event.toString() " +
                             "(CWE-117 / D-13 / SR-8 / ADR-TD5-A)")
                         .doesNotContain(".formatted(event)");
-                // Primary check (SR-TD5-04 / ADR-TD5-B): no .formatted(open) on any LOGGER line.
+                // Primary check (SR-TD5-04 / ADR-TD5-B): no .formatted(open) on any LOGGER or logEvent line.
                 // This pattern indicates the peer-controlled open object is passed to the log
                 // encoder via String.formatted(), expanding open.toString() into the log message.
                 assertThat(normalised)
-                        .as("SR-TD5-04 Primary: bare .formatted(open) on LOGGER line at " + lineRef +
+                        .as("SR-TD5-04 Primary: bare .formatted(open) on LOGGER/logEvent line at " + lineRef +
                             " — open.getClass().getSimpleName() must be used, not open.toString() " +
                             "(CWE-117 / D-13 / SR-8 / ADR-TD5-B)")
                         .doesNotContain(".formatted(open)");
