@@ -29,6 +29,7 @@ import social.bigbone.api.entity.streaming.TechnicalEvent;
 import java.net.URI;
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -498,6 +499,12 @@ class RawWallIdLogHygieneTest {
     /**
      * T5 (ADR-F6-01, SR-F6-08): when onConnectedEvent fires without a user principal,
      * the warn path must still not log a raw sessionId.
+     *
+     * <p>Fix (ADR-T5b-01): the header map now injects CANARY_SESSION via
+     * {@code SimpMessageHeaderAccessor.SESSION_ID_HEADER} so the production code sees a real
+     * value.  The previous {@code new MessageHeaders(null)} caused {@code getSessionId()} to
+     * return {@code null} — the canary was never at risk and the negative assertion passed
+     * vacuously.  The positive assertion below guards against silent deletion (SR-T5-positive).
      */
     @Test
     void T5_subscriptionListener_onConnectedEvent_noPrincipal_doesNotLogRawSession() {
@@ -506,7 +513,8 @@ class RawWallIdLogHygieneTest {
         SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L);
 
         SessionConnectedEvent event = mock(SessionConnectedEvent.class);
-        MessageHeaders headers = new MessageHeaders(null);
+        // ADR-T5b-01: inject CANARY_SESSION so getSessionId() returns it — canary is now at real risk
+        MessageHeaders headers = new MessageHeaders(Map.of(SimpMessageHeaderAccessor.SESSION_ID_HEADER, CANARY_SESSION));
         //noinspection unchecked
         Message<byte[]> message = mock(Message.class);
         when(message.getHeaders()).thenReturn(headers);
@@ -522,6 +530,108 @@ class RawWallIdLogHygieneTest {
         // Confirm a WARN was emitted (early-return path)
         assertThat(events).anySatisfy(e ->
                 assertThat(e.getLevel()).isEqualTo(Level.WARN));
+        // SR-T5-positive: session-hash= must appear with the hashed canary value — guards silent deletion
+        assertThat(events).anySatisfy(e ->
+                assertThat(e.getFormattedMessage()).contains(LogScrubber.hash8(CANARY_SESSION)));
+    }
+
+    // -------------------------------------------------------------------------
+    // T5b — SubscriptionListener.onDisconnectEvent with no principal must not log raw sessionId
+    // -------------------------------------------------------------------------
+
+    /**
+     * T5b (ADR-T5b-01..05, SR-T5b-01..08): when {@code onDisconnectEvent} fires without a user
+     * principal, the warn path at line 177–179 of {@code SubscriptionListener.java} must hash the
+     * sessionId and must not expose the raw canary value.
+     *
+     * <p>Fix site 7c: the production code logs
+     * {@code "Client with session-hash={} disconnected but has no user associated with it"}
+     * using {@code LogScrubber.hash8(headerAccessor.getSessionId())} — the test verifies all
+     * eight security requirements for this path.
+     *
+     * <p>Arrange: build a {@code SessionDisconnectEvent} whose message headers carry
+     *   {@code CANARY_SESSION} under {@code SimpMessageHeaderAccessor.SESSION_ID_HEADER}
+     *   (ADR-T5b-01).  {@code event.getUser()} returns {@code null} to trigger the early-return warn.
+     * Act: {@code subscriptionListener.onDisconnectEvent(event)}.
+     * Assert (all 8 SRs):
+     * <ul>
+     *   <li>SR-T5b-01: {@code getFormattedMessage()} does NOT contain {@code CANARY_SESSION}.</li>
+     *   <li>SR-T5b-02: {@code getArgumentArray()} elements do not contain {@code CANARY_SESSION}
+     *       (defence-in-depth via {@link #assertNoRawSessionId}).</li>
+     *   <li>SR-T5b-03: {@code getFormattedMessage()} DOES contain {@code "session-hash="} AND
+     *       {@code LogScrubber.hash8(CANARY_SESSION)} (silent-deletion guard).</li>
+     *   <li>SR-T5b-04: {@code getLevel()} == {@code Level.WARN}.</li>
+     *   <li>SR-T5b-05: {@code getThrowableProxy()} is {@code null} — no exception on this path.</li>
+     *   <li>SR-T5b-06: {@code getLoggerName()} == {@code SubscriptionListener.class.getName()}.</li>
+     *   <li>SR-T5b-07: {@code getMessage()} (pre-format pattern) ==
+     *       {@code "Client with session-hash={} disconnected but has no user associated with it"}.</li>
+     *   <li>SR-T5b-08: exactly 1 event on {@code subscriptionListenerAppender}; AUDIT appender
+     *       has 0 canary events.</li>
+     * </ul>
+     */
+    @Test
+    void T5b_subscriptionListener_onDisconnectEvent_noPrincipal_doesNotLogRawSession() {
+        SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
+        MessageCache messageCache = mock(MessageCache.class);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L);
+
+        SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);
+        // ADR-T5b-01: inject CANARY_SESSION so the production code's getSessionId() sees the real value
+        MessageHeaders headers = new MessageHeaders(Map.of(SimpMessageHeaderAccessor.SESSION_ID_HEADER, CANARY_SESSION));
+        //noinspection unchecked
+        Message<byte[]> message = mock(Message.class);
+        when(message.getHeaders()).thenReturn(headers);
+        when(event.getMessage()).thenReturn(message);
+        // Trigger the early-return warn branch (lines 175–179 of SubscriptionListener.java)
+        when(event.getUser()).thenReturn(null);
+
+        listener.onDisconnectEvent(event);
+
+        List<ILoggingEvent> captured = subscriptionListenerAppender.list;
+
+        // SR-T5b-08 (part 1): exactly one event emitted on the subscription-listener appender
+        assertThat(captured)
+                .as("SR-T5b-08: exactly one log event expected from the no-user warn path")
+                .hasSize(1);
+
+        ILoggingEvent entry = captured.get(0);
+
+        // SR-T5b-01 + SR-T5b-02: raw session canary must not appear in formatted message or argument array
+        assertNoRawSessionId(captured, CANARY_SESSION);
+
+        // SR-T5b-03: hashed session value AND label must appear — guards silent deletion
+        assertThat(entry.getFormattedMessage())
+                .as("SR-T5b-03: formatted message must contain 'session-hash=' label")
+                .contains("session-hash=");
+        assertThat(entry.getFormattedMessage())
+                .as("SR-T5b-03: formatted message must contain the hash of CANARY_SESSION")
+                .contains(LogScrubber.hash8(CANARY_SESSION));
+
+        // SR-T5b-04: the warn path must emit at WARN level
+        assertThat(entry.getLevel())
+                .as("SR-T5b-04: log level must be WARN")
+                .isEqualTo(Level.WARN);
+
+        // SR-T5b-05: no throwable — this is a control-flow warn, not an exception path
+        assertThat(entry.getThrowableProxy())
+                .as("SR-T5b-05: no throwable expected on the no-user warn path")
+                .isNull();
+
+        // SR-T5b-06: event must originate from SubscriptionListener, not a helper or delegated class
+        assertThat(entry.getLoggerName())
+                .as("SR-T5b-06: logger must be SubscriptionListener")
+                .isEqualTo(SubscriptionListener.class.getName());
+
+        // SR-T5b-07: the pre-format pattern (before {} substitution) must match exactly
+        assertThat(entry.getMessage())
+                .as("SR-T5b-07: pre-format message pattern must be the exact warn template")
+                .isEqualTo("Client with session-hash={} disconnected but has no user associated with it");
+
+        // SR-T5b-08 (part 2): AUDIT appender must have no events containing the raw canary
+        List<ILoggingEvent> auditEvents = auditAppender.list;
+        assertThat(auditEvents)
+                .as("SR-T5b-08: AUDIT appender must not contain any canary events from the no-user disconnect path")
+                .noneSatisfy(e -> assertThat(e.getFormattedMessage()).contains(CANARY_SESSION));
     }
 
     // -------------------------------------------------------------------------
