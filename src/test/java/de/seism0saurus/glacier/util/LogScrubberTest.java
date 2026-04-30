@@ -652,7 +652,7 @@ class LogScrubberTest {
         int count = 2049;
         int elementLength = 1_048_576; // 1 MiB per element
         List<String> flyweightList = Collections.nCopies(count, "x".repeat(elementLength));
-        long expectedTotalLen = (long) count * elementLength; // 2_147_483_648L
+        long expectedTotalLen = (long) count * elementLength; // 2_148_532_224L
 
         // Act
         String result = LogScrubber.xfoSummary(flyweightList);
@@ -664,7 +664,7 @@ class LogScrubberTest {
 
         // Assert (SR-TD5-03): full output equals the expected long value (no int overflow)
         assertThat(result)
-                .as("SR-TD5-03: full output must be 'xfo-values=2049 xfo-totallen=2147483648'")
+                .as("SR-TD5-03: full output must be 'xfo-values=2049 xfo-totallen=2148532224'")
                 .isEqualTo("xfo-values=" + count + " xfo-totallen=" + expectedTotalLen);
 
         // Explicit check: totallen must be positive (int overflow would yield negative)
