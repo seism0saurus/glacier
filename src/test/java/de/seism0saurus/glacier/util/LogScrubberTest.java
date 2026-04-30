@@ -321,7 +321,7 @@ class LogScrubberTest {
     }
 
     /**
-     * Arrange: each of the Mastodon 4.x documented streaming event names.
+     * Arrange: each of the Mastodon 4.3 documented streaming event names.
      * Act: call safeEventName with each known value.
      * Assert: verbatim value is returned — allowlisted events pass through unchanged.
      */
@@ -338,6 +338,47 @@ class LogScrubberTest {
         assertThat(LogScrubber.safeEventName("encrypted_message")).isEqualTo("encrypted_message");
         assertThat(LogScrubber.safeEventName("notification")).isEqualTo("notification");
         assertThat(LogScrubber.safeEventName("conversation")).isEqualTo("conversation");
+        assertThat(LogScrubber.safeEventName("notifications_merged")).isEqualTo("notifications_merged");
+    }
+
+    /**
+     * Arrange: the Mastodon 4.3 streaming event name "notifications_merged" (F-6-INFO-1).
+     * Act: call safeEventName("notifications_merged").
+     * Assert: verbatim value returned — allowlist now covers Mastodon 4.3 events.
+     *
+     * <p>Red-anchor: removing "notifications_merged" from KNOWN_STREAM_EVENTS causes this
+     * test to fail with "unknown(len=20)" instead of "notifications_merged".
+     */
+    @Test
+    void safeEventName_notificationsMerged_isAllowlistedForMastodon43() {
+        assertThat(LogScrubber.safeEventName("notifications_merged"))
+                .isEqualTo("notifications_merged");
+    }
+
+    /**
+     * Arrange: case/padding/control-char variants of "notifications_merged".
+     * Act: call safeEventName with each variant.
+     * Assert: all fall through to the bounded fallback — exact-equality only; no case folding,
+     * no trimming, no Unicode normalization in the allowlist check.
+     *
+     * <p>Variants tested:
+     * <ul>
+     *   <li>{@code "Notifications_Merged"} — uppercase first chars</li>
+     *   <li>{@code "notifications_merged "} — trailing space</li>
+     *   <li>{@code "notifications_merged\r\n"} — CRLF suffix (CWE-117 variant)</li>
+     *   <li>{@code "notifications_merged‮"} — RTL override Unicode (homoglyph variant)</li>
+     * </ul>
+     */
+    @Test
+    void safeEventName_notificationsMerged_caseAndPaddingVariants_returnFallback() {
+        assertThat(LogScrubber.safeEventName("Notifications_Merged"))
+                .startsWith("unknown(len=");
+        assertThat(LogScrubber.safeEventName("notifications_merged "))
+                .startsWith("unknown(len=");
+        assertThat(LogScrubber.safeEventName("notifications_merged\r\n"))
+                .startsWith("unknown(len=");
+        assertThat(LogScrubber.safeEventName("notifications_merged‮"))
+                .startsWith("unknown(len=");
     }
 
     /**

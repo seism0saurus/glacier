@@ -46,7 +46,7 @@ public final class LogScrubber {
                     Pattern.CASE_INSENSITIVE);
 
     /**
-     * Allowlist of documented Mastodon 4.x streaming event names.
+     * Allowlist of documented Mastodon 4.3 streaming event names.
      *
      * <p>ADR-F6-05: {@code genericMessageContent.getEvent()} originates from the Mastodon
      * streaming wire — a hostile or compromised instance can inject CRLF / control characters
@@ -58,7 +58,8 @@ public final class LogScrubber {
     private static final Set<String> KNOWN_STREAM_EVENTS = Set.of(
             "update", "status.update", "delete", "status.delete",
             "filters_changed", "announcement", "announcement.reaction",
-            "announcement.delete", "encrypted_message", "notification", "conversation"
+            "announcement.delete", "encrypted_message", "notification", "conversation",
+            "notifications_merged"
     );
 
     private LogScrubber() {
@@ -182,7 +183,7 @@ public final class LogScrubber {
     }
 
     /**
-     * Returns the streaming event name verbatim if it is on the Mastodon 4.x allowlist;
+     * Returns the streaming event name verbatim if it is on the Mastodon 4.3 allowlist;
      * otherwise returns a bounded fallback that prevents CWE-117 log injection.
      *
      * <p>ADR-F6-05: {@code genericMessageContent.getEvent()} arrives from the Mastodon
