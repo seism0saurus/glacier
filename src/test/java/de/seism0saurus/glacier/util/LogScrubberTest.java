@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -611,4 +612,116 @@ class LogScrubberTest {
         assertThat(result).doesNotContain("‮");  // RIGHT-TO-LEFT OVERRIDE
         assertThat(result).doesNotContain("﻿");  // BOM / ZERO-WIDTH NO-BREAK SPACE
     }
+
+    // -------------------------------------------------------------------------
+    // TD-5: xfoSummary long totalLen — CWE-117 / SR-TD5-03
+    // LST-T5-1: overflow canary — logical sum > 2 GiB must produce a positive totallen
+    // LST-T5-2: property-based invariants for the long-based implementation
+    // -------------------------------------------------------------------------
+
+    /**
+     * LST-T5-1 — Overflow canary: a flyweight list whose logical total length exceeds
+     * {@link Integer#MAX_VALUE} must not produce a negative {@code xfo-totallen} value.
+     *
+     * <p>SR-TD5-03: before the fix, {@code int totalLen} overflowed for lists whose
+     * total character count exceeded 2^31-1, producing a negative value in the log output.
+     * After the fix, {@code long totalLen} accumulates without overflow.
+     *
+     * <p>Arrange: {@code Collections.nCopies(2049, "x".repeat(1_048_576))} — a flyweight
+     *             list with 2 049 logical elements, each of 1 MiB (1 048 576 chars).
+     *             Total: 2 049 × 1 048 576 = 2 148 532 224 characters (> 2 GiB, which
+     *             overflows {@code int} but fits in {@code long}).
+     *             {@link Collections#nCopies} does not materialise the strings in memory,
+     *             so this does not cause an OOM in the Surefire forked JVM.
+     * Act:     call {@link LogScrubber#xfoSummary(List)}.
+     * Assert (SR-TD5-03):
+     * <ol>
+     *   <li>Result starts with {@code "xfo-values=2049 xfo-totallen="}.</li>
+     *   <li>The totallen value extracted from the result equals
+     *       {@code 2_148_532_224L} (2049 × 1 048 576) — positive and correct.</li>
+     *   <li>Full expected result is {@code "xfo-values=2049 xfo-totallen=2148532224"}.</li>
+     * </ol>
+     *
+     * <p><strong>RED state</strong>: this test FAILS before the TD-5-C fix because
+     * {@code int totalLen += value.length()} wraps to a negative value at overflow, producing
+     * a negative {@code xfo-totallen=} in the output.
+     */
+    @Test
+    void xfoSummary_longOverflowCanary_totallenIsPositiveAndCorrect() {
+        // Arrange: flyweight list — nCopies does not allocate 2 GiB of strings
+        int count = 2049;
+        int elementLength = 1_048_576; // 1 MiB per element
+        List<String> flyweightList = Collections.nCopies(count, "x".repeat(elementLength));
+        long expectedTotalLen = (long) count * elementLength; // 2_147_483_648L
+
+        // Act
+        String result = LogScrubber.xfoSummary(flyweightList);
+
+        // Assert (SR-TD5-03): format is intact
+        assertThat(result)
+                .as("SR-TD5-03: output must start with 'xfo-values=2049 xfo-totallen='")
+                .startsWith("xfo-values=2049 xfo-totallen=");
+
+        // Assert (SR-TD5-03): full output equals the expected long value (no int overflow)
+        assertThat(result)
+                .as("SR-TD5-03: full output must be 'xfo-values=2049 xfo-totallen=2147483648'")
+                .isEqualTo("xfo-values=" + count + " xfo-totallen=" + expectedTotalLen);
+
+        // Explicit check: totallen must be positive (int overflow would yield negative)
+        String[] parts = result.split("xfo-totallen=");
+        long actualTotalLen = Long.parseLong(parts[1]);
+        assertThat(actualTotalLen)
+                .as("SR-TD5-03: totallen must be positive — negative value signals int overflow")
+                .isPositive()
+                .isEqualTo(expectedTotalLen);
+    }
+
+    /**
+     * LST-T5-2 — Property-based fuzz test: for any {@link List}{@code <String>} input,
+     * {@code xfoSummary} must satisfy the same structural invariants as LST-T4-8 —
+     * now verified against the {@code long}-based implementation.
+     *
+     * <p>SR-TD5-03: widening {@code int totalLen} to {@code long} must not break the
+     * existing safety properties that prevent CWE-117 log injection.
+     *
+     * <p>Arrange: arbitrary list (up to 10 elements, each up to 200 characters).
+     * Act:     call {@link LogScrubber#xfoSummary(List)}.
+     * Assert:
+     * <ol>
+     *   <li>Result starts with {@code "xfo-values="}.</li>
+     *   <li>Result contains {@code "xfo-totallen="}.</li>
+     *   <li>No codepoint in the result is below U+0020 (space is allowed — it appears
+     *       in {@code "xfo-values=N xfo-totallen=M"} as a field separator).</li>
+     *   <li>Result contains none of: U+2028 (LINE SEPARATOR), U+2029 (PARAGRAPH SEPARATOR),
+     *       U+202E (RIGHT-TO-LEFT OVERRIDE), U+FEFF (BOM/ZERO-WIDTH NO-BREAK SPACE).</li>
+     * </ol>
+     */
+    @Property
+    void xfoSummary_longBased_propertyTest_neverContainsControlBytes(
+            @ForAll @Size(max = 10) List<@StringLength(max = 200) String> values) {
+        String result = LogScrubber.xfoSummary(values);
+
+        // Invariant 1: result always starts with the expected prefix
+        assertThat(result)
+                .as("xfoSummary (long) result must always start with 'xfo-values='")
+                .startsWith("xfo-values=");
+
+        // Invariant 2: result always contains the totallen field
+        assertThat(result)
+                .as("xfoSummary (long) result must always contain 'xfo-totallen='")
+                .contains("xfo-totallen=");
+
+        // Invariant 3: no codepoint below 0x20 (control characters; space 0x20 is OK)
+        result.codePoints().forEach(cp ->
+                assertThat(cp)
+                        .as("xfoSummary (long) result must not contain control characters below 0x20 (codepoint: %d)", cp)
+                        .isGreaterThanOrEqualTo(0x20));
+
+        // Invariant 4: no Unicode line/paragraph separators or directional overrides
+        assertThat(result).doesNotContain("\u2028");  // LINE SEPARATOR
+        assertThat(result).doesNotContain("\u2029");  // PARAGRAPH SEPARATOR
+        assertThat(result).doesNotContain("\u202e");  // RIGHT-TO-LEFT OVERRIDE
+        assertThat(result).doesNotContain("\ufeff");  // BOM / ZERO-WIDTH NO-BREAK SPACE
+    }
+
 }

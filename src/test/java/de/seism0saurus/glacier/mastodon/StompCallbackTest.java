@@ -893,6 +893,17 @@ public class StompCallbackTest {
     private static final String CANARY_FRAGMENT_TD2 =
             "__GLACIER_TD2_CANARY_" + UUID.randomUUID() + "__";
 
+    /**
+     * Canary sentinel for TD-5 tests. Injected via {@code toString()} on a mocked
+     * {@link WebSocketEvent} or {@link TechnicalEvent.Open} to detect if peer-controlled
+     * bytes (via {@code %s} formatting of the event object) reach the log record.
+     *
+     * <p>A random UUID suffix ensures the value is unique per JVM run and cannot
+     * accidentally match a pre-existing log fragment.
+     */
+    private static final String CANARY_FRAGMENT_TD5 =
+            "__CANARY_TD5_EVENT__" + UUID.randomUUID() + "__";
+
     // -------------------------------------------------------------------------
     // TD-1 — Lane A tests  (T-A1 through T-A5)
     //
@@ -3195,6 +3206,166 @@ public class StompCallbackTest {
                         .isFalse();
             }
         }
+    }
+
+    // -----------------------------------------------------------------
+    // TD-5 — Lane A tests  (T7a, T7b)
+    //
+    // Canary tests for the two CWE-117 violations in processTechnicalEvent:
+    //   TD-5-A: default branch — event.toString() reached the log encoder
+    //   TD-5-B: Open branch   — open.toString() reached the log encoder
+    //
+    // SR coverage: SR-TD5-01 (default branch: no peer bytes), SR-TD5-02 (Open branch:
+    //              no peer bytes), SR-TD5-05 (class= present), SR-TD5-06 (open recognised).
+    // -----------------------------------------------------------------
+
+    /**
+     * T7a — Canary test for TD-5-A: the default branch of {@code processTechnicalEvent}
+     * must NOT log the {@code toString()} value of an unknown {@link TechnicalEvent}.
+     *
+     * <p>Arrange: a mocked {@link TechnicalEvent} whose {@code toString()} returns
+     *             {@link #CANARY_FRAGMENT_TD5}. This triggers the {@code default} branch
+     *             inside {@code processTechnicalEvent} (the event matches no named case).
+     * Act:     invoke {@code onEvent} with the mock event.
+     * Assert (SR-TD5-01):
+     * <ol>
+     *   <li>No {@link ILoggingEvent#getFormattedMessage()} contains the canary fragment —
+     *       the raw {@code toString()} value must not reach the log encoder.</li>
+     *   <li>No element of {@link ILoggingEvent#getArgumentArray()} (stringified via
+     *       {@link String#valueOf}) contains the canary fragment.</li>
+     * </ol>
+     * Assert (SR-TD5-05 — positive shape):
+     * <ol start="3">
+     *   <li>At least one formatted message contains {@code "class="} — the fix preserves
+     *       the operational diagnostic signal by logging the simple class name.</li>
+     * </ol>
+     *
+     * <p><strong>RED state</strong>: this test FAILS before the TD-5-A fix is applied
+     * because the current production code calls
+     * {@code logEvent("got an unknown WebSocketEvent: %s".formatted(event))},
+     * which expands to the canary string.
+     */
+    @Test
+    public void processTechnicalEvent_defaultBranch_doesNotLogEventToString() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        // Mock a TechnicalEvent that is not one of the four named cases (Open/Closing/Closed/Failure).
+        // Override toString() to return the canary so any %s-formatting leaks are detected.
+        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
+        when(mockEvent.toString()).thenReturn(CANARY_FRAGMENT_TD5);
+
+        // Act
+        callback.onEvent(mockEvent);
+
+        // Assert SR-TD5-01: canary must not appear in any formatted message
+        List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());
+        assertThat(allEvents)
+                .as("SR-TD5-01: event.toString() canary must not appear in any formatted log message")
+                .allSatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .doesNotContain(CANARY_FRAGMENT_TD5));
+
+        // Assert SR-TD5-01: canary must not appear in any SLF4J argument
+        assertThat(allEvents)
+                .as("SR-TD5-01: event.toString() canary must not appear in any log argument")
+                .allSatisfy(event -> {
+                    Object[] args = event.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .doesNotContain(CANARY_FRAGMENT_TD5);
+                        }
+                    }
+                });
+
+        // Assert SR-TD5-05 (positive shape): at least one message contains "class=" to confirm
+        // the fix replaced event.toString() with event.getClass().getSimpleName()
+        assertThat(allEvents)
+                .as("SR-TD5-05: at least one log message must contain 'class=' (operational diagnostic signal)")
+                .anySatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .contains("class="));
+    }
+
+    /**
+     * T7b — Canary test for TD-5-B: the Open branch of {@code processTechnicalEvent}
+     * must NOT log the {@code toString()} value of the {@link TechnicalEvent.Open} object.
+     *
+     * <p>{@link TechnicalEvent.Open} is a Kotlin {@code data object} whose current
+     * {@code toString()} returns the constant string {@code "Open"}. This is not
+     * peer-controlled today, but D-13/SR-8 prohibits any {@code toString()} call on an
+     * external library type in a {@code logEvent()} path (ADR-TD5-B, preventive fix).
+     *
+     * <p>Arrange: a mocked {@link TechnicalEvent.Open} whose {@code toString()} returns
+     *             {@link #CANARY_FRAGMENT_TD5}. The mock is used because the real singleton
+     *             cannot have its {@code toString()} overridden.
+     * Act:     invoke {@code onEvent} with the mock.
+     * Assert (SR-TD5-02):
+     * <ol>
+     *   <li>No {@link ILoggingEvent#getFormattedMessage()} contains the canary fragment —
+     *       the raw {@code toString()} value must not reach the log encoder.</li>
+     *   <li>No element of {@link ILoggingEvent#getArgumentArray()} (stringified) contains
+     *       the canary fragment.</li>
+     * </ol>
+     * Assert (SR-TD5-06 — positive shape):
+     * <ol start="3">
+     *   <li>At least one formatted message contains {@code "class="} — the fix preserves
+     *       the operational signal by logging the simple class name.</li>
+     * </ol>
+     *
+     * <p><strong>RED state</strong>: this test FAILS before the TD-5-B fix is applied
+     * because the current production code calls
+     * {@code logEvent("got an Open event: %s".formatted(open))},
+     * which expands to the canary string.
+     */
+    @Test
+    public void processTechnicalEvent_openBranch_doesNotLogOpenToString() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+
+        // Mock TechnicalEvent.Open and override toString() to return the canary.
+        // This detects any %s-formatting that would expand open.toString() into the log message.
+        TechnicalEvent.Open mockOpen = mock(TechnicalEvent.Open.class);
+        when(mockOpen.toString()).thenReturn(CANARY_FRAGMENT_TD5);
+
+        // Act
+        callback.onEvent(mockOpen);
+
+        // Assert SR-TD5-02: canary must not appear in any formatted message
+        List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());
+        assertThat(allEvents)
+                .as("SR-TD5-02: open.toString() canary must not appear in any formatted log message")
+                .allSatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .doesNotContain(CANARY_FRAGMENT_TD5));
+
+        // Assert SR-TD5-02: canary must not appear in any SLF4J argument
+        assertThat(allEvents)
+                .as("SR-TD5-02: open.toString() canary must not appear in any log argument")
+                .allSatisfy(event -> {
+                    Object[] args = event.getArgumentArray();
+                    if (args != null) {
+                        for (Object arg : args) {
+                            assertThat(String.valueOf(arg))
+                                    .doesNotContain(CANARY_FRAGMENT_TD5);
+                        }
+                    }
+                });
+
+        // Assert SR-TD5-06 (positive shape): at least one message contains "class=" to confirm
+        // the fix replaced open.toString() with open.getClass().getSimpleName()
+        assertThat(allEvents)
+                .as("SR-TD5-06: at least one log message must contain 'class=' (operational diagnostic signal)")
+                .anySatisfy(event ->
+                        assertThat(event.getFormattedMessage())
+                                .contains("class="));
     }
 
     // -----------------------------------------------------------------
