@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -180,6 +181,46 @@ public final class LogScrubber {
         } catch (IllegalArgumentException e) {
             return hash8("unparseable");
         }
+    }
+
+    /**
+     * Returns a bounded summary of an {@code X-Frame-Options} header value list safe for log output.
+     *
+     * <p>D-13/SR-8/CWE-117 (TD-4 / ADR-TD4-01): {@code X-Frame-Options} is populated directly from
+     * the HTTP response headers of an untrusted third-party Mastodon instance. Logging the raw
+     * list via {@code {}} (SLF4J parameter placeholder) passes peer-controlled bytes through
+     * {@code list.toString()} to the JSON encoder. CRLF sequences, ANSI escapes, and Unicode
+     * directional controls in those bytes constitute a log-injection vector (CWE-117).
+     *
+     * <p>This method eliminates the vector by discarding all raw bytes from the list values and
+     * returning only two bounded numeric fields:
+     * <ul>
+     *   <li>{@code xfo-values=N} — the number of slots in the list (null elements are counted as
+     *       occupying a slot; they do NOT contribute to the total length)</li>
+     *   <li>{@code xfo-totallen=M} — the sum of {@link String#length()} for all non-null elements</li>
+     * </ul>
+     *
+     * <p>null elements count toward {@code xfo-values} (slot count) and contribute 0 to
+     * {@code xfo-totallen} (length).
+     *
+     * <p>Always use this method when a log statement would otherwise include the raw
+     * {@code X-Frame-Options} list as an argument.
+     *
+     * @param values the raw {@code X-Frame-Options} header values; may be {@code null} or empty
+     * @return a bounded, log-safe summary string of the form {@code "xfo-values=N xfo-totallen=M"}
+     */
+    public static String xfoSummary(final List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return "xfo-values=0 xfo-totallen=0";
+        }
+        int count = values.size();
+        int totalLen = 0;
+        for (String value : values) {
+            if (value != null) {
+                totalLen += value.length();
+            }
+        }
+        return "xfo-values=" + count + " xfo-totallen=" + totalLen;
     }
 
     /**

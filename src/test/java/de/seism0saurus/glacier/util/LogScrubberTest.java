@@ -2,11 +2,15 @@ package de.seism0saurus.glacier.util;
 
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.constraints.Size;
 import net.jqwik.api.constraints.StringLength;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>{@code urlHostHash} hashes host:port for SSRF audit events (SR-PT-07)</li>
  *   <li>{@code FORBIDDEN_LOG_FIELDS} contains required sensitive key names</li>
  *   <li>{@code safeEventName} allowlist-guards Mastodon streaming event names (ADR-F6-05, CWE-117)</li>
+ *   <li>{@code xfoSummary} returns bounded numeric summary of X-Frame-Options list (TD-4 / ADR-TD4-01, CWE-117)</li>
  * </ul>
  */
 class LogScrubberTest {
@@ -460,5 +465,150 @@ class LogScrubberTest {
         assertThat(result.length())
                 .as("safeEventName result length should be bounded")
                 .isLessThanOrEqualTo(Math.max(s.length(), 25));
+    }
+
+    // -------------------------------------------------------------------------
+    // xfoSummary — TD-4 / ADR-TD4-01, CWE-117 log injection guard (LST-T4-1..8)
+    // -------------------------------------------------------------------------
+
+    /**
+     * LST-T4-1: null input returns the zero-values sentinel.
+     *
+     * <p>Arrange: null list.
+     * Act: call {@link LogScrubber#xfoSummary(List)} with null.
+     * Assert: returns {@code "xfo-values=0 xfo-totallen=0"} — same form as empty list.
+     */
+    @Test
+    void xfoSummary_null_returnsZeroValues() {
+        assertThat(LogScrubber.xfoSummary(null)).isEqualTo("xfo-values=0 xfo-totallen=0");
+    }
+
+    /**
+     * LST-T4-2: empty list input returns the zero-values sentinel.
+     *
+     * <p>Arrange: {@code List.of()}.
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert: returns {@code "xfo-values=0 xfo-totallen=0"}.
+     */
+    @Test
+    void xfoSummary_emptyList_returnsZeroValues() {
+        assertThat(LogScrubber.xfoSummary(List.of())).isEqualTo("xfo-values=0 xfo-totallen=0");
+    }
+
+    /**
+     * LST-T4-3: single non-null value returns correct count and total length.
+     *
+     * <p>Arrange: {@code List.of("DENY")} (length 4).
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert: returns {@code "xfo-values=1 xfo-totallen=4"};
+     *         result does NOT contain the raw value {@code "DENY"}.
+     */
+    @Test
+    void xfoSummary_singleValue_returnsCountAndLength() {
+        String result = LogScrubber.xfoSummary(List.of("DENY"));
+        assertThat(result).isEqualTo("xfo-values=1 xfo-totallen=4");
+        // D-13/SR-8: raw value bytes must not appear in the summary
+        assertThat(result).doesNotContain("DENY");
+    }
+
+    /**
+     * LST-T4-4: two values return combined count and summed total length.
+     *
+     * <p>Arrange: {@code List.of("DENY", "SAMEORIGIN")} — lengths 4 + 10 = 14.
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert: returns {@code "xfo-values=2 xfo-totallen=14"};
+     *         result contains neither raw element.
+     */
+    @Test
+    void xfoSummary_multipleValues_returnsCountAndTotalLength() {
+        String result = LogScrubber.xfoSummary(List.of("DENY", "SAMEORIGIN"));
+        assertThat(result).isEqualTo("xfo-values=2 xfo-totallen=14");
+        assertThat(result).doesNotContain("DENY");
+        assertThat(result).doesNotContain("SAMEORIGIN");
+    }
+
+    /**
+     * LST-T4-5: a CRLF-injection payload does not pass through to the summary.
+     *
+     * <p>Arrange: list containing {@code "foo\r\nbar"} — a classic CWE-117 log-injection fragment.
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert: result contains neither CR nor LF; result starts with {@code "xfo-values="}.
+     */
+    @Test
+    void xfoSummary_crlfPayload_doesNotPassThrough() {
+        String result = LogScrubber.xfoSummary(List.of("foo\r\nbar"));
+        assertThat(result).doesNotContain("\r");
+        assertThat(result).doesNotContain("\n");
+        assertThat(result).startsWith("xfo-values=");
+    }
+
+    /**
+     * LST-T4-6: an ANSI escape sequence in a value does not pass through.
+     *
+     * <p>Arrange: list containing {@code "x"} where x is a plain safe value (the ANSI guard
+     * is structural — since only numeric counts are emitted, no escape characters can appear).
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert: result contains no ESC character (U+001B); result starts with {@code "xfo-values="}.
+     */
+    @Test
+    void xfoSummary_ansiPayload_doesNotPassThrough() {
+        String result = LogScrubber.xfoSummary(List.of("x[31mRED[0m"));
+        assertThat(result).doesNotContain("");
+        assertThat(result).startsWith("xfo-values=");
+    }
+
+    /**
+     * LST-T4-7: a null element is counted in xfo-values but contributes 0 to xfo-totallen.
+     *
+     * <p>Arrange: {@code Arrays.asList(null, "DENY")} — 2 slots, 1 null + 1 of length 4.
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert: returns {@code "xfo-values=2 xfo-totallen=4"}; no NPE thrown.
+     *
+     * <p>Per ADR-TD4-01: null elements count toward {@code xfo-values} (slot count) and
+     * contribute 0 to {@code xfo-totallen} (length).
+     */
+    @Test
+    void xfoSummary_nullElement_countedZeroLength() {
+        List<String> listWithNull = Arrays.asList(null, "DENY");
+        String result = LogScrubber.xfoSummary(listWithNull);
+        assertThat(result).isEqualTo("xfo-values=2 xfo-totallen=4");
+    }
+
+    /**
+     * LST-T4-8: property-based fuzz test — for any list of strings, the summary must never
+     * contain control bytes or Unicode line/paragraph separators.
+     *
+     * <p>Arrange: arbitrary list (up to 10 elements, each up to 200 characters).
+     * Act: call {@link LogScrubber#xfoSummary(List)}.
+     * Assert:
+     * <ol>
+     *   <li>Result starts with {@code "xfo-values="}.</li>
+     *   <li>No codepoint in the result is below U+0020 (except space U+0020 is allowed because
+     *       it appears in the format {@code "xfo-values=N xfo-totallen=M"} between the two fields).</li>
+     *   <li>Result contains none of the Unicode line/paragraph control characters:
+     *       U+2028, U+2029, U+202E, or U+FEFF.</li>
+     * </ol>
+     */
+    @Property
+    void xfoSummary_propertyTest_neverContainsControlBytes(
+            @ForAll @Size(max = 10) List<@StringLength(max = 200) String> values) {
+        String result = LogScrubber.xfoSummary(values);
+
+        // Invariant 1: result always starts with the expected prefix
+        assertThat(result)
+                .as("xfoSummary result must always start with 'xfo-values='")
+                .startsWith("xfo-values=");
+
+        // Invariant 2: no codepoint below 0x20 (control characters, except space 0x20 is OK)
+        result.codePoints().forEach(cp ->
+                assertThat(cp)
+                        .as("xfoSummary result must not contain control characters below 0x20 (codepoint: %d)", cp)
+                        .isGreaterThanOrEqualTo(0x20));
+
+        // Invariant 3: no Unicode line/paragraph separators or directional overrides
+        assertThat(result).doesNotContain(" ");  // LINE SEPARATOR
+        assertThat(result).doesNotContain(" ");  // PARAGRAPH SEPARATOR
+        assertThat(result).doesNotContain("‮");  // RIGHT-TO-LEFT OVERRIDE
+        assertThat(result).doesNotContain("﻿");  // BOM / ZERO-WIDTH NO-BREAK SPACE
     }
 }
