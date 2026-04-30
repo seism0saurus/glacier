@@ -583,6 +583,11 @@ public class StompCallback implements WebSocketCallback {
      * a malformed {@code editedAt} in a Mastodon fork's payload does not crash the
      * ingestion thread.
      *
+     * <p>D-13/SR-8/CWE-117: the raw peer-controlled string is never passed to the log
+     * encoder. Only {@code raw.length()} and {@code ex.getErrorIndex()} — both {@code int}
+     * values — are logged. Integer arguments structurally eliminate CRLF and ANSI injection.
+     * {@code raw.length()} is NPE-safe because the null guard above runs first (SR-TD3-07).
+     *
      * @param raw the raw {@code editedAt} string from the Mastodon payload; may be {@code null}
      * @return UTC normalised string, or {@code null} if {@code raw} was {@code null} or
      *         unparseable
@@ -594,7 +599,7 @@ public class StompCallback implements WebSocketCallback {
         try {
             return Instant.parse(raw).toString();
         } catch (DateTimeParseException ex) {
-            LOGGER.warn("Could not parse editedAt value '{}' — dropping update event (D-07)", raw);
+            LOGGER.warn("Could not parse editedAt — len={} errorIndex={} — dropping update event (D-07)", raw.length(), ex.getErrorIndex());
             return null;
         }
     }

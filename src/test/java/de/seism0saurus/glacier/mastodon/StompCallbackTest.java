@@ -41,11 +41,14 @@ import social.bigbone.api.entity.streaming.WebSocketEvent;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -1971,6 +1974,215 @@ public class StompCallbackTest {
         verify(messageCache, never()).recordThenPublish(any(), any(), any());
         assertThat(logAppender.getLoggedMessages())
                 .anySatisfy(msg -> assertThat(msg).contains("Could not parse editedAt"));
+        // SR-TD3-01: the raw peer-controlled value must not reach the log encoder
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain("NOT_A_DATE"));
+        // SR-TD3-01: "value '" pattern (from the old format string) must not appear
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain("value '"));
+    }
+
+    // -----------------------------------------------------------------
+    // D-07 log-hygiene: SR-TD3 — raw editedAt must never reach the log encoder
+    // -----------------------------------------------------------------
+
+    /**
+     * SR-TD3-01/SR-TD3-02: a malformed editedAt value must not appear verbatim in the
+     * formatted log message. The log must contain "Could not parse editedAt", the length
+     * of the raw string, and the errorIndex from the parse exception — nothing more from
+     * the peer-controlled input.
+     *
+     * <p>Arrange: raw = "not-a-date" (length 10).
+     * <p>Act: call {@link StompCallback#normaliseEditedAt(String)}.
+     * <p>Assert:
+     * <ul>
+     *   <li>formatted message contains "Could not parse editedAt"</li>
+     *   <li>formatted message contains "len=10"</li>
+     *   <li>formatted message contains "errorIndex="</li>
+     *   <li>formatted message does NOT contain "not-a-date"</li>
+     *   <li>formatted message does NOT contain "value '"</li>
+     *   <li>no argument in getArgumentArray() equals "not-a-date"</li>
+     * </ul>
+     */
+    @Test
+    public void normaliseEditedAt_malformed_logsLengthNotRawValue() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String raw = "not-a-date";
+
+        // Act
+        StompCallback.normaliseEditedAt(raw);
+
+        // Assert — positive signal: parse-failure path fired
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("Could not parse editedAt"));
+        // SR-TD3-02: length of input is logged
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("len=10"));
+        // SR-TD3-11: errorIndex from DateTimeParseException is logged
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("errorIndex="));
+        // SR-TD3-01: raw peer bytes must NOT appear in any formatted message
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain("not-a-date"));
+        // SR-TD3-01: old "value '" format pattern must not appear
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain("value '"));
+        // SR-TD3-14: argument array must not contain the raw input string
+        logAppender.getLoggedEvents().forEach(event -> {
+            Object[] args = event.getArgumentArray();
+            if (args != null) {
+                for (Object arg : args) {
+                    assertThat(String.valueOf(arg)).doesNotContain("not-a-date");
+                }
+            }
+        });
+    }
+
+    /**
+     * SR-TD3-01/SR-TD3-03: a CRLF-injection payload must not appear in any log message.
+     * The injected fragment "\r\nWARN  INJECTED FAKE LINE" must not surface in any
+     * formatted message. The length (27) must appear instead.
+     *
+     * <p>Arrange: raw = "x\r\nWARN  INJECTED FAKE LINE" (length 27: 'x' + CR + LF + 24 chars).
+     * <p>Act: call {@link StompCallback#normaliseEditedAt(String)}.
+     * <p>Assert:
+     * <ul>
+     *   <li>no message contains "INJECTED"</li>
+     *   <li>at least one message contains "len=27"</li>
+     * </ul>
+     */
+    @Test
+    public void normaliseEditedAt_malformed_crlfPayload_doesNotReachLogEncoder() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String raw = "x\r\nWARN  INJECTED FAKE LINE";
+
+        // Act
+        StompCallback.normaliseEditedAt(raw);
+
+        // Assert — SR-TD3-03: int argument structurally eliminates CRLF injection
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain("INJECTED"));
+        // SR-TD3-02: length must be logged (27: 'x' + CR + LF + 24 printable chars)
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("len=27"));
+    }
+
+    /**
+     * SR-TD3-08: a 5 KB oversize payload must be distinguishable by its length in the log,
+     * and the raw bytes must not appear verbatim. The formatted message must contain "len=5000"
+     * but must not contain a repeated "A" sequence of 100 or more characters.
+     *
+     * <p>Arrange: raw = "A".repeat(5000).
+     * <p>Act: call {@link StompCallback#normaliseEditedAt(String)}.
+     * <p>Assert:
+     * <ul>
+     *   <li>message contains "len=5000"</li>
+     *   <li>message does NOT contain "A".repeat(100)</li>
+     * </ul>
+     */
+    @Test
+    public void normaliseEditedAt_malformed_oversizeInput_lengthDistinguishable() {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+        String raw = "A".repeat(5000);
+
+        // Act
+        StompCallback.normaliseEditedAt(raw);
+
+        // Assert — SR-TD3-08: length distinguishes truncated ISO-8601 from injection attempt
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("len=5000"));
+        // Raw bytes must not appear verbatim — not even a 100-char fragment
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain("A".repeat(100)));
+    }
+
+    /**
+     * SR-TD3-13/SR-TD3-14: parameterized test covering 8 adversarial raw values.
+     *
+     * <p>For every row the test asserts:
+     * <ol>
+     *   <li>No {@link ILoggingEvent#getFormattedMessage()} contains the raw input value.</li>
+     *   <li>At least one formatted message contains "len=" followed by the expected length.</li>
+     *   <li>No element in {@link ILoggingEvent#getArgumentArray()}, when converted to String,
+     *       equals the raw input String (SR-TD3-14).</li>
+     * </ol>
+     *
+     * @param raw            adversarial raw editedAt value
+     * @param expectedLength the expected length logged as len=N (pre-computed to avoid
+     *                       re-deriving from raw in the assertion body)
+     */
+    @ParameterizedTest(name = "raw.length={1}")
+    @MethodSource("malformedEditedAtVariants")
+    public void normaliseEditedAt_malformed_neverLogsRawValue(String raw, int expectedLength) {
+        // Arrange
+        TestLogAppender logAppender = getTestLogAppender();
+
+        // Act
+        StompCallback.normaliseEditedAt(raw);
+
+        // Assert — SR-TD3-01: raw peer bytes must not appear in any formatted message
+        logAppender.getLoggedMessages().forEach(msg ->
+                assertThat(msg).doesNotContain(raw));
+        // SR-TD3-02: the length must always be logged
+        assertThat(logAppender.getLoggedMessages())
+                .anySatisfy(msg -> assertThat(msg).contains("len=" + expectedLength));
+        // SR-TD3-14: argument array must not contain the raw input string as any element
+        logAppender.getLoggedEvents().forEach(event -> {
+            Object[] args = event.getArgumentArray();
+            if (args != null) {
+                for (Object arg : args) {
+                    assertThat(String.valueOf(arg)).isNotEqualTo(raw);
+                }
+            }
+        });
+    }
+
+    /**
+     * Provides 8 adversarial raw editedAt values for
+     * {@link #normaliseEditedAt_malformed_neverLogsRawValue(String, int)}.
+     *
+     * <p>Each row is {@code Arguments.of(rawValue, rawValue.length())} so that the assertion
+     * can check the expected length without re-deriving it from the raw string.
+     */
+    private static Stream<Arguments> malformedEditedAtVariants() {
+        String crlf = "x\r\nWARN  INJECTED FAKE LINE";
+        String oversized5k = "A".repeat(5000);
+        String bom = "﻿";
+        String rtl = "‮";
+        String lineSep = " ";
+        String paraSep = " ";
+        String oversized10k = "A".repeat(10240);
+        return Stream.of(
+                Arguments.of("not-a-date", "not-a-date".length()),
+                Arguments.of(crlf, crlf.length()),
+                Arguments.of(oversized5k, oversized5k.length()),
+                Arguments.of(bom, bom.length()),
+                Arguments.of(rtl, rtl.length()),
+                Arguments.of(lineSep, lineSep.length()),
+                Arguments.of(paraSep, paraSep.length()),
+                Arguments.of(oversized10k, oversized10k.length())
+        );
+    }
+
+    /**
+     * SR-TD3-12: the happy-path return value of {@link StompCallback#normaliseEditedAt(String)}
+     * must match the UTC Z-form pattern {@code ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$}.
+     *
+     * <p>Tests both a whole-second form and a sub-second form to confirm the regex allows
+     * optional fractional seconds.
+     */
+    @Test
+    public void normaliseEditedAt_utcZForm_matchesExpectedPattern() {
+        String patternUtcZ = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$";
+
+        String wholeSecond = StompCallback.normaliseEditedAt("2025-01-17T00:00:00Z");
+        assertThat(wholeSecond).matches(patternUtcZ);
+
+        String subSecond = StompCallback.normaliseEditedAt("2025-01-17T12:34:56.789Z");
+        assertThat(subSecond).matches(patternUtcZ);
     }
 
     // -----------------------------------------------------------------
@@ -2503,6 +2715,96 @@ public class StompCallbackTest {
         // Guard: "event-type=hashtag" would indicate the old destination-substring derivation
         assertThat(logAppender.getLoggedMessages())
                 .noneSatisfy(msg -> assertThat(msg).contains("event-type=hashtag"));
+    }
+
+    // -----------------------------------------------------------------
+    // SR-TD3-10: Structural regression gate
+    // -----------------------------------------------------------------
+
+    /**
+     * SR-TD3-10: structural regression gate — no {@code LOGGER.*} call in
+     * {@code StompCallback.java} passes a raw peer-controlled String argument.
+     *
+     * <p>This test reads {@code StompCallback.java} as text and asserts two invariants
+     * that would be violated by the old log-injection bug (CWE-117 / D-13 / SR-8):
+     *
+     * <ol>
+     *   <li>{@code "value '"} does not appear anywhere in the source file — this was the
+     *       exact format-string fragment of the vulnerable log call before TD-3 was fixed.
+     *       Its presence would indicate the fix was reverted or a similar call was added.</li>
+     *   <li>No source line that contains {@code LOGGER.} (a logger call site) also contains
+     *       {@code raw} as a bare variable token, i.e. matched by the word-boundary regex
+     *       {@code \braw\b}. The {@code normaliseEditedAt} method parameter is named
+     *       {@code raw}; the fix replaced {@code raw} with {@code raw.length()} in the
+     *       format-argument position so the raw String value never reaches the log encoder.
+     *       A logger line containing the bare token {@code raw} would signal a regression.</li>
+     * </ol>
+     *
+     * <p>The test resolves {@code StompCallback.java} via
+     * {@link Class#getProtectionDomain()} so it is not sensitive to the build layout or
+     * the current working directory from which the test suite is launched.
+     *
+     * @throws Exception if the source file cannot be read or the class URL cannot be
+     *                   resolved to a path — treated as a test failure (the file must
+     *                   be present for the gate to have meaning)
+     */
+    @Test
+    public void normaliseEditedAt_noRawValueInAnyLoggerCall_structuralRegressionGate()
+            throws Exception {
+        // Locate StompCallback.java from the compiled class location.
+        // The class file sits at …/target/classes/de/seism0saurus/glacier/mastodon/StompCallback.class;
+        // navigate to the Maven project root and then to the source tree.
+        java.net.URL classUrl = StompCallback.class.getProtectionDomain().getCodeSource().getLocation();
+        // classUrl is .../target/classes/ — resolve to the project root (three levels up) then to the source
+        java.nio.file.Path classesDir = Paths.get(classUrl.toURI());
+        // Walk up from target/classes to the Maven project root (parent of target/)
+        java.nio.file.Path projectRoot = classesDir.getParent().getParent();
+        java.nio.file.Path sourceFile = projectRoot
+                .resolve("src/main/java/de/seism0saurus/glacier/mastodon/StompCallback.java");
+
+        assertThat(sourceFile).as("StompCallback.java must exist at resolved path").exists();
+
+        List<String> lines = Files.readAllLines(sourceFile);
+        String fullSource = String.join("\n", lines);
+
+        // Invariant 1 (SR-TD3-10): the old vulnerable pattern "value '" must not appear anywhere.
+        // Its presence would mean the log call was reverted to pass the raw string in a quoted literal.
+        assertThat(fullSource)
+                .as("SR-TD3-10: the old vulnerable fragment \"value '\" must not appear in StompCallback.java — " +
+                    "its presence indicates the raw peer-controlled value is being logged directly (CWE-117 / D-13)")
+                .doesNotContain("value '");
+
+        // Invariant 2 (SR-TD3-10): no LOGGER call line may pass `raw` as a bare String argument.
+        //
+        // Allowed patterns:
+        //   raw.length()    — safe: passes the int length, not the raw string
+        //   rawUrl          — safe: different variable (URL extraction helpers)
+        //   raw.isEmpty()   — safe: boolean derived from raw
+        //
+        // Forbidden pattern:
+        //   LOGGER.warn("...", raw)           — passes the raw peer-controlled String directly
+        //   LOGGER.warn("...", raw, something) — same
+        //   LOGGER.error("...", ex, raw)       — same
+        //
+        // The regex matches `raw` as a whole word (word boundary on both sides) where the
+        // character immediately following is NOT a `.` (method invocation).
+        // `\braw\b(?!\.)` — raw as word, not followed by dot (i.e. not raw.length() etc.)
+        Pattern bareRawAsArgument = Pattern.compile("\\braw\\b(?!\\.)");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            // Only inspect active logger call lines — skip comments and Javadoc
+            if (trimmed.startsWith("//") || trimmed.startsWith("*")) {
+                continue;
+            }
+            if (trimmed.contains("LOGGER.")) {
+                assertThat(bareRawAsArgument.matcher(trimmed).find())
+                        .as("SR-TD3-10: logger call line must not pass raw String variable directly — " +
+                            "raw peer-controlled strings must never reach the log encoder " +
+                            "(D-13/SR-8/CWE-117). Use raw.length() or a safe derived value. " +
+                            "Offending line: [" + trimmed + "]")
+                        .isFalse();
+            }
+        }
     }
 
     /**
