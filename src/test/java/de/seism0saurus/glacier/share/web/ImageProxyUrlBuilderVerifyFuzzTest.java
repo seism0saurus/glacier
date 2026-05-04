@@ -1,14 +1,19 @@
 package de.seism0saurus.glacier.share.web;
 
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.util.LogScrubber;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 import net.jqwik.api.constraints.StringLength;
+import net.jqwik.api.statistics.Statistics;
 
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Optional;
+import java.util.Random;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -122,11 +127,31 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
      * <p>This property verifies that the HMAC check is not a no-op (i.e. that the
      * implementation actually uses the computed MAC to reject tampered tokens).
      *
+     * <p>ADR-FUZZ-01: the mutation index is derived from {@link Random#nextInt(int)} bounded
+     * to {@code token.length()} at runtime. This removes the original Bug A (over-wide
+     * {@code @Provide} range [0, 299]) that silently skipped ~44 % of tries via an OOB return.
+     *
+     * <p>ADR-FUZZ-03: the {@link #macDecodesIdentically} guard is restricted to mutations in
+     * the MAC suffix ({@code mutationIndex > dotIdx}). For payload-prefix mutations the MAC
+     * is byte-identical by definition (the MAC was not touched), so calling the guard there
+     * would falsely skip every payload-prefix position — the original Bug B.
+     *
+     * <p>ADR-FUZZ-05: {@code Statistics.coverage} gates enforce that at least 80 % of tries
+     * produce a real assertion (ASSERTED) and at least 50 % exercise the payload-prefix region
+     * (ASSERTED_PAYLOAD). A future regression that re-introduces a skip guard broad enough to
+     * collapse the asserting-tries ratio will fail the build here rather than shipping silently.
+     *
+     * <p>ADR-FUZZ-02: assertion messages reference only {@code mutationIndex},
+     * {@code token.length()}, and {@code LogScrubber.hash8(token)} — never raw token bytes.
+     *
      * <p>Security: OWASP A02 — a broken HMAC check would allow token forgery, enabling
      * SSRF attacks through the image proxy.
+     *
+     * @param random jqwik-provided {@link Random} instance used to derive a bounded,
+     *               shrinkable mutation index from the actual token length at runtime
      */
     @Property(tries = 500)
-    void anyMutationOfValidTokenReturnsEmpty(@ForAll("mutationIndices") int mutationIndex) {
+    void anyMutationOfValidTokenReturnsEmpty(@ForAll Random random) {
         ShareImageProxyUrlBuilder builder = buildBuilder();
         ShareLinkId shareLinkId = ShareLinkId.fromUrlPath(DUMMY_SHARE_LINK_TOKEN);
 
@@ -142,10 +167,19 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
                 .as("Signed URL must contain a ?u= token parameter")
                 .isNotNull();
 
-        // Skip mutation indices that are out of bounds for this specific token length
-        if (mutationIndex >= token.length()) {
-            return; // shrink; jqwik handles bound violations gracefully
+        // ADR-FUZZ-01: derive mutation index from the actual token length.
+        // random.nextInt(token.length()) is always in [0, token.length()) — OOB is structurally
+        // impossible. An out-of-range result here would indicate a test-infrastructure bug.
+        int mutationIndex = random.nextInt(token.length());
+        if (mutationIndex < 0 || mutationIndex >= token.length()) {
+            throw new AssertionError(
+                    "test bug: mutationIndex " + mutationIndex + " out of range; "
+                    + "token-hash=" + LogScrubber.hash8(token)
+                    + " length=" + token.length());
         }
+
+        // Locate the dot separator so we can restrict the MAC-skip guard to the MAC suffix
+        int dotIdx = token.lastIndexOf('.');
 
         // Mutate the character at mutationIndex by flipping one bit (XOR with 1)
         char original = token.charAt(mutationIndex);
@@ -159,24 +193,47 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
                 + mutated
                 + token.substring(mutationIndex + 1);
 
+        // ADR-FUZZ-03: restrict the base64url padding-bit no-op skip to MAC-suffix mutations.
+        // A 32-byte HMAC encodes to 43 base64url chars; the last char uses only 4 of its 6 bits.
+        // Flipping a padding bit produces a different char that Java's lenient Base64 decoder maps
+        // to the same bytes, so verify() legitimately returns non-empty. That edge case can only
+        // occur in the MAC suffix — applying the skip to payload-prefix mutations is a false skip
+        // because the MAC is byte-identical there by construction (not by padding-bit coincidence).
+        if (mutationIndex > dotIdx && macDecodesIdentically(token, mutatedToken)) {
+            Statistics.label("mutationOutcome").collect("SKIPPED_BASE64_PADDING_NOOP");
+            return;
+        }
+
         Optional<String> result;
         try {
             result = builder.verify(mutatedToken);
         } catch (Exception e) {
-            // Throwing is acceptable — it means the token was rejected (possibly with parse error)
+            // Throwing is acceptable — it means the token was rejected (possibly with parse error).
+            // Classify by region so the coverage gate counts this as an asserted outcome.
+            Statistics.label("mutationOutcome").collect(classifyMutationRegion(mutationIndex, dotIdx));
+            Statistics.label("mutationOutcome").coverage(c -> {
+                c.checkPattern("ASSERTED.*").percentage(p -> p >= 80.0);
+                c.check("ASSERTED_PAYLOAD").percentage(p -> p >= 50.0);
+            });
             return;
         }
 
         assertThat(result)
-                .as("Mutated token at index %d (original='%c' → '%c') must not verify",
-                        mutationIndex, original, mutated)
+                .as("Mutated token at index %d (of %d, token-hash=%s) must not verify",
+                        mutationIndex, token.length(), LogScrubber.hash8(token))
                 .isEmpty();
-    }
 
-    /** Provides mutation indices in the range [0, 300) — generous enough to cover any token. */
-    @Provide
-    Arbitrary<Integer> mutationIndices() {
-        return Arbitraries.integers().between(0, 299);
+        // Classify the mutation region for the coverage gate (ADR-FUZZ-05).
+        Statistics.label("mutationOutcome").collect(classifyMutationRegion(mutationIndex, dotIdx));
+
+        // ADR-FUZZ-05: hard coverage gates — fail the property if skip rate is too high.
+        // "ASSERTED" means any of the three asserting outcomes; at least 80 % of tries must
+        // produce a real assertion. "ASSERTED_PAYLOAD" must account for at least 50 % because
+        // the payload prefix (URL, expiry, share-link ID) is the load-bearing HMAC region.
+        Statistics.label("mutationOutcome").coverage(c -> {
+            c.checkPattern("ASSERTED.*").percentage(p -> p >= 80.0);
+            c.check("ASSERTED_PAYLOAD").percentage(p -> p >= 50.0);
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -238,8 +295,63 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
     }
 
     // -------------------------------------------------------------------------
-    // Helper
+    // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Classifies a mutation index into one of the four outcome labels used by the
+     * {@code Statistics.label("mutationOutcome")} coverage gate.
+     *
+     * <p>The signed token has the structure {@code base64url(payload) . base64url(mac)}.
+     * Three disjoint regions exist:
+     * <ul>
+     *   <li>{@code ASSERTED_PAYLOAD} — index is in the base64url-encoded payload prefix
+     *       ([0, dotIdx)). This is the load-bearing HMAC-authenticated region (URL, expiry,
+     *       share-link ID).</li>
+     *   <li>{@code ASSERTED_DOT} — index is the dot separator itself ({@code dotIdx}).
+     *       Mutating the separator removes the structural boundary, causing a parse failure.</li>
+     *   <li>{@code ASSERTED_MAC} — index is in the base64url-encoded MAC suffix
+     *       ({@code dotIdx+1} onwards). Only mutations that do not flip non-significant
+     *       padding bits reach this label (padding-bit flips are SKIPPED before this method).</li>
+     * </ul>
+     *
+     * @param mutationIndex the character position that was mutated
+     * @param dotIdx        the position of the last {@code '.'} in the token
+     * @return one of {@code "ASSERTED_PAYLOAD"}, {@code "ASSERTED_DOT"}, {@code "ASSERTED_MAC"}
+     */
+    private static String classifyMutationRegion(int mutationIndex, int dotIdx) {
+        if (mutationIndex < dotIdx) return "ASSERTED_PAYLOAD";
+        if (mutationIndex == dotIdx) return "ASSERTED_DOT";
+        return "ASSERTED_MAC";
+    }
+
+    /**
+     * Returns {@code true} if both tokens' MAC portions (the suffix after the last {@code .})
+     * decode to the same bytes via the URL-safe Base64 decoder.
+     *
+     * <p>This detects mutations that only flip non-significant base64url padding bits:
+     * HMAC-SHA256 produces 32 bytes, which encodes to 43 base64url chars. The 43rd char
+     * uses only 4 of its 6 bits; the remaining 2 are padding zeros. Java's lenient
+     * {@link Base64#getUrlDecoder()} ignores those bits, so two chars that differ only in
+     * padding bits decode to identical bytes. A mutation in those bits is semantically a
+     * no-op and must be skipped rather than treated as a test failure.
+     *
+     * @param a the original token
+     * @param b the mutated token
+     * @return {@code true} if both tokens' decoded MAC bytes are identical
+     */
+    private static boolean macDecodesIdentically(final String a, final String b) {
+        int dotA = a.lastIndexOf('.');
+        int dotB = b.lastIndexOf('.');
+        if (dotA < 0 || dotB < 0 || dotA != dotB) return false;
+        try {
+            byte[] macA = Base64.getUrlDecoder().decode(a.substring(dotA + 1));
+            byte[] macB = Base64.getUrlDecoder().decode(b.substring(dotB + 1));
+            return Arrays.equals(macA, macB);
+        } catch (IllegalArgumentException e) {
+            return false; // malformed base64url → definitely different; proceed with assertion
+        }
+    }
 
     /**
      * Extracts the {@code u} query parameter value from a signed proxy URL.
