@@ -44,6 +44,45 @@ describe('TootComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  /**
+   * AC-02 (C8 — Browser Security; ASVS V50.x L1; WSTG-CLNT-09):
+   * The iframe sandbox attribute must carry exactly the three required tokens and nothing else.
+   *
+   * Arrange: component rendered with a SafeResourceUrl.
+   * Act: query the iframe element from the fixture.
+   * Assert: sandbox equals the exact string "allow-scripts allow-popups allow-popups-to-escape-sandbox".
+   *
+   * Rationale: allow-same-origin is intentionally absent — granting it would give the embedded
+   * Mastodon toot access to the embedding origin's storage (XSS escalation path).
+   * Any addition or removal of sandbox tokens is a security-relevant change and must break this test.
+   */
+  it('should have sandbox attribute with exactly three required tokens', () => {
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
+    expect(iframe).toBeTruthy();
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-popups-to-escape-sandbox');
+  });
+
+  /**
+   * AC-02 (C8 — Browser Security; ASVS V50.x L1; WSTG-CLNT-09):
+   * The iframe sandbox attribute must NOT contain dangerous tokens that would weaken isolation.
+   *
+   * Arrange: component rendered with a SafeResourceUrl.
+   * Act: query the iframe element from the fixture.
+   * Assert: sandbox value does not contain allow-same-origin, allow-top-navigation, or allow-forms.
+   *
+   * - allow-same-origin: would give the embed access to the parent origin's localStorage/cookies
+   * - allow-top-navigation: would allow the embed to redirect the top-level frame (phishing risk)
+   * - allow-forms: not needed for Mastodon embeds; denying it reduces the attack surface
+   */
+  it('should not have allow-same-origin in sandbox attribute', () => {
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
+    expect(iframe).toBeTruthy();
+    const sandboxValue = iframe.getAttribute('sandbox') ?? '';
+    expect(sandboxValue).not.toContain('allow-same-origin');
+    expect(sandboxValue).not.toContain('allow-top-navigation');
+    expect(sandboxValue).not.toContain('allow-forms');
+  });
+
   it('should configure iframe with SafeResourceUrl and UUID', () => {
     // use existing iframe
     const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
