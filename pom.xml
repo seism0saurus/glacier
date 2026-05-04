@@ -57,6 +57,60 @@
                 <skipE2ETest>true</skipE2ETest>
             </properties>
         </profile>
+        <profile>
+            <!--
+                Mutation testing profile — NOT active by default.
+                Activate with: ./mvnw -P mutation org.pitest:pitest-maven:mutationCoverage
+                Targets exactly 10 security-relevant classes; 70% threshold enforced.
+                Reports written to target/pit-reports/ (stable path, no timestamp suffix).
+            -->
+            <id>mutation</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <version>1.19.1</version>
+                        <dependencies>
+                            <!-- JUnit 5 bridge required for PITest to discover JUnit Jupiter tests -->
+                            <dependency>
+                                <groupId>org.pitest</groupId>
+                                <artifactId>pitest-junit5-plugin</artifactId>
+                                <version>1.2.2</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <!-- Exactly 10 FQNs — no wildcards (ADR-FUZZ-01 / SR-FUZZ-15) -->
+                            <targetClasses>
+                                <param>de.seism0saurus.glacier.util.LogScrubber</param>
+                                <param>de.seism0saurus.glacier.share.domain.ShareLinkId</param>
+                                <param>de.seism0saurus.glacier.share.domain.ShareViewerId</param>
+                                <param>de.seism0saurus.glacier.share.domain.SecureRandomTokenGenerator</param>
+                                <param>de.seism0saurus.glacier.webservice.messaging.HashtagFormat</param>
+                                <param>de.seism0saurus.glacier.share.web.ShareImageProxyUrlBuilder</param>
+                                <param>de.seism0saurus.glacier.share.application.DefaultSafeUrlValidator</param>
+                                <param>de.seism0saurus.glacier.mastodon.IframeEmbedPolicy</param>
+                                <param>de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter</param>
+                                <param>de.seism0saurus.glacier.share.web.ShareRateLimiter</param>
+                            </targetClasses>
+                            <!-- STRONGER group = ALL mutators, no exclusions (ADR-FUZZ-02) -->
+                            <mutators>
+                                <mutator>ALL</mutator>
+                            </mutators>
+                            <!-- Minimum mutation score: 70% (ADR-FUZZ-01 / SR-FUZZ-05) -->
+                            <mutationThreshold>70</mutationThreshold>
+                            <!-- HTML for human review; XML for CI artifact ingestion -->
+                            <outputFormats>
+                                <param>HTML</param>
+                                <param>XML</param>
+                            </outputFormats>
+                            <!-- Stable output path — no timestamp suffix — so CI can always find target/pit-reports/ -->
+                            <timestampedReports>false</timestampedReports>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
     <properties>
@@ -241,6 +295,18 @@
             <groupId>net.jqwik</groupId>
             <artifactId>jqwik</artifactId>
             <version>1.8.4</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            ArchUnit: architecture enforcement at test-time (SR-FUZZ-FIX-12 / ADR-FUZZ-04).
+            Ensures package-private hmacSha256 is not called by production classes in share.web.
+            https://www.archunit.org/
+        -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>1.3.0</version>
             <scope>test</scope>
         </dependency>
 

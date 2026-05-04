@@ -20,12 +20,18 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchRule;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.stream.Stream;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -488,7 +494,8 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
                 Arguments.of("invalid base64 payload",
                         "!!!.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
                 Arguments.of("payload with single pipe", singlePipeToken),
-                Arguments.of("non-numeric expiresAt", nonNumericToken)
+                Arguments.of("non-numeric expiresAt", nonNumericToken),
+                Arguments.of("invalid base64 in MAC suffix", "AAAAAAAAAAA.!!!")
         );
     }
 
@@ -509,9 +516,10 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
     // -------------------------------------------------------------------------
 
     /**
-     * SR-FUZZ-FIX-12: asserts that {@link ShareImageProxyUrlBuilder#hmacSha256(byte[], String)}
-     * is package-private (neither public nor protected nor private), enforcing ADR-FUZZ-04.
-     * Uses reflection because ArchUnit is not on the classpath (OWASP A05).
+     * SR-FUZZ-FIX-12 (modifier gate): asserts that
+     * {@link ShareImageProxyUrlBuilder#hmacSha256(byte[], String)} is package-private,
+     * enforcing ADR-FUZZ-04. The call-graph gate is covered by
+     * {@link #hmacSha256IsNotCalledByProductionClasses()}.
      */
     @Test
     void hmacSha256IsPackagePrivateForTestingOnly() throws NoSuchMethodException {
@@ -531,5 +539,28 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
                 .as("hmacSha256 must NOT be private — must be package-private for test access"
                         + " (SR-FUZZ-FIX-12 / ADR-FUZZ-04)")
                 .isFalse();
+    }
+
+    /**
+     * SR-FUZZ-FIX-12 (call-graph gate): verifies no production class in
+     * {@code de.seism0saurus.glacier.share.web} calls
+     * {@link ShareImageProxyUrlBuilder#hmacSha256(byte[], String)}.
+     *
+     * <p>Uses ArchUnit bytecode analysis so the rule fires even if a future caller is added
+     * in a different compilation unit (ADR-FUZZ-04 / OWASP A05).
+     */
+    @Test
+    void hmacSha256IsNotCalledByProductionClasses() {
+        JavaClasses productionClasses = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("de.seism0saurus.glacier.share.web");
+
+        ArchRule rule = noClasses()
+                .that().doNotHaveSimpleName("ShareImageProxyUrlBuilder")
+                .should().callMethod(ShareImageProxyUrlBuilder.class, "hmacSha256",
+                        byte[].class, String.class)
+                .because("hmacSha256 is package-private FOR TESTING ONLY — ADR-FUZZ-04 / SR-FUZZ-FIX-12");
+
+        rule.check(productionClasses);
     }
 }
