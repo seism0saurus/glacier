@@ -109,10 +109,70 @@ Links: [API1](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object
 | AR-WS-02 | Source IP trusted from `X-Forwarded-For` via single Traefik proxy | ADR-PT-G5-01; internal cluster access is out of threat model | WS-01/02 |
 | AR-WS-03 | Known wallId (e.g. from share-link URL) allows subscription-topic probing at rate-limited rate | ADR-PT-G7-01; 122-bit UUID + 50-hashtag cap limits information gain | WS-07 |
 
+## Standards Traceability
+
+Standards versions: ASVS 5.0 | WSTG 4.2 | OWASP Proactive Controls 2024
+
+### WSTG 4.2 Mapping
+
+Maps each WSTG test ID to the test class(es) that provide evidence of coverage.
+
+| WSTG Test ID | Test Name | Test Class(es) |
+|---|---|---|
+| WSTG-SESS-02 | Testing for Cookie Attributes | `OwaspMatrixCookieAttributesLockstepTest`, `CookieEmissionIT` |
+| WSTG-CLNT-09 | Testing for Clickjacking | `toot.component.spec.ts` |
+| WSTG-ERRH-01 | Testing for Improper Error Handling | `ResponseBodySecretLeakIT` |
+| WSTG-CONF-06 | Testing HTTP Methods | `HttpMethodHardeningIT`, `HttpMethodRejectFilterTest` |
+| WSTG-CONF-07 | Testing CORS | `CorsHardeningIT` |
+| WSTG-INPV-01 | Testing for Reflected XSS (Input Validation) | `StompCallbackOptInEnforcementTest` |
+| WSTG-AUTHZ-01 | Testing Directory Traversal | `EndpointInventoryTest` |
+| WSTG-AUTHZ-04 | Testing for Insecure Direct Object References | `StompEnumerationIndistinguishabilityIT`, `StompMassAssignmentIT` |
+| WSTG-INPV-19 | Testing for SSRF | `StompCallbackEmbedSsrfFindingTest`, `StompCallbackHostileResponseTest` |
+| WSTG-APIT-01 | API Testing | `EndpointInventoryTest`, `WebSocketEndpointInventoryTest` |
+| WSTG-SESS-04 | Testing for Session Management Schema | `HandshakeRateLimitInterceptorTest`, `SubscribeRateLimitInterceptorTest` |
+| WSTG-INPV-05 | Testing for SQL Injection (Input Validation — positive allowlist) | `SubscriptionHashtagValidationFindingTest` |
+| WSTG-INPV-11 | Testing for Code Injection | `StompPayloadDeserializationIT` |
+
+### ASVS 5.0 Mapping
+
+Maps ASVS shortcodes to the test class(es) that provide evidence of coverage.
+Shortcodes without a dedicated test are covered structurally or at the ZAP/Trivy CI layer.
+
+| ASVS Shortcode | Level | Requirement Summary | Test Class(es) |
+|---|---|---|---|
+| V2.2.1 | L1 | Input validation — positive allowlist | `StompCallbackOptInEnforcementTest`, `SubscriptionHashtagValidationFindingTest` |
+| V3.3.1 | L1 | Cookie Secure attribute | `OwaspMatrixCookieAttributesLockstepTest`, `CookieEmissionIT` |
+| V3.3.2 | L2 | Cookie SameSite attribute | `OwaspMatrixCookieAttributesLockstepTest`, `CookieEmissionIT` |
+| V3.3.4 | L2 | Cookie HttpOnly attribute | `OwaspMatrixCookieAttributesLockstepTest`, `CookieEmissionIT` |
+| V3.4.6 | L2 | CSP frame-ancestors / clickjacking prevention | `toot.component.spec.ts` (iframe sandbox; frame-ancestors verified by ZAP scan) |
+| V3.5.3 | L1 | HTTP method hardening — safe methods restricted on sensitive resources | `HttpMethodHardeningIT`, `HttpMethodRejectFilterTest` |
+| V4.1.4 | L3 | Only supported HTTP methods accepted; unused methods blocked | `HttpMethodHardeningIT`, `HttpMethodRejectFilterTest` |
+| V1.3.6 | L2 | SSRF protection via allowlist before any outbound call | `StompCallbackEmbedSsrfFindingTest`, `StompCallbackHostileResponseTest` |
+| V2.4.1 | L2 | Anti-automation / rate limiting on sensitive functions | `HandshakeRateLimitInterceptorTest`, `SubscribeRateLimitInterceptorTest` |
+| V3.2.1 | L1 | Sensitive data not echoed in responses | `ResponseBodySecretLeakIT` |
+
+### OWASP Proactive Controls 2024 Mapping
+
+| Proactive Control | Control Name | Addressed By |
+|---|---|---|
+| C1 | Define Security Requirements | `EndpointInventoryTest`, `WebSocketEndpointInventoryTest`, `AuditEventNameLockstepTest` |
+| C2 | Leverage Security Frameworks and Libraries | ZAP baseline scan in CI (`security.yml`); Trivy image/fs scans; Spring Security for CORS and method filtering |
+| C3 | Validate All Input | `StompCallbackOptInEnforcementTest`, `StompPayloadDeserializationIT`, `SubscriptionHashtagValidationFindingTest` |
+| C4 | Handle Errors and Exceptions Securely | `ResponseBodySecretLeakIT` (error responses scrubbed); `StompCallbackHostileResponseTest` (null/malformed upstream data handled) |
+| C5 | Secure By Default Configurations | `OwaspMatrixCookieAttributesLockstepTest`, `CookieEmissionIT` |
+| C6 | Implement Digital Identity | `CookieEmissionIT`, `CookieBasedFallbackAuthGuardTest` (wallId cookie is the sole identity mechanism) |
+| C7 | Enforce Access Controls | `WallTopicAuthInterceptorTest`, `StompEnumerationIndistinguishabilityIT`, `StompMassAssignmentIT` |
+| C8 | Protect Data Everywhere (Browser Security) | `toot.component.spec.ts`, `HttpMethodHardeningIT`, `CorsHardeningIT` |
+| C9 | Implement Security Logging and Monitoring | `ResponseBodySecretLeakIT`, `LogStabilityTest`, `RawWallIdLogHygieneTest` |
+| C10 | Stop Server-Side Request Forgery | `StompCallbackEmbedSsrfFindingTest`, `StompCallbackHostileResponseTest` |
+
+---
+
 ## Maintenance Instructions
 
 - **New HTTP endpoint**: add it to `EndpointInventoryTest.AUTHORITATIVE_ENDPOINT_ALLOWLIST`, add a row to both OWASP tables in this file, and ensure all zero-blank-cell constraints are met.
 - **New STOMP destination**: add a row to the STOMP section of the Endpoint Inventory and both OWASP tables.
 - **New OWASP category added**: add a column to both tables; fill all cells.
 - **Coverage change**: update the cell in both tables; note the test ID and file.
+- **Updating standard versions**: see the `## Updating Standard Versions` section in [`SECURITY_TESTS.md`](SECURITY_TESTS.md).
 - See [`SECURITY_TESTS.md`](SECURITY_TESTS.md) for step-by-step guides.
