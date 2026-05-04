@@ -5,6 +5,18 @@
         class="toot mastodon-embed"
         allowfullscreen="allowfullscreen"
         loading="lazy"
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
         [src]="url">
+  <!-- C8 — Browser Security; ASVS V50.x (L1); WSTG-CLNT-09:
+       sandbox restricts the embedded Mastodon toot iframe.
+       - allow-scripts: required for Mastodon's height-resize postMessage protocol
+       - allow-popups: required for <a target="_blank"> links inside embeds
+       - allow-popups-to-escape-sandbox: popups opened from the embed must not
+         inherit the sandbox restrictions (otherwise they break user navigation)
+       - allow-same-origin is intentionally ABSENT: granting it would give the
+         embed access to the embedding origin's storage, defeating the isolation
+         goal (XSS escalation path). The postMessage resize protocol is
+         cross-origin and does not require allow-same-origin.
+  -->
   <p>Your browser does not support iframes.</p>
 </iframe>
