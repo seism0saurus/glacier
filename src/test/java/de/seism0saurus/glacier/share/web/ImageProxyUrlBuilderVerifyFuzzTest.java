@@ -256,10 +256,9 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
         ShareLinkId shareLinkId = ShareLinkId.fromUrlPath(DUMMY_SHARE_LINK_TOKEN);
 
         String signedUrl = builder.sign(url, shareLinkId);
-        if (signedUrl == null) {
-            // sign() returns null on internal errors — skip this input (no assertion to check)
-            return;
-        }
+        assertThat(signedUrl)
+                .as("sign(%s) must not return null", url)
+                .isNotNull();
 
         String token = extractToken(signedUrl);
         assertThat(token)
