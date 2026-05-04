@@ -15,6 +15,17 @@ import java.util.Base64;
 import java.util.Optional;
 import java.util.Random;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.stream.Stream;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -367,5 +378,158 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Deterministic boundary tests (SR-FUZZ-FIX-05 / SR-FUZZ-FIX-07 / SR-FUZZ-FIX-08)
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-FUZZ-FIX-08 / T-FUZZ-FIX-08: a properly HMAC-signed token whose {@code expiresAt}
+     * timestamp is one second in the past must be rejected by {@link ShareImageProxyUrlBuilder#verify}.
+     *
+     * <p>The package-private {@link ShareImageProxyUrlBuilder#hmacSha256} is used directly
+     * so the forged token carries a real HMAC and the test reaches the expiry branch —
+     * not the HMAC-reject branch (ADR-FUZZ-04).
+     */
+    @Test
+    void expiredTokenReturnsEmpty() throws Exception {
+        ShareImageProxyUrlBuilder builder = buildBuilder();
+
+        long expiredAt = Instant.now().getEpochSecond() - 1;
+        String payload = VALID_URL + "|" + expiredAt + "|" + DUMMY_SHARE_LINK_TOKEN;
+
+        byte[] macBytes = ShareImageProxyUrlBuilder.hmacSha256(
+                DEV_SECRET.getBytes(StandardCharsets.UTF_8), payload);
+
+        String encodedPayload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
+        String encodedMac = Base64.getUrlEncoder().withoutPadding().encodeToString(macBytes);
+        String forgedExpiredToken = encodedPayload + "." + encodedMac;
+
+        Optional<String> result = builder.verify(forgedExpiredToken);
+        assertThat(result)
+                .as("verify() must reject an expired token even when the HMAC is valid"
+                        + " (SR-FUZZ-FIX-08 / CWE-613 / ASVS V13.2.4 L1)")
+                .isEmpty();
+    }
+
+    /**
+     * SR-FUZZ-FIX-05: flipping the dot separator character in a valid signed token must
+     * cause {@link ShareImageProxyUrlBuilder#verify} to return empty (OWASP A02, CWE-345).
+     */
+    @Test
+    void dotSeparatorMutationReturnsEmpty() {
+        ShareImageProxyUrlBuilder builder = buildBuilder();
+        ShareLinkId shareLinkId = ShareLinkId.fromUrlPath(DUMMY_SHARE_LINK_TOKEN);
+
+        String signedUrl = builder.sign(VALID_URL, shareLinkId);
+        assertThat(signedUrl)
+                .as("sign() must produce a non-null URL for valid inputs")
+                .isNotNull();
+
+        String token = extractToken(signedUrl);
+        assertThat(token)
+                .as("Signed URL must contain a ?u= token parameter")
+                .isNotNull();
+
+        int dotIdx = token.lastIndexOf('.');
+        assertThat(dotIdx)
+                .as("Signed token must contain a dot separator between payload and MAC")
+                .isGreaterThanOrEqualTo(0);
+
+        String mutatedToken = token.substring(0, dotIdx) + ',' + token.substring(dotIdx + 1);
+
+        Optional<String> result;
+        try {
+            result = builder.verify(mutatedToken);
+        } catch (Exception e) {
+            return; // exception is also an acceptable rejection (SR-FUZZ-FIX-05)
+        }
+
+        assertThat(result)
+                .as("verify() must reject a token whose dot separator has been mutated"
+                        + " (SR-FUZZ-FIX-05 / OWASP A02 / CWE-345)")
+                .isEmpty();
+    }
+
+    /**
+     * SR-FUZZ-FIX-07: six boundary cases covering all non-HMAC rejection branches inside
+     * {@link ShareImageProxyUrlBuilder#verify}. Rows 5 and 6 use the package-private
+     * {@code hmacSha256} to produce a genuine HMAC so the test reaches the parsing branch
+     * under test (ADR-FUZZ-04 / SR-FUZZ-FIX-07; OWASP A02, ASVS V2.9.1 L1).
+     */
+    @ParameterizedTest(name = "[{index}] {0}")
+    @MethodSource("nonMacBranchRows")
+    void nonMacBranchesReturnEmpty(final String description, final String tokenInput) {
+        ShareImageProxyUrlBuilder builder = buildBuilder();
+
+        Optional<String> result;
+        try {
+            result = builder.verify(tokenInput);
+        } catch (Exception e) {
+            return; // exception is also acceptable — the token was rejected
+        }
+
+        assertThat(result)
+                .as("verify() must return empty for boundary case: %s (SR-FUZZ-FIX-07)", description)
+                .isEmpty();
+    }
+
+    static Stream<Arguments> nonMacBranchRows() {
+        byte[] keyBytes = DEV_SECRET.getBytes(StandardCharsets.UTF_8);
+        String singlePipeToken = forgeSignedToken(keyBytes, "onlyone");
+        String nonNumericToken = forgeSignedToken(keyBytes, "https://example.com|NOTANUMBER|sharelink-id");
+
+        return Stream.of(
+                Arguments.of("null token", null),
+                Arguments.of("empty token", ""),
+                Arguments.of("no dot separator", "abcdefghijk"),
+                Arguments.of("invalid base64 payload",
+                        "!!!.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+                Arguments.of("payload with single pipe", singlePipeToken),
+                Arguments.of("non-numeric expiresAt", nonNumericToken)
+        );
+    }
+
+    private static String forgeSignedToken(final byte[] keyBytes, final String rawPayload) {
+        try {
+            byte[] macBytes = ShareImageProxyUrlBuilder.hmacSha256(keyBytes, rawPayload);
+            String encodedPayload = Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(rawPayload.getBytes(StandardCharsets.UTF_8));
+            String encodedMac = Base64.getUrlEncoder().withoutPadding().encodeToString(macBytes);
+            return encodedPayload + "." + encodedMac;
+        } catch (Exception e) {
+            throw new RuntimeException("forgeSignedToken failed for payload: " + rawPayload, e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // SR-FUZZ-FIX-12: visibility gate — hmacSha256 must remain package-private
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-FUZZ-FIX-12: asserts that {@link ShareImageProxyUrlBuilder#hmacSha256(byte[], String)}
+     * is package-private (neither public nor protected nor private), enforcing ADR-FUZZ-04.
+     * Uses reflection because ArchUnit is not on the classpath (OWASP A05).
+     */
+    @Test
+    void hmacSha256IsPackagePrivateForTestingOnly() throws NoSuchMethodException {
+        Method method = ShareImageProxyUrlBuilder.class
+                .getDeclaredMethod("hmacSha256", byte[].class, String.class);
+        int modifiers = method.getModifiers();
+
+        assertThat(Modifier.isPublic(modifiers))
+                .as("hmacSha256 must NOT be public — ADR-FUZZ-04 requires package-private"
+                        + " (SR-FUZZ-FIX-12 / OWASP A05)")
+                .isFalse();
+        assertThat(Modifier.isProtected(modifiers))
+                .as("hmacSha256 must NOT be protected — ADR-FUZZ-04 requires package-private"
+                        + " (SR-FUZZ-FIX-12 / OWASP A05)")
+                .isFalse();
+        assertThat(Modifier.isPrivate(modifiers))
+                .as("hmacSha256 must NOT be private — must be package-private for test access"
+                        + " (SR-FUZZ-FIX-12 / ADR-FUZZ-04)")
+                .isFalse();
     }
 }

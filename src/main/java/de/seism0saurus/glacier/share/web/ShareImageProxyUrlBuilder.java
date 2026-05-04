@@ -139,7 +139,8 @@ public class ShareImageProxyUrlBuilder implements ImageProxyUrlSigner {
         return java.util.Optional.of(parts[0]);
     }
 
-    private static byte[] hmacSha256(byte[] key, String data) throws NoSuchAlgorithmException, InvalidKeyException {
+    // package-private FOR TESTING ONLY — do not promote to public; see ADR-FUZZ-04
+    static byte[] hmacSha256(byte[] key, String data) throws NoSuchAlgorithmException, InvalidKeyException {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(key, "HmacSHA256"));
         return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
