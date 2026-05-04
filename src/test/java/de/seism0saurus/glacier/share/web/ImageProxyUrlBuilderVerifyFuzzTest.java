@@ -111,7 +111,7 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
             result = builder.verify(s);
         } catch (Exception e) {
             throw new AssertionError(
-                    "verify() must never throw for input (length=" + s.length() + "): " + e, e);
+                    "verify() must never throw for input (length=" + s.length() + "): " + e.getClass().getSimpleName(), e);
         }
 
         // For arbitrary strings not produced by sign(), verify() must return empty.
