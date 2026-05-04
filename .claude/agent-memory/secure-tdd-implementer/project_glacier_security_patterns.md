@@ -124,3 +124,134 @@ type: project
 - The entire-queue discard semantics of `validateItem` means one bad URL discards the whole queue (SR-PRUNE-01)
 
 **How to apply:** Any new URL field added to WallMessage must also be validated with the http/https scheme check inside `validateItem`. Any new localStorage key containing strings must use `validateHashtagsList` or a comparable validator before consuming the values.
+
+---
+
+## OWASP Coverage Matrix Completion — WebSocket rate limiting (Phase 2, 2026-04-30)
+
+**Why:** Nine OWASP coverage gaps (G1–G9) were closed by this pipeline. L2 scope owned by secure-tdd-implementer.
+
+### HandshakeRateLimitInterceptor (SR-WS-01, ADR-PT-G5-01)
+- `HandshakeInterceptor` implementation registered on `/websocket` AND `/share-view-ws`
+- Fixed-window token bucket: `ConcurrentHashMap<String, TokenBucket>` keyed by source IP
+- Capacity and max-per-minute from `glacier.security.ws.handshake.max-per-minute` (default 10)
+- Rejects with HTTP 429 when bucket exhausted (closes cookie-rotation DoS)
+- Fail-open on ANY `Throwable` (SR-WS-04) — consistent with FallbackRateLimiter
+- AUDIT event: `ws.handshake.rate_limited ip-hash={}` using `LogScrubber.maskIp(ip)` (SR-LOG-WS-01)
+- `@Scheduled` eviction at 5-minute cadence — removes entries idle > 10 minutes
+
+### SubscribeRateLimitInterceptor (SR-WS-02, ADR-PT-G7-01)
+- `ChannelInterceptor` on `clientInboundChannel` — registered first in interceptor chain
+- Silent drop (return `null`) for over-limit SUBSCRIBE frames — preserves indistinguishability (API6)
+- Bucket key: `ip + ":" + principalName` — isolated per (IP, wallId) pair
+- AUDIT event: `ws.subscribe.rate_limited ip-hash={} wallid-hash={}` (SR-LOG-WS-01)
+- Only intercepts `SimpMessageType.SUBSCRIBE` — all other frame types pass through
+- Fail-open on `Throwable`
+
+### WebSocket transport limits (SR-WS-05)
+- `configureWebSocketTransport` explicitly calls: `setMessageSizeLimit(65536)`, `setSendBufferSizeLimit(524288)`, `setSendTimeLimit(20000)`
+- All three values operator-tunable via env vars (SR-WS-06): `GLACIER_WS_MESSAGE_SIZE_BYTES`, `GLACIER_WS_SEND_BUFFER_BYTES`, `GLACIER_WS_SEND_TIME_MS`
+
+### EndpointInventoryTest (SR-MTX-02, ADR-PT-API5-01)
+- `@SpringBootTest(webEnvironment=MOCK)` — Surefire unit test
+- Iterates `RequestMappingHandlerMapping.getHandlerMethods()` for live Spring context
+- Bidirectional check: undocumented routes fail AND stale allowlist entries fail
+- Only checks `/rest/` and `/internal/` paths — excludes Spring framework internals and actuator
+
+### TrivyignoreExpiryTest (SR-CI-03)
+- Validates BOTH `.trivyignore` (image layer) AND `.trivyignore-fs` (jar deps)
+- Every non-blank, non-comment line must have trailing `# expires: YYYY-MM-DD`
+- Past expiry dates cause build failure — forces periodic re-triage
+
+### StompCallbackOptInEnforcementTest (SR-OI-01, SR-OI-02)
+- isOptedIn() helper extracted and called at lines 327 (GenericMessage), 516 (StatusCreated), 578 (StatusEdited)
+- 6 tests: UT-sec-01 (generic drop), UT-sec-02 (generic pass), UT-sec-03 (domain mismatch), UT-sec-04 (typed StatusCreated), UT-sec-04b (typed StatusEdited), UT-sec-04c (structural regression guard)
+
+### Test counts after this phase
+- Surefire: 946 tests, 0 failures
+- Failsafe: 184 IT tests, 0 failures
+- Total Java: 1130, BUILD SUCCESS
+
+**How to apply:** Any new WebSocket endpoint must be registered with `handshakeRateLimitInterceptor`. Any new HTTP endpoint must be added to `EndpointInventoryTest.AUTHORITATIVE_ENDPOINT_ALLOWLIST` AND `OWASP_COVERAGE_MATRIX.md`. Any new Trivy suppression must carry `# expires: YYYY-MM-DD`.
+
+---
+
+## TD Backlog Bundle — F-7 + OBS-1 (Phase 2 Lane B, 2026-05-01)
+
+**Why:** Technical debt deferred from 2026-04-30 OWASP Matrix Completion acceptance cycle.
+
+### F-7 literal-token assertions (SR-F7-02)
+- `HandshakeRateLimitInterceptorTest` UT-WS-RL-04: added `.contains("ws.handshake.rate_limited")` assertion
+- `SubscribeRateLimitInterceptorTest` UT-SUBRL-05: added `.contains("ws.subscribe.rate_limited")` assertion
+- Both tests were already green; additions tighten the AUDIT contract to pin the literal event token (OWASP A09:2021)
+
+### OBS-1 ShareViewRemoteAddrProductionPathIT (IT-sec-SV-RL-01)
+- New IT at `src/test/java/de/seism0saurus/glacier/security/ShareViewRemoteAddrProductionPathIT.java`
+- Mirrors `SubscribeRateLimitProductionPathIT` but connects to `/share-view-ws?shareLinkId=<id>` instead of `/websocket`
+- Seeds share link via `@Autowired InMemoryShareLinkRepository` direct injection (NOT via POST /rest/share-links — that endpoint is rate-limited by ShareRateLimiter, ADR-5)
+- Must use `glacier.cookie.secure=false` so cookie name is `shareViewerId` (not `__Host-shareViewerId`) — plain HTTP test server
+- Viewer ID value: `sv_` + 43 URL-safe base64 chars = 46 chars minimum (isValidShareViewerId requirement)
+- Share link ID: 43-char URL-safe base64 string, passed as `?shareLinkId=` query param
+- Topic destinations: `/topic/share/{shareLinkId}/creation{i}` — required by ShareViewTopicAuthInterceptor
+- Interceptor order: subscribeRateLimitInterceptor first → wallTopicAuthInterceptor → shareViewTopicAuthInterceptor
+  - Frames 4-5 (above threshold=3) are silently dropped by rate limiter BEFORE auth interceptor runs
+  - This guarantees rate-limit AUDIT events are emitted even if auth would otherwise reject those frames
+- Asserts: ws.subscribe.rate_limited event present, ip-hash= present, ip-hash=null absent
+- Passed green on first run (existing production code already correct: F-1 fix from OWASP cycle populates REMOTE_ADDR)
+
+### Test counts after this phase
+- Surefire: same (no new unit tests)
+- Failsafe: 187 IT tests, 0 failures (+1 new OBS-1 IT)
+- BUILD SUCCESS, all Jacoco thresholds met
+
+**How to apply:** Any new /share-view-ws IT must set `glacier.cookie.secure=false` and pass `shareViewerId` (not `__Host-shareViewerId`) as the cookie header. Always seed share links via `InMemoryShareLinkRepository` injection rather than the rate-limited REST endpoint.
+
+---
+
+## OWASP Standards Integration — new security controls (Phase 2, 2026-05-01/04)
+
+**Why:** Gap analysis against WSTG 4.2, ASVS 5.0, Proactive Controls 2024 found 9 gaps.
+
+### iframe sandbox (SR-NEW-01, ADR-2)
+- `toot.component.html` iframe now has `sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"`
+- `allow-same-origin` is intentionally absent — it would give the embed access to the embedding origin's storage
+- Mastodon embed's height-resize postMessage protocol is cross-origin and does NOT require allow-same-origin
+
+### OwaspMatrixCookieAttributesLockstepTest (SR-NEW-04, ADR-3)
+- Parses OWASP_COVERAGE_MATRIX.md for SameSite claims on table rows containing "wallId"
+- Hits GET /rest/wall-id with MockMvc and compares actual Set-Cookie header against matrix claim
+- MUST be committed RED before the doc lane corrects the matrix (two commits must not be squashed)
+- wallId cookie uses SameSite=Lax (code truth) — matrix was wrongly claiming SameSite=Strict
+- `__Host-shareCsrf` cookie uses SameSite=Strict (correct, no change)
+
+### HttpMethodRejectFilter (SR-NEW-10)
+- `src/main/java/de/seism0saurus/glacier/webservice/HttpMethodRejectFilter.java`
+- `@Order(HIGHEST_PRECEDENCE)` — runs before CORS, auth, any filter
+- Rejects TRACE and TRACK with 405 + Allow header; all other methods pass through
+- Without Spring Security, TRACE returns 200 by default in Spring MVC — this filter prevents header echo
+
+### ResponseBodySecretLeakIT (SR-NEW-03/05, ADR-4/ADR-5)
+- Canary wallId: `00000000-0000-0000-0000-000000000001` (fixed, never generated by randomUUID)
+- Allowlisted: `/rest/wall-id` intentionally echoes the UUID (SPA bootstrap)
+- Stack-trace regex: `Exception|Throwable|java\.\w+\.|de\.seism0saurus\.|at \w[\w.$]*\(.*\.java:\d+\)`
+- Runs in 4 nested classes: LiveMode, FallbackMode, KillswitchMode, InsecureTransportMode
+- Killswitch mode needs `hashtag` param on /rest/messages — Spring MVC validates @RequestParam before controller kill-switch check
+
+### CorsHardeningIT (SR-NEW-06)
+- Case A: allowed origin preflight → 200/204 + ACAO + Max-Age ≥ 600 (Spring default = 1800)
+- Case B: attacker origin → ACAO completely absent (not echoed)
+- Case C: no ACAC: true on /rest/messages, /rest/operator, /rest/wall-id (main CORS configurer)
+- Case D: ACAO is exact origin, never wildcard
+- NOTE: /rest/share-links and /rest/share-csrf intentionally have allowCredentials(true) — this is by design for wallId cookie cross-origin; these endpoints are OUT OF SCOPE for Case C
+
+### CookieEmissionIT extensions (SR-NEW-07, AC-12/AC-13)
+- AC-12: class-level glacier.cookie.secure=true → Secure flag confirmed present
+- AC-13: new nested InsecureTransportCookieMode class with glacier.cookie.secure=false → Secure absent, HttpOnly+SameSite=Lax still present
+- Nested @WebMvcTest classes require @MockitoBean (not @MockBean) for the inner class's dependencies
+
+### Test counts after this phase
+- Surefire: 1040 tests before doc lane correction (1 intentional RED failure)
+- After doc lane matrix correction: 1040 tests, 0 failures expected
+- Failsafe: new ITs: ResponseBodySecretLeakIT (28 tests), HttpMethodHardeningIT (30), CorsHardeningIT (13)
+
+**How to apply:** When adding new endpoints, add them to AUTHORITATIVE_ENDPOINT_ALLOWLIST AND the matrix. When parsing Markdown tables in tests, filter to lines starting with `|` only. TRACE blocking is now at the filter layer — do not rely on Spring MVC or reverse proxy alone.
