@@ -208,6 +208,157 @@ class IframeEmbedPolicyTest {
     }
 
     // -------------------------------------------------------------------------
+    // Pattern.quote() regression tests — T-PQ-A through T-PQ-E (SR-PQ-01)
+    //
+    // The vulnerability: domain.toUpperCase(Locale.ROOT) is interpolated raw into
+    // a String.matches() pattern. A '.' in a domain like "glacier.events" acts as
+    // a regex wildcard, allowing a lookalike host (e.g. "glacierXevents") to satisfy
+    // the frame-ancestors check and pass through as embeddable.
+    //
+    // Fix (Lane B): Pattern.quote(domain.toUpperCase(Locale.ROOT)) — tests T-PQ-A
+    // through T-PQ-D must fail (RED) before that fix is applied, and pass (GREEN)
+    // after. T-PQ-E must always pass (over-rejection guard).
+    // -------------------------------------------------------------------------
+
+    /**
+     * T-PQ-A: Dot-substitution lookalike — regex wildcard bypass.
+     *
+     * <p>The '.' in the configured domain "glacier.events" is interpolated raw into
+     * the regex, where it matches any character. An attacker who controls the remote
+     * Mastodon instance can set {@code frame-ancestors https://glacierXevents} (any
+     * character in place of the dot) and the unfixed regex accepts it.
+     *
+     * <p>Arrange: configured domain {@code glacier.events}; CSP directive contains the
+     * lookalike host {@code https://glacierXevents} where 'X' replaces the literal dot.
+     * Act: Call {@code isEmbeddable} with this CSP and no XFO.
+     * Assert: Returns {@code false} — a lookalike must never satisfy the domain check.
+     *
+     * <p>RED before fix (regex wildcard matches 'X'), GREEN after fix (Pattern.quote
+     * enforces literal-dot matching).
+     */
+    @Test
+    void isEmbeddable_returnsFalse_whenFrameAncestorsContainsLookalikeHostWithSubstitutedDots() {
+        List<String> csp = List.of("frame-ancestors https://glacierXevents");
+
+        boolean result = IframeEmbedPolicy.isEmbeddable(null, csp, "glacier.events");
+
+        assertThat(result)
+                .as("Lookalike host with substituted dot must not satisfy the domain check")
+                .isFalse();
+    }
+
+    /**
+     * T-PQ-B: Underscore substitution — exact-match semantics enforcement.
+     *
+     * <p>An underscore is not a regex metacharacter, so this test proves that
+     * Pattern.quote() enforces exact-match semantics beyond metacharacter neutralization:
+     * even a non-metacharacter substitute ('_') must not match the literal dot in the
+     * domain name. The unfixed regex accepts the underscore because the raw '.' in
+     * "GLACIER.EVENTS" matches any character, including '_'.
+     *
+     * <p>Arrange: configured domain {@code glacier.events}; CSP directive contains the
+     * lookalike host {@code https://glacier_events} where '_' replaces the literal dot.
+     * Act: Call {@code isEmbeddable} with this CSP and no XFO.
+     * Assert: Returns {@code false} — no substitute character may pass as the literal dot.
+     *
+     * <p>RED before fix (raw '.' matches '_'), GREEN after fix (Pattern.quote requires
+     * an exact '.' at that position).
+     */
+    @Test
+    void isEmbeddable_returnsFalse_whenFrameAncestorsContainsLookalikeHostWithUnderscoreSubstitution() {
+        List<String> csp = List.of("frame-ancestors https://glacier_events");
+
+        boolean result = IframeEmbedPolicy.isEmbeddable(null, csp, "glacier.events");
+
+        assertThat(result)
+                .as("Lookalike host with underscore substitution must not satisfy the domain check")
+                .isFalse();
+    }
+
+    /**
+     * T-PQ-C: Metacharacter '+' substitution in a multi-segment domain.
+     *
+     * <p>The configured domain {@code glacier.example.com} contains two literal dots.
+     * When interpolated raw, the regex becomes {@code GLACIER.EXAMPLE.COM} — three
+     * wildcards instead of three literal dots. An attacker substitutes each dot with
+     * the '+' character (a regex quantifier for the preceding character). The unfixed
+     * regex accepts the input because each raw '.' in the pattern matches the '+'
+     * character in the attacker host.
+     *
+     * <p>Arrange: configured domain {@code glacier.example.com}; CSP directive contains
+     * the lookalike host {@code https://glacier+example+com}.
+     * Act: Call {@code isEmbeddable} with this CSP and no XFO.
+     * Assert: Returns {@code false} — the metacharacter-bearing lookalike must not match.
+     *
+     * <p>RED before fix (raw '.' matches '+'), GREEN after fix (Pattern.quote quotes the
+     * '+' before it reaches the regex engine).
+     */
+    @Test
+    void isEmbeddable_returnsFalse_whenFrameAncestorsContainsLookalikeHostWithMetacharacterSubstitution() {
+        List<String> csp = List.of("frame-ancestors https://glacier+example+com");
+
+        boolean result = IframeEmbedPolicy.isEmbeddable(null, csp, "glacier.example.com");
+
+        assertThat(result)
+                .as("Lookalike host with metacharacter '+' substitution must not satisfy the domain check")
+                .isFalse();
+    }
+
+    /**
+     * T-PQ-D: Multi-token frame-ancestors list containing a lookalike without the legitimate domain.
+     *
+     * <p>A real {@code frame-ancestors} directive may contain multiple space-separated tokens.
+     * This test verifies that the policy correctly rejects a directive that includes the
+     * lookalike host alongside other trusted origins, but does not include the actual
+     * Glacier domain {@code glacier.events}.
+     *
+     * <p>Arrange: configured domain {@code glacier.events}; CSP directive is
+     * {@code "frame-ancestors 'self' https://glacierXevents https://trusted.example.com"}.
+     * Act: Call {@code isEmbeddable} with this multi-token CSP and no XFO.
+     * Assert: Returns {@code false} — presence of the lookalike in a multi-token list
+     * must not satisfy the domain check when the legitimate domain is absent.
+     *
+     * <p>RED before fix (raw '.' matches 'X' in the lookalike token), GREEN after fix.
+     */
+    @Test
+    void isEmbeddable_returnsFalse_whenFrameAncestorsMultiTokenContainsLookalikeHost() {
+        List<String> csp = List.of(
+                "frame-ancestors 'self' https://glacierXevents https://trusted.example.com");
+
+        boolean result = IframeEmbedPolicy.isEmbeddable(null, csp, "glacier.events");
+
+        assertThat(result)
+                .as("Multi-token frame-ancestors with lookalike but without the legitimate domain must not permit embedding")
+                .isFalse();
+    }
+
+    /**
+     * T-PQ-E: Legitimate exact domain — over-rejection guard (GREEN from the start).
+     *
+     * <p>After applying Pattern.quote(), the regex must still accept the legitimate
+     * exact-match host {@code https://glacier.events} when the configured domain is
+     * {@code glacier.events}. This test ensures the fix does not produce an
+     * over-rejection side-effect where valid embeds are incorrectly blocked.
+     *
+     * <p>Arrange: configured domain {@code glacier.events}; CSP directive is
+     * {@code "frame-ancestors https://glacier.events"}.
+     * Act: Call {@code isEmbeddable} with this CSP and no XFO.
+     * Assert: Returns {@code true} — the literal domain must continue to be accepted.
+     *
+     * <p>This test passes both BEFORE and AFTER the fix and therefore has no RED phase.
+     */
+    @Test
+    void isEmbeddable_returnsTrue_whenFrameAncestorsContainsExactDomain() {
+        List<String> csp = List.of("frame-ancestors https://glacier.events");
+
+        boolean result = IframeEmbedPolicy.isEmbeddable(null, csp, "glacier.events");
+
+        assertThat(result)
+                .as("Exact legitimate domain must be accepted by the frame-ancestors check")
+                .isTrue();
+    }
+
+    // -------------------------------------------------------------------------
     // Helper types
     // -------------------------------------------------------------------------
 
