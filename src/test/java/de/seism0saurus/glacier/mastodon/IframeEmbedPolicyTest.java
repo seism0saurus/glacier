@@ -2,10 +2,13 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import ch.qos.logback.classic.Level;
+import org.slf4j.LoggerFactory;
 
 // Named is retained — goldenVectors() wraps each vector as Named<GoldenVector> for display-name
 // formatting in the @ParameterizedTest name pattern "[{index}] {0}". JUnit 5 auto-unwraps
@@ -14,6 +17,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -205,6 +209,93 @@ class IframeEmbedPolicyTest {
         assertThat(result)
                 .as("Expected embeddable when X-Frame-Options is ALLOWALL")
                 .isTrue();
+    }
+
+    // -------------------------------------------------------------------------
+    // T-PQ-F — Blank-domain guard (SR-PQ-12)
+    // T-PQ-G — AUDIT-logger event on block (SR-PQ-10R2)
+    // -------------------------------------------------------------------------
+
+    /**
+     * T-PQ-F: Blank-domain guard — fail-closed behaviour (SR-PQ-12).
+     *
+     * <p>When the configured domain is blank, empty, or null, {@code Pattern.quote("")}
+     * would produce a trivially-matching literal that accepts any host in the
+     * {@code frame-ancestors} position. The production code must guard against this by
+     * returning {@code false} immediately (fail-closed) before performing any regex match.
+     *
+     * <p>Arrange: CSP with an explicit {@code frame-ancestors} directive allowing an
+     * arbitrary host; domain is blank/empty/null.
+     * Act: Call {@code isEmbeddable} with each blank-domain variant.
+     * Assert: Returns {@code false} in all cases — no host may be accepted when the
+     *         configured domain cannot be validated.
+     *
+     * <p>RED before fix (no guard: NPE or trivial match), GREEN after fix (guard returns false).
+     */
+    @Test
+    @DisplayName("isEmbeddable returns false when domain is blank — fail-closed (SR-PQ-12)")
+    void isEmbeddable_returnsFalse_whenDomainIsBlank() {
+        // blank domain → Pattern.quote("") would match any host — must fail closed
+        List<String> csp = List.of("frame-ancestors https://any-host.example.com");
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, csp, "")).isFalse();
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, csp, "   ")).isFalse();
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, csp, null)).isFalse();
+    }
+
+    /**
+     * T-PQ-G: AUDIT-logger security event emitted when domain is blocked (SR-PQ-10R2).
+     *
+     * <p>When {@code isEmbeddable} rejects an embed because the configured Glacier domain
+     * is not in the {@code frame-ancestors} list, it must emit a security-relevant warning
+     * via the production logger with a scrubbed message format:
+     * {@code reason=domain_mismatch}. This key-value pair enables SOC/SIEM tooling to
+     * identify blocked embed attempts without exposing raw peer-controlled values.
+     *
+     * <p>D-13/SR-8/CWE-117: the logged message must NOT contain the raw domain value
+     * or any raw header content — only the static reason tag.
+     *
+     * <p>Arrange: CSP lists a different host; configured domain is {@code glacier.events}.
+     * Act: Call {@code isEmbeddable}, which must block and emit the security event.
+     * Assert: (1) Result is {@code false}. (2) A WARN-level log event exists.
+     *         (3) The message contains {@code reason=domain_mismatch}.
+     *         (4) The message does NOT contain the raw domain string or the CSP host.
+     *
+     * <p>RED before fix (current warn message lacks {@code reason=domain_mismatch}),
+     * GREEN after fix.
+     */
+    @Test
+    @DisplayName("isEmbeddable emits AUDIT security event (reason=domain_mismatch) when domain is blocked (SR-PQ-10R2)")
+    void isEmbeddable_emitsAuditEventOnBlockedHost() {
+        // Capture log events from the production logger used in IframeEmbedPolicy
+        ch.qos.logback.classic.Logger productionLogger = (ch.qos.logback.classic.Logger)
+                LoggerFactory.getLogger(IframeEmbedPolicy.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> listAppender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        listAppender.start();
+        productionLogger.addAppender(listAppender);
+
+        try {
+            List<String> csp = List.of("frame-ancestors https://trusted.example.com");
+            boolean result = IframeEmbedPolicy.isEmbeddable(null, csp, "glacier.events");
+
+            assertThat(result).isFalse();
+
+            // Verify security event was emitted
+            List<ch.qos.logback.classic.spi.ILoggingEvent> warnEvents = listAppender.list.stream()
+                    .filter(e -> e.getLevel() == Level.WARN)
+                    .collect(Collectors.toList());
+            assertThat(warnEvents).isNotEmpty();
+
+            // Security event must contain reason= key for SOC/SIEM tooling
+            String warnMessage = warnEvents.get(0).getFormattedMessage();
+            assertThat(warnMessage).contains("reason=domain_mismatch");
+
+            // Raw domain must NOT appear in log (CWE-117 — log injection prevention)
+            assertThat(warnMessage).doesNotContain("glacier.events");
+            assertThat(warnMessage).doesNotContain("trusted.example.com");
+        } finally {
+            productionLogger.detachAppender(listAppender);
+        }
     }
 
     // -------------------------------------------------------------------------
