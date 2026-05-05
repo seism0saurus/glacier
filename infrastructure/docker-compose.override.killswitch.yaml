@@ -15,8 +15,11 @@
 # The Playwright project that runs against this stack must be named `killswitch`
 # in frontend/playwright.config.ts (D-19).
 #
-# See infrastructure/README.md for the full operator context and the mandatory
-# FORWARD_HEADERS_STRATEGY=FRAMEWORK setting required behind traefik.
+# See infrastructure/README.md for the full operator context.
+# NOTE: FORWARD_HEADERS_STRATEGY=FRAMEWORK is intentionally NOT set in this test-fixture file.
+# This fixture runs without a reverse proxy in front of Glacier; setting FRAMEWORK mode
+# here would cause Spring to trust X-Forwarded-For headers from an absent proxy, producing
+# incorrect source IPs. The production value is set in infrastructure/docker-compose.yaml.
 
 services:
   glacier:

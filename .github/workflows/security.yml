@@ -107,6 +107,9 @@ jobs:
           pip install --quiet websocket-client==1.8.0
           python3 security/scripts/ws-bola-probe.py
 
+      - name: Verify docker image exists before scanning
+        run: docker manifest inspect ghcr.io/seism0saurus/glacier:${{ github.ref_name }} || (echo "Image not found for ${{ github.ref_name }}" && exit 1)
+
       - name: Trivy image scan
         uses: aquasecurity/trivy-action@0.30.0
         with:
@@ -124,6 +127,28 @@ jobs:
         with:
           sarif_file: "trivy-report.sarif"
 
+      - name: Verify jar exists before filesystem scan
+        run: ls infrastructure/glacier/glacier.jar || (echo "Jar not found -- download artifact first" && exit 1)
+
+      - name: Trivy filesystem scan (jar dependencies)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: infrastructure/glacier/
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: infrastructure/security/.trivyignore-fs
+          format: sarif
+          output: trivy-fs-report.sarif
+
+      - name: Upload Trivy filesystem SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-report.sarif
+          category: trivy-fs
+
       - name: Upload security artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -133,6 +158,7 @@ jobs:
             infrastructure/security/zap-baseline.html
             infrastructure/security/zap-baseline.json
             trivy-report.sarif
+            trivy-fs-report.sarif
 
       - name: Compose logs on failure
         if: failure()

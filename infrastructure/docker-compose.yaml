@@ -152,6 +152,17 @@ services:
       # Start spring with the default profile
       SPRING_PROFILES_ACTIVE: "default"
 
+      # Trust and unwrap X-Forwarded-For from Traefik so that getRemoteAddr()
+      # returns the real client IP, not Traefik's container IP.
+      # FRAMEWORK mode: Spring Boot auto-registers ForwardedHeaderFilter (servlet-stack),
+      # which strips and processes X-Forwarded-For before it reaches servlet code.
+      # This is required for HandshakeRateLimitInterceptor and SubscribeRateLimitInterceptor
+      # to bucket per real client IP (SR-WS-03, CWE-290, ADR-PT-G5-01).
+      # The override files (docker-compose.override.killswitch.yaml,
+      # docker-compose.override.insecure.yaml) intentionally do NOT set this value
+      # because those test fixtures run without a reverse proxy in front of Glacier.
+      FORWARD_HEADERS_STRATEGY: "FRAMEWORK"
+
       # Access the e2e mastodon instance.
       # Key is only usable in this local instance, so it is not a problem to publish it.
       INSTANCE: "proxy"

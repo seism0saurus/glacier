@@ -91,6 +91,68 @@ jobs:
           name: jasmin-reports
           path: frontend/coverage/glacier-frontend
 
+  mutation:
+    # Mutation testing runs after unit tests pass, on push/PR to main only.
+    # Scoped to Java source directories of the 10 PITest target classes (ADR-FUZZ-04).
+    # Informational/gating for main — NOT a prerequisite for publish-image or deploy.
+    # No production secrets in env (SR-FUZZ-06).
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect relevant Java source changes
+        id: filter
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "pom.xml")
+          if echo "$CHANGED" | grep -qE \
+            "^src/(main|test)/java/de/seism0saurus/glacier/(util|share|webservice/(messaging|cache)|mastodon)/|^pom\.xml"; then
+            echo "java=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "java=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 23
+        if: steps.filter.outputs.java == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+
+      - name: Use cache for local Maven repository
+        if: steps.filter.outputs.java == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-main-
+
+      - name: Use cache for node
+        if: steps.filter.outputs.java == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node
+          key: ${{ runner.os }}-node-main-
+
+      - name: Use cache for node_modules
+        if: steps.filter.outputs.java == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-main-
+
+      - name: Run PITest mutation coverage
+        if: steps.filter.outputs.java == 'true'
+        run: ./mvnw --batch-mode -P mutation org.pitest:pitest-maven:mutationCoverage -Dmaven.test.failure.ignore=false --file pom.xml
+
+      - name: Upload PITest reports
+        if: steps.filter.outputs.java == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pit-reports
+          path: target/pit-reports/
+
   package:
     runs-on: ubuntu-latest
     needs: test
@@ -204,10 +266,363 @@ jobs:
           docker ps
           docker compose logs
 
+  # ── Killswitch mode e2e (GLACIER_FALLBACK_ENABLED=false) ─────────────────────
+  e2e-killswitch:
+    runs-on: ubuntu-latest
+    needs: package
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Use cache for node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-main-
+      - name: Use cache for ms-playwright
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-main-
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start e2e killswitch test inside docker-compose
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.killswitch.yaml \
+            up --build --abort-on-container-exit playwright --exit-code-from playwright
+      - name: Upload Playwright report (killswitch)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-killswitch
+          path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots (killswitch)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots-killswitch
+          path: frontend/test-results
+      - name: Show logs of service (killswitch)
+        working-directory: infrastructure
+        if: failure()
+        run: |
+          docker ps
+          docker compose -f docker-compose.yaml -f docker-compose.override.killswitch.yaml logs
 
-  publish-image:
+  # ── Accessibility e2e (WCAG 2.2 AA axe-core scans) ───────────────────────────
+  e2e-a11y:
+    runs-on: ubuntu-latest
+    needs: package
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Use cache for node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-main-
+      - name: Use cache for ms-playwright
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-main-
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start e2e a11y test inside docker-compose
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.a11y.yaml \
+            up --build --abort-on-container-exit playwright --exit-code-from playwright
+      - name: Upload Playwright report (a11y)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-a11y
+          path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots (a11y)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots-a11y
+          path: frontend/test-results
+      - name: Show logs of service (a11y)
+        working-directory: infrastructure
+        if: failure()
+        run: |
+          docker ps
+          docker compose -f docker-compose.yaml -f docker-compose.override.a11y.yaml logs
+
+  # ── Insecure (plain-HTTP / no-TLS) e2e ───────────────────────────────────────
+  e2e-insecure:
+    runs-on: ubuntu-latest
+    needs: package
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Use cache for node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-main-
+      - name: Use cache for ms-playwright
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-main-
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start e2e insecure test inside docker-compose
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.insecure.yaml \
+            up --build --abort-on-container-exit playwright --exit-code-from playwright
+      - name: Upload Playwright report (insecure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-insecure
+          path: frontend/playwright-report
+      - name: Upload Playwright Error screenshots (insecure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-error-screenshots-insecure
+          path: frontend/test-results
+      - name: Show logs of service (insecure)
+        working-directory: infrastructure
+        if: failure()
+        run: |
+          docker ps
+          docker compose -f docker-compose.yaml -f docker-compose.override.insecure.yaml logs
+
+  # ── Trivy filesystem scan (jar dependency CVEs) ───────────────────────────────
+  trivy-fs:
+    runs-on: ubuntu-latest
+    needs: package
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Trivy filesystem scan (jar dependencies)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: fs
+          scan-ref: infrastructure/glacier/
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: infrastructure/security/.trivyignore-fs
+          format: sarif
+          output: trivy-fs-report.sarif
+      - name: Upload Trivy filesystem SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-report.sarif
+          category: trivy-fs
+
+  # ── Trivy image scan (OS-layer CVEs — scans the exact image before push) ──────
+  trivy-image:
     runs-on: ubuntu-latest
     needs: e2e
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: glacier-image
+          path: ./
+      - name: Load image into Docker
+        run: docker load -i glacier-image.tar
+      - name: Trivy image scan
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/trivy" \
+            -v "$(pwd)/infrastructure/security:/scanconfig" \
+            aquasec/trivy:0.57.0 image \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --ignorefile /scanconfig/.trivyignore \
+            --format sarif \
+            --output trivy-report.sarif \
+            "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}"
+      - name: Upload Trivy image SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-report.sarif
+          category: trivy-image
+
+  # ── Dynamic security scan (ZAP baseline + security headers + WS BOLA) ─────────
+  # Runs against the running app started from the jar artifact (before the image
+  # is pushed to the registry — a finding here blocks publish-image and deploy).
+  # CodeQL static analysis is enforced via codeql.yml + GitHub branch-protection
+  # required status checks ("CodeQL / Analyze (java-kotlin)" and
+  # "CodeQL / Analyze (javascript-typescript)") — configure those under
+  # Settings → Branches → main → Require status checks to pass.
+  zap-and-headers:
+    runs-on: ubuntu-latest
+    needs: e2e
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download glacier jar
+        uses: actions/download-artifact@v4
+        with:
+          name: glacier
+          path: infrastructure/glacier
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start security stack
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            up --build -d glacier proxy
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
+              echo "glacier ready"; break
+            fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/ > /dev/null
+      - name: ZAP baseline scan
+        working-directory: infrastructure
+        run: |
+          docker run --rm \
+            --network=infrastructure_mastodon \
+            -v "$(pwd)/security:/zap/wrk" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -cmd -autorun /zap/wrk/zap/baseline.yaml \
+            || true
+      - name: Diff ZAP baseline against committed allowlist
+        working-directory: infrastructure
+        run: |
+          python3 security/scripts/diff-zap-baseline.py \
+            security/zap-baseline.json \
+            security/baselines/zap-baseline.json \
+            --threshold Medium
+      - name: Header audit
+        working-directory: infrastructure
+        env:
+          BASE_URL: "http://localhost:8080"
+          SHARE_BASE_URL: "http://localhost:8080"
+          EXPECT_SECURE_COOKIE: "false"
+        run: bash security/scripts/header-audit.sh
+      - name: WebSocket BOLA probe
+        working-directory: infrastructure
+        env:
+          BASE_URL: "http://localhost:8080"
+        run: |
+          pip install --quiet websocket-client==1.8.0
+          python3 security/scripts/ws-bola-probe.py
+      - name: Upload security artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-main
+          path: |
+            infrastructure/security/zap-baseline.html
+            infrastructure/security/zap-baseline.json
+      - name: Compose logs on failure
+        if: failure()
+        working-directory: infrastructure
+        run: |
+          docker ps -a
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            logs --tail=200
+      - name: Tear down
+        if: always()
+        working-directory: infrastructure
+        run: |
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            down -v --remove-orphans
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # publish-image only runs when ALL quality gates pass:
+  #   Functional:    e2e (live mode) + e2e-killswitch + e2e-a11y + e2e-insecure
+  #   Security:      trivy-fs (jar CVEs) + trivy-image (OS-layer CVEs) +
+  #                  zap-and-headers (ZAP baseline + security headers + WS BOLA)
+  # Static analysis: CodeQL runs in codeql.yml — enforce via branch-protection
+  #                  required status checks on the main branch.
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-image:
+    runs-on: ubuntu-latest
+    needs: [e2e, e2e-killswitch, e2e-a11y, e2e-insecure, trivy-fs, trivy-image, zap-and-headers]
     steps:
       - name: Download image artifact
         uses: actions/download-artifact@v4

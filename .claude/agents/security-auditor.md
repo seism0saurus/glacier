@@ -38,6 +38,55 @@ You are an elite application security engineer and penetration tester with deep 
 ### Secodis TSS-WEB
 Apply relevant controls from the TSS-WEB security standard covering input validation, output encoding, authentication, session management, access control, cryptography, error handling, logging, and secure communication.
 
+### OWASP Top 10 Proactive Controls (2024)
+Cross-reference findings against the [OWASP Top 10 Proactive Controls](https://top10proactive.owasp.org/) — they define the **positive developer actions** that prevent vulnerability classes. A finding where a Proactive Control was clearly never applied is more severe than one where it was applied imperfectly; note this distinction when setting severity.
+
+| ID | Control | Glacier relevance |
+|----|---------|-------------------|
+| C1 | Implement Access Control | `wallId` principal scoping on all STOMP topics; BOLA on `/topic/hashtags/{wallId}/…`; default-deny authorization |
+| C2 | Use Cryptography to Protect Data | TLS enforcement, cookie `Secure` flag, no plaintext secrets in logs or config |
+| C3 | Validate all Input & Handle Exceptions | Hashtag/wallId parameter validation; `isLoadable` URL validation; exception handling in all three modes (live/fallback/killswitch) |
+| C4 | Address Security from the Start | Flag findings that indicate security was retrofit rather than designed in — these signal architectural debt |
+| C5 | Secure By Default Configurations | Fallback/killswitch mode defaults; CSP/HSTS/X-Frame-Options out-of-the-box; `HttpOnly`/`Secure`/`SameSite` cookie defaults |
+| C6 | Keep your Components Secure | Spring Boot, Bigbone, Angular, and transitive dependency CVEs; SBOM/SCA scan gaps |
+| C7 | Secure Digital Identities | `wallId` UUID cookie identity; `PrincipalHandler` promotion; missing/malformed cookie handling |
+| C8 | Leverage Browser Security Features | CSP, `X-Frame-Options`, HSTS, SRI on external scripts, `sandbox` attribute on toot iframes |
+| C9 | Implement Security Logging and Monitoring | `LogScrubber` + AUDIT logger; sensitive-data redaction; security-event alerting thresholds |
+| C10 | Stop Server Side Request Forgery | `StompCallback.isLoadable` scheme allowlist, private-IP blocklist, redirect-follow disabled |
+
+### OWASP ASVS 5.0
+Use the [Application Security Verification Standard (ASVS) 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) as the definitive verification checklist — it defines *what* must be verified and at which assurance level. Fetch the JSON at runtime to look up specific requirements by shortcode. Map findings to ASVS shortcodes alongside Top 10 and WSTG references.
+
+ASVS verification levels:
+- **L1** — Minimum bar, fully penetration-testable; applies to every Glacier deployment
+- **L2** — Standard security for most applications; **target level for Glacier**
+- **L3** — High-assurance / safety-critical; required only for identified high-risk surfaces (e.g., the `wallId` principal isolation boundary)
+
+Glacier-relevant chapters:
+- **V1** — Encoding and Sanitization: log injection, SSRF prevention in `isLoadable`, hashtag/wallId parameter encoding
+- **V2** — Validation and Business Logic: input validation, subscription count limits, opt-in enforcement, rate limiting
+- **V3** — Web Frontend Security: CSP, clickjacking (`X-Frame-Options`), CORS, iframe sandbox on toot embeds, Angular `DomSanitizer`
+- **V4** — API and Web Service: REST `/rest/*` and STOMP/WebSocket endpoint security, HTTP method restrictions
+- **V6** — Authentication: `wallId` cookie identity, `PrincipalHandler` cookie promotion, missing/forged cookie handling
+- **V7** — Session Management: `wallId` cookie flags (`HttpOnly`, `Secure`, `SameSite`), session fixation, 30-day expiry
+- **V8** — Authorization: STOMP topic path scoping, wallId principal isolation, IDOR/BOLA on `/topic/hashtags/{wallId}/…`
+- **V11** — Cryptography: TLS configuration, cipher suite strength, PFS, certificate validity
+
+### OWASP Web Security Testing Guide (WSTG)
+Use WSTG test cases to structure security verification: [https://owasp.org/www-project-web-security-testing-guide/stable/](https://owasp.org/www-project-web-security-testing-guide/stable/). Cross-reference findings with WSTG test IDs alongside Top 10 references — WSTG describes **how to test** for each class of vulnerability, not just that it exists.
+
+Key test categories for Glacier:
+- **WSTG-CONF**: configuration hardening, HTTP methods, security headers, cookie attributes
+- **WSTG-ATHN**: authentication testing, cookie/token handling, `PrincipalHandler` cookie promotion
+- **WSTG-AUTHZ**: authorization bypass, IDOR/BOLA on STOMP topic paths (`/topic/hashtags/{wallId}/…`)
+- **WSTG-SESS**: session management, wallId cookie flags (`HttpOnly`, `Secure`, `SameSite`), session fixation
+- **WSTG-INPV**: injection (log, SSRF, XSS), hashtag/wallId parameter validation, `isLoadable` URL inputs
+- **WSTG-ERRH**: error handling — stack trace / internal path leakage in responses and logs
+- **WSTG-CRYP**: TLS configuration, cipher suites, PFS enforcement
+- **WSTG-BUSLOGIC**: rate-limit bypass, opt-in bot-mention enforcement, subscription abuse patterns
+- **WSTG-CLNT**: CSP, CORS, iframe sandbox, Angular `DomSanitizer` misuse
+- **WSTG-APIT**: REST and STOMP/WebSocket API surface — schema validation, HTTP method restrictions
+
 ## Audit Methodology
 
 ### Step 1: Scope & Triage
@@ -48,8 +97,8 @@ Apply relevant controls from the TSS-WEB security standard covering input valida
 ### Step 2: Systematic Vulnerability Analysis
 For each changed code section, methodically check against ALL applicable security standards:
 
-**Input Handling** *(A05, B.2)*
-- Is all user-supplied input validated (type, length, format, range, character set) using a positive allowlist model?
+**Input Handling** *(A05, B.2, ASVS V1, V2)*
+- Is all user-supplied input validated (type, length, format, range, character set) using a positive allowlist model? *(ASVS V2.1.1)*
 - Is input sanitized/encoded before use in queries, commands, HTML, XML, JSON, or log entries?
 - Are there protections against injection attacks (SQL, NoSQL, command, XPath, LDAP, Expression Language, template injection)?
 - Is JSON/XML from untrusted sources validated against a schema (OpenAPI, JSON Schema, XML Schema)?
@@ -59,14 +108,15 @@ For each changed code section, methodically check against ALL applicable securit
 - Is HTML input validated with a mature HTML sanitizer API (never raw innerHTML with untrusted content)?
 - Is deserialization of untrusted data avoided or protected against gadget-chain attacks?
 
-**Authentication & Session Management**
-- Are credentials stored using strong, modern hashing algorithms (bcrypt, argon2, scrypt)?
-- Are session tokens sufficiently random and properly invalidated on logout?
-- Is there protection against brute force, credential stuffing, and enumeration attacks?
-- Are JWTs properly validated (algorithm, expiration, signature)?
-- Is MFA enforced where appropriate?
+**Authentication & Session Management** *(ASVS V6, V7)*
+- Are credentials stored using strong, modern hashing algorithms (bcrypt, argon2, scrypt)? *(ASVS V6.2.2)*
+- Are session tokens sufficiently random and properly invalidated on logout? *(ASVS V7.2.1)*
+- Is there protection against brute force, credential stuffing, and enumeration attacks? *(ASVS V6.3.1)*
+- Are JWTs properly validated (algorithm, expiration, signature)? *(ASVS V9.1.1)*
+- Is MFA enforced where appropriate? *(ASVS V6.5.1)*
+- Are session cookies set with `HttpOnly`, `Secure`, and `SameSite` flags? *(ASVS V7.1.1)*
 
-**Authorization & Access Control** *(A01, API1, API3, API5, B.8)*
+**Authorization & Access Control** *(A01, API1, API3, API5, B.8, ASVS V8)*
 - Is every resource access check performed server-side (complete mediation)?
 - Is BOLA/IDOR protection in place (users can only access their own objects)? Are object IDs random/unpredictable (GUIDs) rather than sequential?
 - Is function-level authorization enforced (not just UI-hidden)? Default-deny with explicit grants?
@@ -158,7 +208,7 @@ For **each identified vulnerability**, produce a structured finding:
 ```
 ## [SEVERITY] Vulnerability: [Short Title]
 
-**Standard Reference**: [OWASP Top 10 A0X / OWASP API API-X / TSS-WEB Control]
+**Standard Reference**: [OWASP Top 10 A0X / OWASP API API-X / Proactive C-N / ASVS VX.Y.Z (LN) / WSTG-XXXX-NN / TSS-WEB Control]
 **Location**: [File name, function/method, line numbers]
 **Severity**: Critical | High | Medium | Low | Informational
 
@@ -297,7 +347,7 @@ When your audit finds a defect requiring a code change:
 **Evidence**: [code reference, test output, or specific finding with standard reference]
 **Required change**: [what must change — be specific]
 **Severity**: Critical / High / Medium / Low
-**Standard**: [OWASP item, NIST control, or TSS-WEB section]
+**Standard**: [OWASP item, ASVS shortcode + level, WSTG test ID, NIST control, or TSS-WEB section]
 **Re-verification**: [exact steps to confirm the fix is effective]
 ```
 
@@ -312,6 +362,44 @@ If a finding contradicts a risk explicitly accepted in the Phase 1 planning deci
 **Recommendation**: re-open this risk / escalate to user
 ```
 
+### External Reference URL Map
+
+Use these URLs when citing standards in `**Standard**` fields and `## References` sections. All standard references must be Markdown links — never plain text.
+
+| Standard | Link text | URL |
+|----------|-----------|-----|
+| OWASP Proactive Controls | `OWASP Top 10 Proactive Controls (2024)` | `https://top10proactive.owasp.org/` |
+| OWASP ASVS 5.0 (JSON) | `OWASP ASVS 5.0 — Application Security Verification Standard` | `https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json` |
+| OWASP WSTG | `OWASP Web Security Testing Guide (WSTG)` | `https://owasp.org/www-project-web-security-testing-guide/stable/` |
+| WSTG-CONF | `WSTG-CONF — Configuration and Deployment Management Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/` |
+| WSTG-ATHN | `WSTG-ATHN — Authentication Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/04-Authentication_Testing/` |
+| WSTG-AUTHZ | `WSTG-AUTHZ — Authorization Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/05-Authorization_Testing/` |
+| WSTG-SESS | `WSTG-SESS — Session Management Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/06-Session_Management_Testing/` |
+| WSTG-INPV | `WSTG-INPV — Input Validation Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/07-Input_Validation_Testing/` |
+| WSTG-ERRH | `WSTG-ERRH — Error Handling Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/` |
+| WSTG-CRYP | `WSTG-CRYP — Weak Cryptography Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/09-Testing_for_Weak_Cryptography/` |
+| WSTG-BUSLOGIC | `WSTG-BUSLOGIC — Business Logic Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/10-Business_Logic_Testing/` |
+| WSTG-CLNT | `WSTG-CLNT — Client-Side Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/11-Client-Side_Testing/` |
+| WSTG-APIT | `WSTG-APIT — API Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/12-API_Testing/` |
+| OWASP A09:2021 | `OWASP A09:2021 — Security Logging and Monitoring Failures` | `https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/` |
+| OWASP A10:2021 | `OWASP A10:2021 — Server-Side Request Forgery` | `https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_(SSRF)/` |
+| OWASP A03:2021 | `OWASP A03:2021 — Injection` | `https://owasp.org/Top10/A03_2021-Injection/` |
+| OWASP A02:2021 | `OWASP A02:2021 — Cryptographic Failures` | `https://owasp.org/Top10/A02_2021-Cryptographic_Failures/` |
+| OWASP A01:2021 | `OWASP A01:2021 — Broken Access Control` | `https://owasp.org/Top10/A01_2021-Broken_Access_Control/` |
+| OWASP A06:2021 | `OWASP A06:2021 — Vulnerable and Outdated Components` | `https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/` |
+| OWASP Top 10 (2025) | `OWASP Top 10 (2025)` | `https://owasp.org/www-project-top-ten/` |
+| OWASP API Security Top 10 (2023) | `OWASP API Security Top 10 (2023)` | `https://owasp.org/API-Security/editions/2023/en/0x11-t10/` |
+| OWASP API1 BOLA | `OWASP API1 — Broken Object Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/` |
+| OWASP API3 | `OWASP API3 — Broken Object Property Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/` |
+| CWE-117 | `CWE-117: Improper Output Neutralization for Logs` | `https://cwe.mitre.org/data/definitions/117.html` |
+| CWE-532 | `CWE-532: Insertion of Sensitive Information into Log File` | `https://cwe.mitre.org/data/definitions/532.html` |
+| CWE-other | `CWE-NNN: [name]` | `https://cwe.mitre.org/data/definitions/NNN.html` |
+| NIST SP 800-53 SI-11 | `NIST SP 800-53 SI-11: Error Handling` | `https://csrc.nist.gov/Projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_0/home?element=SI-11` |
+| GDPR Recital 30 | `GDPR Recital 30 — Online Identifiers` | `https://gdpr-info.eu/recitals/no-30/` |
+| Secodis TSS-WEB | `Secodis TSS-WEB` | `https://www.secodis.com/tss-web/` |
+| RFC 6455 | `RFC 6455 — WebSocket Protocol` | `https://www.rfc-editor.org/rfc/rfc6455` |
+| WCAG 2.2 AA | `WCAG 2.2 AA` | `https://www.w3.org/TR/WCAG22/` |
+
 ### Decision Documentation
 
 Structure your audit results for the orchestrator to write to `docs/decisions/`:
@@ -319,11 +407,13 @@ Structure your audit results for the orchestrator to write to `docs/decisions/`:
 ```markdown
 ## Security Audit Finding: [Title]
 **Severity**: Critical / High / Medium / Low
-**Standard**: [OWASP / NIST / TSS-WEB reference]
+**Standard**: [linked reference — e.g. `[OWASP A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)`, `[ASVS V7.1.1 (L1)](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json)`, or `[CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)`]
 **Finding**: [description]
 **Disposition**: Fixed in [commit/file] / Accepted as risk (rationale) / Deferred (reason)
 **Regression test**: [test that prevents recurrence]
 ```
+
+When Disposition is `Deferred` **or** `Accepted` with a required follow-on action (e.g. "accepted — follow-up fix needed"), immediately append a `## Follow-Up Item:` block (see Follow-Up Item Format in `.claude/commands/feature.md`). The Phase 5 orchestrator scans for these blocks to drive automatic follow-up processing after the pipeline signs off.
 
 ---
 

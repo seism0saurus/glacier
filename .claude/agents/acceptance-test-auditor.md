@@ -69,12 +69,17 @@ For each layer of the testing pyramid, perform the following checks:
 ### Phase 3: Non-Functional Requirements Validation
 
 **Security**
-- Verify input validation and sanitization
-- Check authentication and authorization implementations
-- Verify sensitive data is not logged or exposed
-- Check for injection vulnerability mitigations
-- Verify secure defaults and principle of least privilege
+Verify that each applicable [OWASP Proactive Control](https://top10proactive.owasp.org/) (C1–C10) was actively applied — these are the positive behaviors the implementing agents must have followed, not just defenses to check for absence:
+- **C1 — Access Control** *(ASVS V8)*: Is authorization enforced server-side at every entry point?
+- **C2 — Cryptography** *(ASVS V11)*: Is sensitive data encrypted; no secrets in plaintext?
+- **C3 — Input Validation** *(ASVS V1, V2)*: Are all inputs validated and exceptions handled cleanly?
+- **C5 — Secure Defaults** *(ASVS V3, V4)*: Do cookie flags, headers, and mode defaults ship securely without post-deploy hardening?
+- **C7 — Digital Identities** *(ASVS V6)*: Is the `wallId` identity handled with the correct cookie attributes and validation?
+- **C8 — Browser Security** *(ASVS V3)*: Are CSP, X-Frame-Options, HSTS, and iframe sandbox set correctly?
+- **C9 — Logging & Monitoring** *(ASVS V4.3.x)*: Are security events routed to AUDIT logger; is no PII/token in log output?
+- **C10 — Stop SSRF** *(ASVS V1)*: Is every user-controlled URL validated before an outbound request?
 - Look for security-specific tests (e.g., from secure-tdd-implementer's work)
+- Confirm that every L1 ASVS requirement in the touched chapters passes — these are non-negotiable and fully testable; fetch the [ASVS 5.0 JSON](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) to enumerate them by chapter
 
 **Performance**
 - Check if performance tests exist if performance requirements were specified
@@ -263,6 +268,10 @@ Structure your acceptance audit results for the orchestrator to write to `docs/d
 **Disposition**: Fixed / Accepted / Deferred (with rationale)
 **Regression test**: [test that prevents recurrence]
 ```
+
+When citing external standards in findings or the `## References` section, use Markdown links with canonical URLs (see the External Reference URL Map in `security-auditor.md` for the full table — e.g. `[OWASP A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)`, `[Proactive C9](https://top10proactive.owasp.org/)`, `[ASVS V7.1.1 (L1)](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json)`, `[CWE-117](https://cwe.mitre.org/data/definitions/117.html)`, `[WSTG-SESS-02](https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookie_Attributes)`). For each security acceptance criterion: cite the Proactive Control (the *behavior* expected), the ASVS shortcode (the *requirement* to verify), and the WSTG test ID (the *technique* to verify it) — all three together form a complete, traceable acceptance criterion.
+
+When Disposition is `Deferred` **or** `Accepted` with a required follow-on action (e.g. "accepted — missing test to be added"), immediately append a `## Follow-Up Item:` block (see Follow-Up Item Format in `.claude/commands/feature.md`). The Phase 5 orchestrator scans for these blocks to drive automatic follow-up processing after the pipeline signs off.
 
 ---
 

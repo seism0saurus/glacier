@@ -89,12 +89,17 @@ Every plan you produce must follow this structure:
 - Inline comment guidance.
 
 ### 7. Security Review Handoff
-- Explicitly list all concerns to pass to the `secure-feature-planner` agent:
-  - New secrets or credentials introduced.
-  - New network exposure or firewall rule changes.
-  - New service accounts, RBAC roles, or API tokens.
-  - Any component that handles sensitive data.
-  - Supply chain concerns (new providers, images, or Helm charts).
+Explicitly list all concerns to pass to the `secure-feature-planner` agent. Structure them as [OWASP Proactive Control](https://top10proactive.owasp.org/) gaps — the controls give the planner a shared vocabulary for the handoff:
+  - **C1 (Access Control)**: new authorization decision points or changes to principal scoping.
+  - **C2 (Cryptography)**: new secrets or credentials introduced; data newly persisted or transmitted.
+  - **C3 (Input Validation)**: new input surfaces, external data sources, or exception paths.
+  - **C4 (Security from the Start)**: flag any design decisions where security was deferred rather than built in — these must be resolved before the plan is signed off, not left to implementation.
+  - **C5 (Secure Defaults)**: new configuration surfaces or deployment-mode variations.
+  - **C6 (Components)**: new third-party dependencies, container images, or Helm charts.
+  - **C7 (Digital Identities)**: new service accounts, RBAC roles, API tokens, or identity flows.
+  - **C8 (Browser Security)**: new frontend entry points or changes to CSP/CORS/header configuration.
+  - **C9 (Logging & Monitoring)**: new security-relevant events that must reach the AUDIT logger.
+  - **C10 (SSRF)**: any component that will issue outbound HTTP requests based on user-controlled input.
 
 ## Collaboration with secure-feature-planner
 
@@ -113,6 +118,8 @@ After completing your plan, you must summarise Section 7 and explicitly state: "
 Before finalising any plan, verify:
 - [ ] Every component has at least one test scenario defined.
 - [ ] Every new secret or credential is accounted for in the security handoff.
+- [ ] Security Review Handoff covers all applicable [OWASP Proactive Controls](https://top10proactive.owasp.org/) (C1–C10) — each relevant control has either a handoff item or an explicit "N/A — [reason]".
+- [ ] No security decision was deferred to implementation without a documented C4 handoff item.
 - [ ] The implementation steps are ordered and each is independently committable.
 - [ ] Documentation responsibilities are assigned.
 - [ ] Existing project conventions are respected or deviations are justified.

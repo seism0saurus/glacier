@@ -82,6 +82,8 @@ Then create a TaskList for the pipeline (use `TaskCreate`):
 - *(conditional, per finding)* Phase 4 auditor-led fix loop (security-auditor triage → plan deltas → coded fix → pentest re-verify → security-auditor re-sign-off)
 - *(conditional)* Phase 4 approval gate
 - *(conditional)* Phase 4 decision doc and sign-off
+- Phase 5 — collect follow-up queue from all decision docs *(add one task per queued item after collection)*
+- Phase 5 — pipeline finalized
 
 Mark each complete as you finish it. Present the assessment to the user using the **Step 0 Approval Gate Format** and **stop**. Do not call any specialist agent until the user approves.
 
@@ -389,6 +391,113 @@ Write `docs/decisions/YYYY-MM-DD-release-readiness-[feature-slug].md` with the v
 - [ ] Every new/changed screenshot lives under `assets/` with non-empty alt text AND caption
 - [ ] **User has explicitly approved at the Phase 4 Approval Gate**
 - [ ] Decision document written (includes approval record)
+
+---
+
+## Phase 5 — Follow-Up Processing (always runs after final sign-off)
+
+Phase 5 runs immediately after the final phase approval (Phase 3 when Phase 4 is skipped, or Phase 4 when it ran). It collects every deferred item recorded during the pipeline and works through them one by one before the pipeline is closed.
+
+### Step 1 — Collect Queue
+
+Scan all decision documents produced in this pipeline — `docs/decisions/YYYY-MM-DD-{planning,implementation,acceptance,release-readiness}-[slug].md` — for `## Follow-Up Item:` blocks using the `Read` tool on each. Build an ordered queue: High priority first, then Medium, then Low; ties broken by document order.
+
+Use `TaskCreate` to add one task per queued item (name: `Phase 5 — [FU-ID]: [short description]`).
+
+If no `## Follow-Up Item:` blocks are found, skip Phase 5, mark "Phase 5 — collect follow-up queue" complete, and close the pipeline with the finalization summary.
+
+### Step 2 — Queue Approval Gate (stop and present)
+
+```
+## Phase 5 — Follow-Up Queue: [Feature Name]
+
+[N] deferred items to process:
+
+| # | ID | Type | Priority | Description | Agent |
+|---|----|------|----------|-------------|-------|
+| 1 | [id] | [type] | High | [desc] | [agent] |
+…
+
+**Approve to work through each item with an individual gate, or defer all to a later pipeline.**
+```
+
+Do not begin any item until the user gives explicit approval.
+
+### Step 3 — Item-by-Item Processing
+
+For each queued item, in order:
+
+**3a. Item Gate** — present and stop:
+
+```
+## Follow-Up Item [#/N]: [ID] — [Short Title]
+**Type**: [type]  **Priority**: [priority]
+**Description**: [full description from the block]
+**Source**: [which decision doc and which finding]
+**Agent**: [agent name]
+**Acceptance**: [how to verify — from the Follow-Up Item block]
+
+Approve this item, skip it, or stop all remaining items.
+```
+
+**3b. Lightweight implementation** — on approval, call the appropriate agent:
+
+| Type | Agent | What to pass | Verification |
+|------|-------|--------------|--------------|
+| `security-fix` | `secure-tdd-implementer` | Follow-Up Item + source decision doc + requirements doc — all verbatim | One-round `security-auditor` sign-off, then `./mvnw verify` |
+| `test` | `tdd-ddd-implementer` (functional) or `secure-tdd-implementer` (security canary) | Follow-Up Item + affected test class + acceptance criterion | `./mvnw verify` green; test count up |
+| `refactor` | `tdd-ddd-implementer` | Follow-Up Item + affected class(es) + requirements doc | `./mvnw verify` green; no regression |
+| `maintenance` | Most appropriate agent per description | Follow-Up Item + affected files | `./mvnw verify` green |
+| `upgrade` | `tdd-ddd-implementer` then `secure-tdd-implementer` | Follow-Up Item + dependency context | `./mvnw verify` green + `security-auditor` spot-check |
+| `full-pipeline` | *(exit Phase 5 for this item)* | — | Record as deferred; start a new `/feature` run with the item description as the feature request |
+
+Agent prompt must include:
+- The Follow-Up Item block verbatim
+- The source decision document verbatim
+- `docs/requirements/[slug].md` verbatim
+- `## Your task` — one sentence stating exactly what to implement, with tests first (per CLAUDE.md testing policy)
+- `## Relevant skills` — 2–5 applicable `.claude/skills/` playbooks
+
+**3c. Verification** — run `./mvnw verify` after the agent reports completion. For items touching a UI path also run the relevant Playwright spec. If the build fails, send the failure back to the same agent as a `## FIX REQUEST` and retry once. If it still fails, mark the item `⚠️ Partially resolved` and continue with the next item.
+
+**3d. Completion record** — `Edit` the source decision doc to append directly after the `## Follow-Up Item: [ID]` block:
+
+```markdown
+### Follow-Up Resolution: [ID]
+**Completed**: YYYY-MM-DD
+**Agent**: [agent name]
+**Change**: [one sentence — what was implemented or tested]
+**Verification**: `[command or test name]` — green
+**Status**: ✅ Resolved
+```
+
+For skipped or failed items:
+
+```markdown
+### Follow-Up Resolution: [ID]
+**Date**: YYYY-MM-DD
+**Status**: ⏭️ Skipped by user | ⚠️ Partially resolved — [reason] | ❌ Failed — deferred to next pipeline
+```
+
+Mark the corresponding task complete after the record is written.
+
+### Step 4 — Finalization Summary
+
+After all items are processed (resolved, skipped, stopped), present:
+
+```
+## Pipeline Finalized — [Feature Name]
+
+### Follow-Up Summary
+| # | ID | Description | Status |
+|---|----|-----------|----|
+| 1 | [id] | [one-line desc] | ✅ Resolved / ⏭️ Skipped / ⚠️ Partial / ❌ Deferred |
+…
+
+Pipeline for [feature-name] is fully closed.
+```
+
+Mark "Phase 5 — pipeline finalized" complete.
 
 ---
 
@@ -754,6 +863,24 @@ Use this template when `ddd-tdd-architect` produces the Implementation Plan in P
 
 ---
 
+### Follow-Up Item Format
+
+Every finding, risk, or condition that is **Accepted with a required follow-on action** or **Deferred** must produce exactly one `## Follow-Up Item:` block in the decision document where it appears. The Phase 5 orchestrator scans for these blocks to build the follow-up queue.
+
+```markdown
+## Follow-Up Item: [FU-ID]
+**Type**: security-fix | test | refactor | maintenance | upgrade | full-pipeline
+**Priority**: High | Medium | Low
+**Description**: [one actionable sentence — what to implement, add, or fix]
+**Source**: [which finding or risk spawned this — e.g. "TD-1: pre-existing JsonProcessingException in StompCallback.sendMessage; accepted as out of F-6 scope"]
+**Agent**: secure-tdd-implementer | tdd-ddd-implementer | devops-infra-engineer | tdd-ddd-implementer+secure-tdd-implementer
+**Acceptance**: [how to verify completion — e.g. "new canary test in RawWallIdLogHygieneTest passes; ./mvnw verify green"]
+```
+
+`FU-ID` convention: `[feature-slug]-FU-[sequential number]`, e.g. `f6-FU-1`, `hashtag-prune-FU-2`.
+
+---
+
 ## Self-Check Before Finishing Each Turn
 
 - [ ] Did I write `docs/feature/[slug].md` (Feature Description) before calling any Round 1 agent?
@@ -767,5 +894,9 @@ Use this template when `ddd-tdd-architect` produces the Implementation Plan in P
 - [ ] Are conflicts surfaced with both positions quoted?
 - [ ] If I'm at a phase boundary: did I present a Phase Approval Gate and stop before writing the decision doc or calling next-phase agents?
 - [ ] Did I avoid making any decision the user should have made?
+- [ ] Phase 5: did I scan all decision docs for `## Follow-Up Item:` blocks after final sign-off?
+- [ ] Phase 5: did I present the queue and get explicit approval before processing any item?
+- [ ] Phase 5: did I present an item gate and stop before calling the implementation agent for each item?
+- [ ] Phase 5: did I append a `### Follow-Up Resolution:` block to the source decision doc after each completed item?
 
 Begin with **Step 0**.
