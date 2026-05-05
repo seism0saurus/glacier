@@ -25,6 +25,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -606,7 +607,7 @@ public class StompCallback implements WebSocketCallback {
         try {
             URI uri = URI.create(rawUrl);
             String scheme = uri.getScheme();
-            return scheme != null ? scheme.toLowerCase() : "unknown";
+            return scheme != null ? scheme.toLowerCase(Locale.ROOT) : "unknown";
         } catch (IllegalArgumentException e) {
             return "unknown";
         }
