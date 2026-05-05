@@ -1,13 +1,21 @@
 package de.seism0saurus.glacier.security;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import de.seism0saurus.glacier.share.application.ShareLinkService;
+import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
+import de.seism0saurus.glacier.share.web.CsrfTokenCookieFactory;
+import de.seism0saurus.glacier.share.web.ShareRateLimiter;
+import de.seism0saurus.glacier.share.web.ShareViewController;
+import de.seism0saurus.glacier.share.web.ShareViewerCookieFactory;
 import de.seism0saurus.glacier.webservice.InformationController;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 
@@ -303,5 +311,198 @@ class OwaspMatrixCookieAttributesLockstepTest {
                 .filter(h -> h.startsWith("wallId="))
                 .findFirst()
                 .orElse(null);
+    }
+
+    // -------------------------------------------------------------------------
+    // CSRF cookie lockstep (EP-09 rows — __Host-shareCsrf / shareCsrf)
+    // -------------------------------------------------------------------------
+
+    /**
+     * UT-sec-LOCK-02: OWASP Coverage Matrix CSRF cookie lockstep tests.
+     *
+     * <p><b>Purpose</b>: Prevent documentation drift between the EP-09 rows in
+     * {@code infrastructure/security/OWASP_COVERAGE_MATRIX.md} (which claim
+     * {@code SameSite=Strict} and {@code NOT HttpOnly}) and the actual
+     * {@code Set-Cookie} headers emitted by {@code GET /rest/share-csrf}.
+     *
+     * <p>The CSRF cookie ({@code __Host-shareCsrf} in secure mode) uses the double-submit
+     * pattern: it must be readable by JS ({@code HttpOnly=false}) and must not be sent
+     * cross-site ({@code SameSite=Strict}).
+     *
+     * <p>{@link CsrfTokenCookieFactory} is imported as a real bean (not mocked) so the actual
+     * {@code Set-Cookie} header — including the manually-added {@code SameSite=Strict} header —
+     * is produced by the production code under test.
+     *
+     * <p>Security reference: C5 — Secure By Default; ASVS V7.1.1 (L1); WSTG-SESS-02;
+     * SR-SHARE-05, SR-SHARE-07, SR-SHARE-12.
+     */
+    @Nested
+    @WebMvcTest(controllers = {ShareViewController.class})
+    @Import(CsrfTokenCookieFactory.class)
+    @TestPropertySource(properties = {
+            "glacier.cookie.secure=true",
+            "glacier.domain=example.com",
+            "glacier.fallback.enabled=true"
+    })
+    class CsrfCookieLockstep {
+
+        @Autowired
+        private MockMvc mockMvc;
+
+        // ShareViewController dependencies — mocked so the web slice starts without
+        // a full application context. CsrfTokenCookieFactory is @Imported as a real bean.
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private ShareLinkService shareLinkService;
+
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private ShareViewerCookieFactory shareViewerCookieFactory;
+
+        @MockitoBean
+        private ShareRateLimiter shareRateLimiter;
+
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private ShareViewStompRelay shareViewStompRelay;
+
+        /**
+         * UT-sec-LOCK-02a: the matrix EP-09 rows claim a specific SameSite value for the
+         * {@code __Host-shareCsrf} cookie. Verify the actual {@code Set-Cookie} header
+         * emitted by {@code GET /rest/share-csrf} matches.
+         *
+         * <p>Parses matrix rows containing {@code EP-09} or {@code share-csrf} for the first
+         * {@code SameSite=(Lax|Strict|None)} token and asserts the real header carries it.
+         *
+         * <p>{@link CsrfTokenCookieFactory#issueCsrfToken} writes the cookie twice: once via
+         * {@code response.addCookie()} (without SameSite) and once via
+         * {@code response.addHeader("Set-Cookie", ...)} with the SameSite token.
+         * This test filters for the header that carries {@code SameSite=}.
+         */
+        @Test
+        void csrfCookie_actualSameSite_matchesMatrixClaim() throws Exception {
+            when(shareRateLimiter.checkCsrfIssuance(any()))
+                    .thenReturn(ShareRateLimiter.RateLimitResult.allowed());
+
+            MvcResult result = mockMvc.perform(get("/rest/share-csrf"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            // CsrfTokenCookieFactory emits TWO Set-Cookie values; pick the one with SameSite=
+            String setCookieWithSameSite = extractCsrfSetCookieWithSameSite(result);
+            assertThat(setCookieWithSameSite)
+                    .as("GET /rest/share-csrf must emit a Set-Cookie header for the CSRF cookie "
+                            + "that contains a SameSite= attribute (CsrfTokenCookieFactory adds it "
+                            + "via response.addHeader)")
+                    .isNotNull();
+
+            // Parse matrix claim — fails explicitly if EP-09 / share-csrf row lacks SameSite token
+            String matrixSameSite = parseMatrixCsrfSameSite();
+
+            assertThat(setCookieWithSameSite)
+                    .as("UT-sec-LOCK-02a (C5, ASVS V7.1.1, WSTG-SESS-02, SR-SHARE-07): "
+                            + "actual Set-Cookie SameSite token for __Host-shareCsrf must match "
+                            + "the claim in OWASP_COVERAGE_MATRIX.md EP-09 rows. "
+                            + "Matrix claims: [%s]. "
+                            + "If this fails RED, update the matrix to match the code (ADR-3). "
+                            + "Actual Set-Cookie: [%s]",
+                            matrixSameSite, setCookieWithSameSite)
+                    .containsIgnoringCase(matrixSameSite);
+        }
+
+        /**
+         * UT-sec-LOCK-02b: the {@code __Host-shareCsrf} cookie must NOT carry the
+         * {@code HttpOnly} flag.
+         *
+         * <p>The double-submit CSRF pattern requires JS to read the token from the cookie
+         * and echo it in a request header. Setting {@code HttpOnly=true} would break the
+         * frontend and is explicitly documented as {@code NOT HttpOnly} in the matrix EP-09 rows.
+         *
+         * <p>This test catches a future regression where {@code HttpOnly} is accidentally added
+         * to the CSRF cookie (e.g., by a library update or misconfiguration).
+         */
+        @Test
+        void csrfCookie_notHttpOnly_perDoubleSubmitPattern() throws Exception {
+            when(shareRateLimiter.checkCsrfIssuance(any()))
+                    .thenReturn(ShareRateLimiter.RateLimitResult.allowed());
+
+            MvcResult result = mockMvc.perform(get("/rest/share-csrf"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            List<String> allSetCookieHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE);
+            assertThat(allSetCookieHeaders)
+                    .as("GET /rest/share-csrf must emit at least one Set-Cookie header")
+                    .isNotEmpty();
+
+            // None of the Set-Cookie headers for the CSRF cookie must have HttpOnly.
+            // CsrfTokenCookieFactory sets cookie.setHttpOnly(false) explicitly.
+            // Filter to headers that contain the CSRF cookie name fragment to avoid
+            // false-negatives from unrelated cookies.
+            boolean anyHttpOnly = allSetCookieHeaders.stream()
+                    .filter(h -> h.contains("shareCsrf") || h.contains("CSRF") || h.contains("csrf"))
+                    .anyMatch(h -> h.toLowerCase().contains("httponly"));
+
+            assertThat(anyHttpOnly)
+                    .as("UT-sec-LOCK-02b (SR-SHARE-05, SR-SHARE-07, OWASP CSRF Prevention Cheat Sheet): "
+                            + "CSRF cookie must NOT carry HttpOnly flag — JS must be able to read the token "
+                            + "for the double-submit CSRF pattern (CsrfTokenCookieFactory sets HttpOnly=false). "
+                            + "If this fails, a regression has introduced HttpOnly on the CSRF cookie, "
+                            + "which would break the share-view frontend. "
+                            + "Actual Set-Cookie headers: %s",
+                            allSetCookieHeaders)
+                    .isFalse();
+        }
+
+        // -----------------------------------------------------------------------
+        // Helpers
+        // -----------------------------------------------------------------------
+
+        /**
+         * Parses the OWASP coverage matrix for the SameSite claim on rows containing
+         * {@code EP-09} or {@code share-csrf}.
+         *
+         * @return the SameSite token, e.g. {@code "SameSite=Strict"}
+         * @throws AssertionError if no SameSite token is found on any EP-09 / share-csrf row
+         * @throws IOException    if the matrix file cannot be read
+         */
+        private String parseMatrixCsrfSameSite() throws IOException {
+            List<String> lines = Files.readAllLines(MATRIX_PATH);
+            Pattern sameSitePattern = Pattern.compile("(SameSite=(?:Lax|Strict|None))");
+
+            for (String line : lines) {
+                // Only examine table rows (lines starting with |) mentioning EP-09 or share-csrf
+                if (!line.startsWith("|")) continue;
+                if (!line.contains("EP-09") && !line.contains("share-csrf")) continue;
+
+                Matcher m = sameSitePattern.matcher(line);
+                if (m.find()) {
+                    return m.group(1);
+                }
+            }
+
+            throw new AssertionError(
+                    "UT-sec-LOCK-02a (ADR-3, SR-SHARE-07): OWASP_COVERAGE_MATRIX.md does not contain "
+                            + "a well-anchored SameSite= token on any table row (starting with '|') "
+                            + "that also mentions 'EP-09' or 'share-csrf'. "
+                            + "Add the explicit SameSite claim to the matrix EP-09 rows. "
+                            + "Accepted tokens: SameSite=Lax, SameSite=Strict, SameSite=None.");
+        }
+
+        /**
+         * Extracts the {@code Set-Cookie} header value that contains the {@code SameSite=} attribute
+         * for the CSRF cookie. {@link CsrfTokenCookieFactory} emits two headers — the one with
+         * SameSite is the manually-added header via {@code response.addHeader("Set-Cookie", ...)}.
+         *
+         * @return the Set-Cookie header string carrying SameSite, or {@code null} if absent
+         */
+        private static String extractCsrfSetCookieWithSameSite(MvcResult result) {
+            return result.getResponse()
+                    .getHeaders(HttpHeaders.SET_COOKIE)
+                    .stream()
+                    .filter(h -> h.toLowerCase().contains("samesite="))
+                    .findFirst()
+                    .orElse(null);
+        }
     }
 }

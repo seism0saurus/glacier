@@ -1059,6 +1059,59 @@ class RawWallIdLogHygieneTest {
     }
 
     // -------------------------------------------------------------------------
+    // Structural gate: all webservice getSessionId() calls must be wrapped (D-13/SR-8)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Structural gate (D-13/SR-8, glacier-structured-logging-logback convention):
+     * every call to {@code .getSessionId()} in the {@code webservice} package tree must be
+     * wrapped by {@code LogScrubber.hash8(} to prevent raw session identifiers from reaching
+     * the log encoder.
+     *
+     * <p>This test walks {@code src/main/java/de/seism0saurus/glacier/webservice/} at source-text
+     * level, excluding the {@code messages/} subpackage (pure DTOs, no logging), and asserts that
+     * no bare {@code getSessionId()} call exists without the wrapping guard.
+     *
+     * <p>Run status: FAIL before the SR-MED-02 fixes; PASS after both fix sites in
+     * {@code SubscriptionController.java} are updated.
+     *
+     * <p>References: D-13 / SR-8, ADR-MED-02-01/02, SR-MED-02-01/02.
+     */
+    @Test
+    void allWebserviceGetSessionIdCallsAreHashed() throws java.io.IOException {
+        java.nio.file.Path webservicePath =
+                java.nio.file.Paths.get("src/main/java/de/seism0saurus/glacier/webservice");
+
+        java.nio.file.Files.walk(webservicePath)
+                .filter(p -> p.toString().endsWith(".java"))
+                // Exclude messages/ subpackage — pure DTOs, no logging calls
+                .filter(p -> !p.toString().contains("/messages/"))
+                .forEach(file -> {
+                    String content;
+                    try {
+                        content = java.nio.file.Files.readString(file);
+                    } catch (java.io.IOException e) {
+                        throw new RuntimeException("Failed to read " + file, e);
+                    }
+                    int idx = 0;
+                    while ((idx = content.indexOf("getSessionId()", idx)) >= 0) {
+                        // Check that LogScrubber.hash8( wraps the call.
+                        // The typical pattern is:
+                        //   LogScrubber.hash8(headerAccessor.getSessionId())
+                        // "LogScrubber.hash8(headerAccessor." is 34 chars before getSessionId(),
+                        // so we use a 40-char look-behind to accommodate any prefix spacing.
+                        int start = Math.max(0, idx - 40);
+                        String context = content.substring(start, idx + 14);
+                        assertThat(context)
+                                .as("D-13/SR-8: getSessionId() in %s must be wrapped by LogScrubber.hash8(" +
+                                    " — bare session IDs must not reach log output (ADR-MED-02-01/02)", file)
+                                .contains("LogScrubber.hash8(");
+                        idx++;
+                    }
+                });
+    }
+
+    // -------------------------------------------------------------------------
     // Appender lifecycle helpers
     // -------------------------------------------------------------------------
 

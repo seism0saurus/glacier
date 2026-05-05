@@ -182,6 +182,11 @@ class StompCallbackEmbedSsrfIT {
         when(status.getId()).thenReturn("ssrf-audit");
         when(status.getUrl()).thenReturn(blockedUrl);
         when(status.getAccount()).thenReturn(account);
+        // Bot mention required: isOptedIn() runs before SSRF guard (ADR-PT-A04-01).
+        // Without this, the opt-in check drops the event and the SSRF AUDIT line is never emitted.
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(status.getMentions()).thenReturn(List.of(botMention));
 
         // MessageCache and ShareViewStompRelay are null — the SSRF guard fires before
         // any cache write, so these are never dereferenced.
@@ -236,6 +241,11 @@ class StompCallbackEmbedSsrfIT {
         when(status.getId()).thenReturn("allowed-1");
         when(status.getUrl()).thenReturn(allowedUrl);
         when(status.getAccount()).thenReturn(account);
+        // Bot mention required: isOptedIn() runs before SSRF guard (ADR-PT-A04-01).
+        // Without this, the opt-in check drops the event before the HEAD request is issued.
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(status.getMentions()).thenReturn(List.of(botMention));
 
         // Permissive SafeUrlValidator: simulates a URL that passes the SSRF check.
         // (DefaultSafeUrlValidator would block localhost/127.0.0.1)

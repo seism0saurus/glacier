@@ -177,10 +177,43 @@ public class ResponseBodySecretLeakIT {
                 "/rest/operator",
                 "/rest/messages",
                 "/rest/share-links",
-                "/rest/share-csrf"
+                "/rest/share-csrf",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+                "/rest/share/img-proxy"
         })
         void liveMode_noCanaryLeak_inGetEndpoints(String path) throws Exception {
             MvcResult result = performGet(mockMvc, path);
+            String body = result.getResponse().getContentAsString();
+            assertNoCanaryLeak(path, body);
+            assertNoStackTrace(path, body);
+        }
+
+        @ParameterizedTest(name = "live: no canary echo from non-GET {0}")
+        @ValueSource(strings = {
+                "/rest/share-links",
+                "/rest/share-links/00000000-0000-0000-0000-000000000002"
+        })
+        void liveMode_noCanaryLeak_inNonGetEndpoints(String path) throws Exception {
+            // Non-GET endpoints must not echo the canary wallId in their error bodies.
+            // These paths return 4xx (CSRF failure, not-found, etc.) but must not leak the identity.
+            String[] parts = path.split("/");
+            boolean isDelete = parts[parts.length - 1].matches(
+                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+            MvcResult result;
+            if (isDelete) {
+                result = mockMvc.perform(
+                        delete(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            } else {
+                result = mockMvc.perform(
+                        post(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            }
             String body = result.getResponse().getContentAsString();
             assertNoCanaryLeak(path, body);
             assertNoStackTrace(path, body);
@@ -238,10 +271,41 @@ public class ResponseBodySecretLeakIT {
                 "/rest/operator",
                 "/rest/messages",
                 "/rest/share-links",
-                "/rest/share-csrf"
+                "/rest/share-csrf",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+                "/rest/share/img-proxy"
         })
         void fallbackMode_noCanaryLeak_inGetEndpoints(String path) throws Exception {
             MvcResult result = performGet(mockMvc, path);
+            String body = result.getResponse().getContentAsString();
+            assertNoCanaryLeak(path, body);
+            assertNoStackTrace(path, body);
+        }
+
+        @ParameterizedTest(name = "fallback: no canary echo from non-GET {0}")
+        @ValueSource(strings = {
+                "/rest/share-links",
+                "/rest/share-links/00000000-0000-0000-0000-000000000002"
+        })
+        void fallbackMode_noCanaryLeak_inNonGetEndpoints(String path) throws Exception {
+            String[] parts = path.split("/");
+            boolean isDelete = parts[parts.length - 1].matches(
+                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+            MvcResult result;
+            if (isDelete) {
+                result = mockMvc.perform(
+                        delete(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            } else {
+                result = mockMvc.perform(
+                        post(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            }
             String body = result.getResponse().getContentAsString();
             assertNoCanaryLeak(path, body);
             assertNoStackTrace(path, body);
@@ -300,10 +364,41 @@ public class ResponseBodySecretLeakIT {
                 "/rest/operator",
                 "/rest/messages",    // 404 in killswitch — but must not leak stack traces
                 "/rest/share-links",
-                "/rest/share-csrf"
+                "/rest/share-csrf",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+                "/rest/share/img-proxy"
         })
         void killswitchMode_noCanaryLeak_inGetEndpoints(String path) throws Exception {
             MvcResult result = performGet(mockMvc, path);
+            String body = result.getResponse().getContentAsString();
+            assertNoCanaryLeak(path, body);
+            assertNoStackTrace(path, body);
+        }
+
+        @ParameterizedTest(name = "killswitch: no canary echo from non-GET {0}")
+        @ValueSource(strings = {
+                "/rest/share-links",
+                "/rest/share-links/00000000-0000-0000-0000-000000000002"
+        })
+        void killswitchMode_noCanaryLeak_inNonGetEndpoints(String path) throws Exception {
+            String[] parts = path.split("/");
+            boolean isDelete = parts[parts.length - 1].matches(
+                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+            MvcResult result;
+            if (isDelete) {
+                result = mockMvc.perform(
+                        delete(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            } else {
+                result = mockMvc.perform(
+                        post(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            }
             String body = result.getResponse().getContentAsString();
             assertNoCanaryLeak(path, body);
             assertNoStackTrace(path, body);
@@ -374,10 +469,41 @@ public class ResponseBodySecretLeakIT {
                 "/rest/operator",
                 "/rest/messages",
                 "/rest/share-links",
-                "/rest/share-csrf"
+                "/rest/share-csrf",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+                "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+                "/rest/share/img-proxy"
         })
         void insecureTransportMode_noCanaryLeak_inGetEndpoints(String path) throws Exception {
             MvcResult result = performGet(mockMvc, path);
+            String body = result.getResponse().getContentAsString();
+            assertNoCanaryLeak(path, body);
+            assertNoStackTrace(path, body);
+        }
+
+        @ParameterizedTest(name = "insecure-transport: no canary echo from non-GET {0}")
+        @ValueSource(strings = {
+                "/rest/share-links",
+                "/rest/share-links/00000000-0000-0000-0000-000000000002"
+        })
+        void insecureTransportMode_noCanaryLeak_inNonGetEndpoints(String path) throws Exception {
+            String[] parts = path.split("/");
+            boolean isDelete = parts[parts.length - 1].matches(
+                    "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+            MvcResult result;
+            if (isDelete) {
+                result = mockMvc.perform(
+                        delete(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            } else {
+                result = mockMvc.perform(
+                        post(path)
+                                .cookie(new Cookie("wallId", CANARY_WALL_ID))
+                                .accept(MediaType.APPLICATION_JSON, MediaType.ALL))
+                        .andReturn();
+            }
             String body = result.getResponse().getContentAsString();
             assertNoCanaryLeak(path, body);
             assertNoStackTrace(path, body);

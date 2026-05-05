@@ -4,6 +4,9 @@ import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WallTopicAuthInterceptor;
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
+import de.seism0saurus.glacier.webservice.security.HandshakeRateLimitInterceptor;
+import de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.support.ChannelInterceptor;
@@ -15,6 +18,8 @@ import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRe
 import org.springframework.web.socket.config.annotation.WebMvcStompEndpointRegistry;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
+import java.lang.reflect.Field;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
@@ -23,6 +28,26 @@ import static org.mockito.Mockito.*;
  * The configureMessageBroker method is being tested here.
  */
 public class WebSocketConfigurationTest {
+
+    /** Injects the @Autowired fields that Spring would normally inject. */
+    private static WebSocketConfiguration createConfig(String domain, boolean secureCookies) {
+        WebSocketConfiguration config = new WebSocketConfiguration(
+                domain, secureCookies, new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
+                65536, 524288, 20000);
+        // Inject @Autowired interceptors via reflection (Spring normally does this)
+        try {
+            Field handshakeField = WebSocketConfiguration.class.getDeclaredField("handshakeRateLimitInterceptor");
+            handshakeField.setAccessible(true);
+            handshakeField.set(config, mock(HandshakeRateLimitInterceptor.class));
+
+            Field subscribeField = WebSocketConfiguration.class.getDeclaredField("subscribeRateLimitInterceptor");
+            subscribeField.setAccessible(true);
+            subscribeField.set(config, mock(SubscribeRateLimitInterceptor.class));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to inject interceptor mocks", e);
+        }
+        return config;
+    }
 
     /*
      * This test method tests the configureMessageBroker method of WebSocketConfiguration class.
@@ -41,8 +66,7 @@ public class WebSocketConfigurationTest {
                 .thenReturn(brokerRegistration);
         when(mockRegistry.setApplicationDestinationPrefixes("/glacier"))
                 .thenReturn(simpleBrokerRegistration);
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration(
-                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
+        WebSocketConfiguration webSocketConfiguration = createConfig("example.com", true);
 
         // Execute
         webSocketConfiguration.configureMessageBroker(mockRegistry);
@@ -65,8 +89,9 @@ public class WebSocketConfigurationTest {
         // Use vararg-safe stub: matches any number of origin strings
         // (main endpoint passes 3, share-view endpoint passes 4)
         when(registration.setAllowedOrigins(any(String[].class))).thenReturn(registration);
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration(
-                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
+        when(registration.setHandshakeHandler(any())).thenReturn(registration);
+        when(registration.addInterceptors(any())).thenReturn(registration);
+        WebSocketConfiguration webSocketConfiguration = createConfig("example.com", true);
 
         // Execute
         webSocketConfiguration.registerStompEndpoints(registry);
@@ -90,8 +115,7 @@ public class WebSocketConfigurationTest {
         ChannelRegistration registration = mock(ChannelRegistration.class);
         when(registration.interceptors(any(ChannelInterceptor[].class))).thenReturn(registration);
 
-        WebSocketConfiguration config = new WebSocketConfiguration(
-                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
+        WebSocketConfiguration config = createConfig("example.com", true);
 
         // Act
         config.configureClientInboundChannel(registration);
@@ -116,8 +140,7 @@ public class WebSocketConfigurationTest {
         SimpleBrokerRegistration brokerRegistration = mock(SimpleBrokerRegistration.class);
         when(mockRegistry.enableSimpleBroker("/anotherTopic")).thenReturn(brokerRegistration);
 
-        WebSocketConfiguration webSocketConfiguration = new WebSocketConfiguration(
-                "example.com", true, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
+        WebSocketConfiguration webSocketConfiguration = createConfig("example.com", true);
 
         // Execute
         webSocketConfiguration.configureMessageBroker(mockRegistry);

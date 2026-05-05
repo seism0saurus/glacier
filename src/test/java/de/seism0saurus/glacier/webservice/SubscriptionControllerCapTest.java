@@ -7,6 +7,8 @@ import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionAckMess
 import de.seism0saurus.glacier.webservice.messaging.messages.SubscriptionMessage;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,11 +35,18 @@ class SubscriptionControllerCapTest {
 
     private static final int CAP = 10;
 
+    private static ValidatorFactory validatorFactory;
     private static Validator beanValidator;
 
     @BeforeAll
     static void setUpValidator() {
-        beanValidator = Validation.buildDefaultValidatorFactory().getValidator();
+        validatorFactory = Validation.buildDefaultValidatorFactory();
+        beanValidator = validatorFactory.getValidator();
+    }
+
+    @AfterAll
+    static void tearDownValidator() {
+        validatorFactory.close();
     }
 
     private SubscriptionManager subscriptionManager;

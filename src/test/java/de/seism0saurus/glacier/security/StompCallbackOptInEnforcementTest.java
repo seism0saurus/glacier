@@ -516,12 +516,11 @@ class StompCallbackOptInEnforcementTest {
      * {@link IllegalArgumentException}.
      *
      * <p>After stripping the leading {@code @}, the remaining string is {@code "@server.example"}.
-     * {@code indexOf('@')} returns {@code 0}, so {@code substring(0, 0)} would produce an empty
-     * string — which would make {@code toot.getContent().contains("")} always {@code true},
-     * effectively bypassing the opt-in gate (C3, ASVS V2.1, WSTG-INPV-01, SR-NEW-02).
-     *
-     * <p><b>RED pre-condition</b>: the current {@code getShortHandle} does not validate the
-     * resulting short handle; this test fails until SR-NEW-02 is implemented.
+     * {@code indexOf('@')} returns {@code 0}, so {@code substring(0, 0)} produces an empty string.
+     * The downstream opt-in check uses {@code shortHandle.equals(mention.getAcct())} — an empty
+     * shortHandle never equals any real Mastodon acct, so opt-in defaults to {@code false} (fail-
+     * closed). However, the empty shortHandle is still invalid as an operator-configured identity
+     * and must be rejected early (C3, ASVS V2.1, WSTG-INPV-01, SR-NEW-02).
      */
     @Test
     void getShortHandle_doubleAtPrefix_throwsIllegalArgumentException() {

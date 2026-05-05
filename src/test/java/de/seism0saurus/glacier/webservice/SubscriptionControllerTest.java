@@ -14,6 +14,7 @@ import de.seism0saurus.glacier.webservice.messaging.messages.TerminationMessage;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,12 +54,18 @@ public class SubscriptionControllerTest {
     // Shared real Validator — built once for the whole test class
     // -------------------------------------------------------------------------
 
+    private static ValidatorFactory validatorFactory;
     private static Validator beanValidator;
 
     @BeforeAll
     static void setUpValidator() {
-        ValidatorFactory factory = Validation.buildDefaultValidatorFactory();
-        beanValidator = factory.getValidator();
+        validatorFactory = Validation.buildDefaultValidatorFactory();
+        beanValidator = validatorFactory.getValidator();
+    }
+
+    @AfterAll
+    static void tearDownValidator() {
+        validatorFactory.close();
     }
 
     // -------------------------------------------------------------------------

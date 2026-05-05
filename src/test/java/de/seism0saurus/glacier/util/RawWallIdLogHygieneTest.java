@@ -210,6 +210,15 @@ class RawWallIdLogHygieneTest {
     /**
      * subscribe with no-principal path — logs via LOGGER.error — must not include raw UUID
      * (the header accessor itself could contain UUID session IDs).
+     *
+     * <p>NOTE (SR-MED-02-06): this test uses {@link #CANARY_UUID} as the session canary and relies
+     * on {@link LogScrubber#containsRawUuid(String)} to detect leaks. STOMP session IDs are
+     * <em>not</em> UUID-format (they are short opaque alphanumeric strings), so this
+     * {@code assertNoRawUuid()} check is vacuous for the specific sessionId leak class.
+     * The dedicated canary test for sessionId scrubbing is
+     * {@code SubscriptionControllerSessionIdScrubbingTest} (non-UUID canary, dual appenders,
+     * covers SR-MED-02-01 through SR-MED-02-06). This test remains as a coarser guard against
+     * UUID-shaped values leaking through the accessor's {@code toString()}.
      */
     @Test
     void subscriptionController_subscribe_noPrincipal_doesNotLogRawHeaderAccessor() {

@@ -77,7 +77,11 @@ class HttpMethodHardeningIT {
             "/rest/operator",
             "/rest/messages",
             "/rest/share-csrf",
-            "/rest/share-links"
+            "/rest/share-links",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+            "/rest/share/img-proxy",
+            "/rest/share-links/00000000-0000-0000-0000-000000000002"
     })
     void trace_onGetEndpoints_returnsMethodNotAllowedOrNotImplemented(String path) throws Exception {
         MvcResult result = mockMvc.perform(
@@ -109,7 +113,10 @@ class HttpMethodHardeningIT {
             "/rest/mastodon-handle",
             "/rest/operator",
             "/rest/messages",
-            "/rest/share-csrf"
+            "/rest/share-csrf",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+            "/rest/share/img-proxy"
     })
     void put_onGetOnlyEndpoints_returns405WithAllowHeader(String path) throws Exception {
         MvcResult result = mockMvc.perform(
@@ -138,7 +145,10 @@ class HttpMethodHardeningIT {
             "/rest/mastodon-handle",
             "/rest/operator",
             "/rest/messages",
-            "/rest/share-csrf"
+            "/rest/share-csrf",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+            "/rest/share/img-proxy"
     })
     void delete_onGetOnlyEndpoints_returns405(String path) throws Exception {
         MvcResult result = mockMvc.perform(
@@ -158,7 +168,10 @@ class HttpMethodHardeningIT {
             "/rest/mastodon-handle",
             "/rest/operator",
             "/rest/messages",
-            "/rest/share-csrf"
+            "/rest/share-csrf",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+            "/rest/share/img-proxy"
     })
     void patch_onGetOnlyEndpoints_returns405(String path) throws Exception {
         MvcResult result = mockMvc.perform(
@@ -182,7 +195,10 @@ class HttpMethodHardeningIT {
             "/rest/mastodon-handle",
             "/rest/operator",
             "/rest/messages",
-            "/rest/share-csrf"
+            "/rest/share-csrf",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/catalog",
+            "/rest/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/messages",
+            "/rest/share/img-proxy"
     })
     void post_onGetOnlyEndpoints_returns405(String path) throws Exception {
         MvcResult result = mockMvc.perform(

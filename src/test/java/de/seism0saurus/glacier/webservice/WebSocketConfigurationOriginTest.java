@@ -3,11 +3,14 @@ package de.seism0saurus.glacier.webservice;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
+import de.seism0saurus.glacier.webservice.security.HandshakeRateLimitInterceptor;
+import de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRegistration;
 import org.springframework.web.socket.config.annotation.WebMvcStompEndpointRegistry;
 
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -72,12 +75,28 @@ class WebSocketConfigurationOriginTest {
      */
     private List<String> captureAllowedOrigins(String glacierDomain, boolean cookieSecure) {
         WebSocketConfiguration config = new WebSocketConfiguration(
-                glacierDomain, cookieSecure, new ShareLinkViewerCounter(), new ShareLinkCapPolicy());
+                glacierDomain, cookieSecure, new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
+                65536, 524288, 20000);
+        // Inject @Autowired fields that Spring normally provides
+        try {
+            Field handshakeField = WebSocketConfiguration.class.getDeclaredField("handshakeRateLimitInterceptor");
+            handshakeField.setAccessible(true);
+            HandshakeRateLimitInterceptor mockHandshake = mock(HandshakeRateLimitInterceptor.class);
+            when(mockHandshake.beforeHandshake(any(), any(), any(), any())).thenReturn(true);
+            handshakeField.set(config, mockHandshake);
+
+            Field subscribeField = WebSocketConfiguration.class.getDeclaredField("subscribeRateLimitInterceptor");
+            subscribeField.setAccessible(true);
+            subscribeField.set(config, mock(SubscribeRateLimitInterceptor.class));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to inject interceptor mocks", e);
+        }
 
         StompEndpointRegistry registry = mock(WebMvcStompEndpointRegistry.class);
         StompWebSocketEndpointRegistration registration = mock(StompWebSocketEndpointRegistration.class);
         when(registry.addEndpoint(anyString())).thenReturn(registration);
         when(registration.setHandshakeHandler(any())).thenReturn(registration);
+        when(registration.addInterceptors(any())).thenReturn(registration);
 
         AtomicReference<List<String>> captured = new AtomicReference<>();
         doAnswer(inv -> {

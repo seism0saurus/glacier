@@ -161,6 +161,12 @@ public class StompCallbackTest {
         this.messageCache = mock(MessageCache.class);
         this.shareViewStompRelay = mock(ShareViewStompRelay.class);
         this.mockStatus = mock(Status.class);
+        // Default stub: mockStatus mentions the bot handle "glacier" so that the opt-in check
+        // (ADR-PT-A04-01) passes in all tests that exercise the positive publication path.
+        // Tests that verify the non-opt-in path (e.g., UT-sec-04) set up their own Status mock.
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(this.mockStatus.getMentions()).thenReturn(List.of(botMention));
         // Default stub: recordThenPublish returns a representative CacheEntry so that
         // the shareViewStompRelay relay path and callers that inspect the returned entry
         // do not NPE. Individual tests that need different return values override this.
@@ -3953,19 +3959,30 @@ public class StompCallbackTest {
     }
 
     /**
-     * Creates a {@link TestLogAppender} wired to the {@link StompCallback} logger.
+     * Creates a {@link TestLogAppender} wired to both the {@link StompCallback} logger and
+     * the {@link IframeEmbedPolicy} logger.
      * <p>
      * Captures both formatted-message strings (for existing tests) and raw
      * {@link ILoggingEvent} objects (for T-A1 through T-A5 level/throwable assertions).
+     * <p>
+     * After the extraction refactor (SR-FUZZ-17), the "unknown X-Frame-Options" WARN is emitted
+     * by {@link IframeEmbedPolicy}'s own logger rather than {@link StompCallback}'s. Attaching the
+     * same appender to both loggers ensures that tests which verify log output from the
+     * {@code isLoadable} delegation path continue to observe all relevant events.
      *
-     * @return a started appender already attached to the StompCallback logger
+     * @return a started appender already attached to both the StompCallback and IframeEmbedPolicy loggers
      */
     @NotNull
     private static TestLogAppender getTestLogAppender() {
         TestLogAppender logAppender = new TestLogAppender();
-        Logger logger = (Logger) LoggerFactory.getLogger(StompCallback.class);
         logAppender.start();
-        logger.addAppender(logAppender);
+        // Attach to StompCallback — covers all log calls originating in that class.
+        Logger stompCallbackLogger = (Logger) LoggerFactory.getLogger(StompCallback.class);
+        stompCallbackLogger.addAppender(logAppender);
+        // Also attach to IframeEmbedPolicy — the WARN for unknown XFO is now emitted there
+        // after the SR-FUZZ-17 extraction refactor delegated isLoadable to IframeEmbedPolicy.
+        Logger iframeEmbedPolicyLogger = (Logger) LoggerFactory.getLogger(IframeEmbedPolicy.class);
+        iframeEmbedPolicyLogger.addAppender(logAppender);
         return logAppender;
     }
 

@@ -49,6 +49,26 @@ import static org.mockito.Mockito.when;
  *
  * <p>Security: SR-SHARE-05 (per-link cap), OWASP API4 (Unrestricted Resource Consumption),
  * glacier-fallback-mode-discipline (WallPrincipal / ShareViewerPrincipal isolation).
+ *
+ * <h2>Why this class does NOT use {@code @DirtiesContext}</h2>
+ * <p>Unlike {@code SubscribeRateLimitProductionPathIT}, {@code ShareViewRemoteAddrProductionPathIT},
+ * and {@code HandshakeForwardedForRespectedIT} — which all use
+ * {@code @DirtiesContext(classMode = ClassMode.AFTER_EACH_TEST_METHOD)} to reset Bucket4j
+ * token-bucket singletons between tests — this class deliberately avoids that annotation.
+ * {@code @DirtiesContext} restarts the full Spring context after every test method, which
+ * incurs a ~5-second overhead per test.  The viewer counter is instead reset explicitly in
+ * {@link #resetCounter()} (the {@code @BeforeEach} method) by draining
+ * {@link de.seism0saurus.glacier.share.application.ShareLinkViewerCounter} until it returns zero.
+ *
+ * <p><strong>Obligation for future {@code @Test} authors in this class</strong>:
+ * every new test method added here <em>must</em> rely on the {@code @BeforeEach} drain to
+ * ensure a clean counter state, or must set up and tear down its own counter state explicitly.
+ * Do NOT introduce test state that cannot be reset by decrementing the counter to zero
+ * (e.g. do not store shared mutable state in static fields or rely on Bucket4j token buckets)
+ * without first adding a corresponding cleanup step to {@link #resetCounter()}.
+ * If this invariant cannot be maintained, replace the drain pattern with
+ * {@code @DirtiesContext(classMode = ClassMode.AFTER_EACH_TEST_METHOD)} as the safe fallback,
+ * accepting the ~5s-per-test cost.
  */
 @SpringBootTest
 @TestPropertySource(properties = {

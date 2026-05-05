@@ -34,8 +34,8 @@ class ImageProxyHmacBootFailIT {
     @Test
     void missingHmacSecretInProd_bootFails() {
         // Direct unit test of the validator: construction must throw in prod profile
-        // when secret is absent. This is the root guard; the SpringBootTest variant
-        // (context-load) is covered by contextFailsWithoutHmacSecretInProd below.
+        // when secret is absent. This is the root guard; context-load coverage is
+        // provided by the @SpringBootTest cases further down this file.
         assertThatThrownBy(() -> new ImageProxyHmacSecretValidator(null, true))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("glacier.share.imgproxy.hmacSecret")
