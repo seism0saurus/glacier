@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -75,8 +76,11 @@ public class DefaultSafeUrlValidator implements SafeUrlValidator {
         }
 
         // Step 3: Scheme must be http or https (case-insensitive)
+        // C3/CWE-178: Locale.ROOT ensures SSRF scheme allowlist comparison is locale-independent.
+        // URI.getScheme() may return the scheme in original case (e.g. "HTTP" for "HTTP://...").
+        // Using Locale.ROOT prevents Turkish locale's dotless-i from corrupting scheme folding.
         String scheme = uri.getScheme();
-        if (scheme == null || !ALLOWED_SCHEMES.contains(scheme.toLowerCase())) {
+        if (scheme == null || !ALLOWED_SCHEMES.contains(scheme.toLowerCase(Locale.ROOT))) {
             AUDIT.info("share.proxy.fetch_blocked reason=disallowed_scheme scheme={}", scheme);
             return Optional.empty();
         }

@@ -12,6 +12,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -68,7 +69,10 @@ public class HttpMethodRejectFilter implements Filter {
                 && response instanceof HttpServletResponse httpResponse) {
 
             String method = httpRequest.getMethod();
-            if (method != null && REJECTED_METHODS.contains(method.toUpperCase())) {
+            // C8/CWE-178: Locale.ROOT ensures method token comparison is locale-independent.
+            // Turkish locale's dotless-i does not affect TRACE/TRACK (no 'i') but
+            // Locale.ROOT makes the intent explicit and guards against future method tokens.
+            if (method != null && REJECTED_METHODS.contains(method.toUpperCase(Locale.ROOT))) {
                 // C8 / ASVS V14.5.1: reject TRACE and TRACK with 405 Method Not Allowed.
                 // Do not call chain.doFilter — return immediately to prevent any handler
                 // or filter downstream from processing the request.
