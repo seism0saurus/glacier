@@ -168,6 +168,23 @@ Shortcodes without a dedicated test are covered structurally or at the ZAP/Trivy
 
 ---
 
+## SR-FUZZ-07 Coverage Note (A06:2021 — Vulnerable Components)
+
+**Status: PASS** (updated 2026-05-05 from PARTIAL)
+
+The `frontend-audit` CI job in `.github/workflows/security.yml` runs `npm audit --audit-level=high`
+on every push to `main`, every pull request targeting `main`, and weekly on Monday 06:00 UTC.
+This gates the Angular SPA bundle (all `frontend/` npm dependencies) against high/critical advisories.
+
+Structural regression gate: `WorkflowYamlInventoryTest` (three Surefire methods) asserts the triggers,
+`npm ci` + `npm audit` steps, `--audit-level=high` threshold, and absence of
+`continue-on-error: true` in `security.yml` — preventing silent removal of the gate.
+
+Reference: `docs/decisions/2026-05-01-acceptance-fuzz-mutation-testing.md` (SR-FUZZ-07),
+`docs/decisions/2026-05-05-planning-locale-root-npm-audit.md` (SR-NA-01..09).
+
+---
+
 ## Maintenance Instructions
 
 - **New HTTP endpoint**: add it to `EndpointInventoryTest.AUTHORITATIVE_ENDPOINT_ALLOWLIST`, add a row to both OWASP tables in this file, and ensure all zero-blank-cell constraints are met.

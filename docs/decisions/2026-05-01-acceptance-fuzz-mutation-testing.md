@@ -76,7 +76,7 @@ All six INFO findings confirmed PASS — no action required. Key permanent gates
 | SR-FUZZ-04 | HIGH | PASS | All 6 canaries in both canary-testing fuzz files |
 | SR-FUZZ-05 | HIGH | PASS | 70% threshold, `-Dmaven.test.failure.ignore=false` |
 | SR-FUZZ-06 | HIGH | PASS | Zero secrets in mutation CI job env |
-| SR-FUZZ-07 | MEDIUM | PARTIAL | Pin PASS; audit step deferred |
+| SR-FUZZ-07 | MEDIUM | PASS | Pin PASS; `frontend-audit` CI job added (2026-05-05); `WorkflowYamlInventoryTest` structural gate |
 | SR-FUZZ-08 | MEDIUM | PASS | `FallbackRateLimiter` + `ShareRateLimiter` in PITest target |
 | SR-FUZZ-09 | MEDIUM | PASS | `final` class, private constructor |
 | SR-FUZZ-10 | MEDIUM | PASS | `.gitignore` entries present |
@@ -116,7 +116,7 @@ Approval message (verbatim): "approve"
 
 ## Post-Merge Follow-Up Items (TD Backlog)
 
-1. **SR-FUZZ-07**: Add `npm audit --audit-level=high` step to CI (`build-and-deploy.yml` or `security.yml`)
+1. **SR-FUZZ-07**: ~~Add `npm audit --audit-level=high` step to CI~~ — DONE 2026-05-05: `frontend-audit` job added to `security.yml`; `WorkflowYamlInventoryTest` structural gate
 2. **R-1**: Wrap `domain.toUpperCase()` with `Pattern.quote(...)` in `IframeEmbedPolicy.java:113` + regression test for lookalike domain rejection
 3. **R-2**: Add explicit canary `@Property` to `SubscriptionMessageHashtagFuzzTest`
 4. **SR-FUZZ-13**: Document mutation-survivor equivalents after first PITest CI run on main branch
