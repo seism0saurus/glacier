@@ -26,12 +26,12 @@ Location: `src/test/java/de/seism0saurus/glacier/security/`
 
 | Test class | Test IDs | OWASP coverage | WSTG ID | ASVS Shortcode | Proactive Control |
 |------------|----------|----------------|---------|----------------|-------------------|
-| `StompCallbackOptInEnforcementTest` | UT-sec-01..04c, T-empty-shorthandle-01..05 | A04:2021 — bot opt-in enforced on ALL event paths (GenericMessage, StatusCreated, StatusEdited); SR-NEW-02 — empty shortHandle rejected | WSTG-INPV-01 | V2.2.1 (L1) | C3 |
+| `StompCallbackOptInEnforcementTest` | UT-sec-01..04c, T-empty-shorthandle-01..05 | A04:2021 — bot opt-in enforced on ALL event paths (GenericMessage, StatusCreated, StatusEdited); SR-NEW-02 — empty shortHandle rejected | WSTG-AUTHZ-04 | V2.2.1 (L1) | C3 |
 | `StompCallbackHostileResponseTest` | UT-sec-07..11 | API10:2023 — null mentions, malformed timestamps, null stream, empty URL, oversize ID handled safely | WSTG-INPV-11 | V2.2.1 (L1) | C4 |
 | `EndpointInventoryTest` | UT-sec-06 | API5:2023 + API9:2023 — authoritative HTTP endpoint inventory; undocumented routes fail CI | WSTG-APIT-01, WSTG-AUTHZ-01 | n/a | C1 |
 | `WebSocketEndpointInventoryTest` | (multiple) | API9:2023 — authoritative STOMP destination inventory | WSTG-APIT-01 | n/a | C1 |
-| `HandshakeRateLimitInterceptorTest` | UT-WS-RL-01..05 | API4:2023 — IP-based WS CONNECT rate limit; fail-open on Throwable; masked-IP AUDIT logging | WSTG-SESS-04 | V2.4.1 (L2) | C6 |
-| `SubscribeRateLimitInterceptorTest` | UT-SUBRL-01..05 | API6:2023 — STOMP SUBSCRIBE rate limit; silent drop; masked-IP + hashed-wallId AUDIT logging | WSTG-SESS-04 | V2.4.1 (L2) | C6 |
+| `HandshakeRateLimitInterceptorTest` | UT-WS-RL-01..05 | API4:2023 — IP-based WS CONNECT rate limit; fail-open on Throwable; masked-IP AUDIT logging | WSTG-ATHN-03 | V2.4.1 (L2) | C6 |
+| `SubscribeRateLimitInterceptorTest` | UT-SUBRL-01..05 | API6:2023 — STOMP SUBSCRIBE rate limit; silent drop; masked-IP + hashed-wallId AUDIT logging | WSTG-ATHN-03 | V2.4.1 (L2) | C6 |
 | `TrivyignoreExpiryTest` | SR-CI-03 | A06:2021 — validates `# expires: YYYY-MM-DD` on every suppression in both Trivy ignore files | n/a | n/a | C2 |
 | `SubscriptionHashtagValidationFindingTest` | ADR-PT-03 | A03:2021 — hashtag input validated with `@Pattern(^[\p{L}\p{N}_]{1,50}$)` | WSTG-INPV-05 | V2.2.1 (L1) | C3 |
 | `StompCallbackEmbedSsrfFindingTest` | ADR-PT-01/02 | A10:2021 — `SafeUrlValidator` blocks loopback, RFC1918, cloud-metadata, link-local, non-HTTP(S) URLs | WSTG-INPV-19 | V1.3.6 (L2) | C10 |
@@ -59,9 +59,9 @@ Location: `src/test/java/de/seism0saurus/glacier/security/`
 | `StompMassAssignmentIT` | IT-sec-04..06 | API3:2023 — injected `principal`, `rejection`, `isSubscribed` fields cannot override server state | WSTG-AUTHZ-04 | n/a | C7 |
 | `WebSocketFrameSizeLimitIT` | IT-sec-07a/b/c | API4:2023 — 64 KB frame-size cap enforced; oversize frames rejected without server crash; no raw hashtag in logs | WSTG-CONF-06 | V2.4.1 (L2) | C3 |
 | `StompEnumerationIndistinguishabilityIT` | IT-sec-08..09 | API6:2023 — identical silence for foreign live wallId vs. non-existent wallId; AUDIT log uses hashed form | WSTG-AUTHZ-04 | n/a | C7 |
-| `ResponseBodySecretLeakIT` | (multiple) | A02:2021 + A09:2021 — no secrets, stack traces, or internal paths echoed in HTTP error responses | WSTG-ERRH-01 | V3.2.1 (L1) | C4, C9 |
+| `ResponseBodySecretLeakIT` | (multiple) | A02:2021 + A09:2021 — no secrets, stack traces, or internal paths echoed in HTTP error responses | WSTG-ERRH-01 | V16.5.1 (L2) | C4, C9 |
 | `CookieEmissionIT` | (multiple) | A02:2021 + A07:2021 — wallId and CSRF cookies carry Secure, HttpOnly, SameSite=Lax flags verified end-to-end | WSTG-SESS-02 | V3.3.1 (L1), V3.3.2 (L2), V3.3.4 (L2) | C5 |
-| `HttpMethodHardeningIT` | (multiple) | A05:2021 — Spring Security HTTP method restrictions; TRACE/OPTIONS/unsupported verbs rejected at integration level | WSTG-CONF-06 | V3.5.3 (L1), V4.1.4 (L3) | C8 |
+| `HttpMethodHardeningIT` | (multiple) | A05:2021 — `HttpMethodRejectFilter` (servlet filter) rejects TRACE/TRACK at HIGHEST_PRECEDENCE; Spring MVC default 405 for undeclared verbs; OPTIONS permitted for CORS preflight | WSTG-CONF-06 | V3.5.3 (L1), V4.1.4 (L3) | C8 |
 | `CorsHardeningIT` | (multiple) | A05:2021 — CORS allowlist validated; cross-origin requests from unlisted origins rejected | WSTG-CONF-07 | n/a | C8 |
 
 ### Layer 3: End-to-End Tests (Playwright)
@@ -70,7 +70,7 @@ Location: `frontend/e2e/workflows/` and `frontend/src/app/`
 
 | Spec file | Test IDs | OWASP coverage | WSTG ID | ASVS Shortcode | Proactive Control |
 |-----------|----------|----------------|---------|----------------|-------------------|
-| `security-opt-in.spec.ts` | PW-sec-01 | A04:2021 — bot opt-in enforced E2E: toot without bot mention not displayed; toot with mention appears | WSTG-INPV-01 | V2.2.1 (L1) | C3 |
+| `security-opt-in.spec.ts` | PW-sec-01 | A04:2021 — bot opt-in enforced E2E: toot without bot mention not displayed; toot with mention appears | WSTG-AUTHZ-04 | V2.2.1 (L1) | C3 |
 | `toot.component.spec.ts` | AC-02 | A05:2021 — iframe sandbox attribute carries exactly `allow-scripts allow-popups allow-popups-to-escape-sandbox`; allow-same-origin absent | WSTG-CLNT-09 | V3.4.6 (L2) | C8 |
 
 Playwright specs run in the `chromium` project (live WebSocket streaming mode). The `security-opt-in.spec.ts` spec requires a running Mastodon instance and posts real toots via `mastodon-client.ts`.

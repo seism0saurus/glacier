@@ -149,5 +149,7 @@ Approval message (verbatim): "accept"
 ## References
 
 - GitHub issue: #29
-- CLAUDE.md: authoritative conventions and testing policy
+- CLAUDE.md — authoritative conventions and testing policy.
+- [Hashtag Prune — Implementation](2026-04-24-implementation-hashtag-prune.md)
+- [Hashtag Prune — Acceptance](2026-04-24-acceptance-hashtag-prune.md)
 - Applicable skills: `angular-i18n-localize`, `angular-karma-jasmine-testing`, `playwright-e2e-patterns`, `angular-a11y-patterns`, `angular-material-theming`, `glacier-fallback-mode-discipline`

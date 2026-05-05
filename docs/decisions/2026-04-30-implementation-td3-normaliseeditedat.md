@@ -65,7 +65,8 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Planning doc: `docs/decisions/2026-04-30-planning-td3-normaliseeditedat.md`
-- CWE-117: Improper Output Neutralization for Logs
-- OWASP A09:2021 Security Logging and Monitoring Failures
+- [TD-3 normaliseEditedAt Log Hygiene — Planning](2026-04-30-planning-td3-normaliseeditedat.md)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - glacier-structured-logging-logback (D-13/SR-8)
+- [TD-3 normaliseEditedAt Log Hygiene — Acceptance](2026-04-30-acceptance-td3-normaliseeditedat.md)

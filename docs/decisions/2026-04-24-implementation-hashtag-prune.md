@@ -133,6 +133,7 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Phase 1 decision: `docs/decisions/2026-04-24-planning-hashtag-prune.md`
+- [Hashtag Prune — Planning](2026-04-24-planning-hashtag-prune.md)
+- [Hashtag Prune — Acceptance](2026-04-24-acceptance-hashtag-prune.md)
 - GitHub issue: #29
-- CLAUDE.md: authoritative conventions and testing policy
+- CLAUDE.md — authoritative conventions and testing policy.

@@ -60,7 +60,8 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Phase 1 planning: `docs/decisions/2026-04-28-planning-td1-json-parse-exception.md`
-- F-6 acceptance: `docs/decisions/2026-04-28-acceptance-f6-log-scrubbing.md` (TD-1 origin)
-- CWE-117: Improper Output Neutralization for Logs
-- OWASP A09:2021 Security Logging and Monitoring Failures
+- [TD-1 JsonProcessingException Logging Fix — Planning](2026-04-28-planning-td1-json-parse-exception.md)
+- [F-6 D-13/SR-8 Raw Logging Cleanup — Acceptance](2026-04-28-acceptance-f6-log-scrubbing.md) (TD-1 origin)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
+- [TD-1 JsonProcessingException Logging Fix — Acceptance](2026-04-28-acceptance-td1-json-parse-exception.md)

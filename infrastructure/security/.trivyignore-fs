@@ -1,0 +1,7 @@
+# Glacier jar-dependency Trivy ignore file.
+# Each suppression MUST include an expiry comment: # expires: YYYY-MM-DD
+# Suppressions without expiry dates are rejected by TrivyignoreExpiryTest.
+#
+# Example:
+# CVE-2024-XXXX # expires: 2026-12-31
+# SENTINEL: trivyignores parameter active # expires: 2027-05-01

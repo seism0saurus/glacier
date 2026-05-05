@@ -107,8 +107,10 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- F-6 acceptance: `docs/decisions/2026-04-28-acceptance-f6-log-scrubbing.md` (INFO-2 origin, finding F-2b deferred)
+- [F-6 D-13/SR-8 Raw Logging Cleanup — Acceptance](2026-04-28-acceptance-f6-log-scrubbing.md) (INFO-2 origin, finding F-2b deferred)
 - glacier-fallback-mode-discipline (virtual-thread kill risk, ADR-D rationale)
 - glacier-structured-logging-logback (D-13/SR-8, log-field stability)
-- CWE-117: Improper Output Neutralization for Logs
-- OWASP A09:2021 Security Logging and Monitoring Failures
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
+- [F-6-INFO-2 Event-Type Constants — Implementation](2026-04-30-implementation-f6info2-event-type-constants.md)
+- [F-6-INFO-2 Event-Type Constants — Acceptance](2026-04-30-acceptance-f6info2-event-type-constants.md)

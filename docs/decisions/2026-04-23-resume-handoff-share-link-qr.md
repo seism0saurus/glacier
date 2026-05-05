@@ -111,8 +111,8 @@ The agent-a10ed506 worktree's `.claude/settings.local.json` already has these (I
 
 ## References
 
-- Phase 1 decision: `docs/decisions/2026-04-22-planning-share-link-qr.md`
-- Phase 2 decision: `docs/decisions/2026-04-23-implementation-share-link-qr.md`
-- Secure lane summary: `/tmp/glacier-pipeline-share-link/secure_impl.md`
-- Frontend lane summary: `/tmp/glacier-pipeline-share-link/frontend_impl.md`
-- CLAUDE.md (authoritative conventions): `/home/ulrich.viefhaus/git/seism0saurus/glacier/CLAUDE.md`
+- [Share Link QR — Planning](2026-04-22-planning-share-link-qr.md)
+- [Share Link QR — Implementation](2026-04-23-implementation-share-link-qr.md)
+- Secure lane summary (agent session — not persisted)
+- Frontend lane summary (agent session — not persisted)
+- CLAUDE.md — authoritative conventions.

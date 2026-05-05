@@ -290,11 +290,11 @@ Phase 1 Approval Gate:
 
 ## References
 
-- Architect Round 1 plan: `/tmp/glacier-pipeline-share-link/arch_plan.md`
-- Security Round 1 plan: `/tmp/glacier-pipeline-share-link/security_plan.md`
-- UX Round 1 plan: `/tmp/glacier-pipeline-share-link/ux_plan.md`
-- Architect Round 2 review: `/tmp/glacier-pipeline-share-link/arch_review.md`
-- Security Round 2 cross-review (summary): `/tmp/glacier-pipeline-share-link/security_final.md`
+- Planning agent outputs (agent session — not persisted)
 - Skills: `glacier-fallback-mode-discipline`, `glacier-structured-logging-logback`, `angular-i18n-localize`, `spring-security-hardening`, `spring-input-validation-ssrf`, `angular-a11y-patterns`, `playwright-angular-a11y`, `spring-boot-testing-patterns`, `playwright-e2e-patterns`, `spring-websocket-performance`, `spring-virtual-threads`, `angular-material-theming`, `angular-karma-jasmine-testing`.
-- Prior fallback-mode decisions: `docs/decisions/2026-04-21-planning-ws-fallback.md`, `-implementation-ws-fallback.md`, `2026-04-22-acceptance-ws-fallback.md`.
-- CLAUDE.md testing-policy, fallback-mode-discipline, i18n, agent-management sections.
+- [WS Fallback — Planning](2026-04-21-planning-ws-fallback.md)
+- [WS Fallback — Implementation](2026-04-21-implementation-ws-fallback.md)
+- [WS Fallback — Acceptance](2026-04-22-acceptance-ws-fallback.md)
+- [Share Link QR — Implementation](2026-04-23-implementation-share-link-qr.md)
+- [Share Link QR — Acceptance](2026-04-24-acceptance-share-link-qr.md)
+- CLAUDE.md — testing-policy, fallback-mode-discipline, i18n, agent-management sections.

@@ -104,9 +104,11 @@ Post-approval action: version bumped 0.0.8 → 0.0.9 via `push_version.sh 0.0.9 
 
 ## References
 
-- `docs/decisions/2026-04-21-planning-ws-fallback.md` — Phase 1 plan (21 decisions + 8 ADRs + C-01/C-02/C-03).
-- `docs/decisions/2026-04-21-implementation-ws-fallback.md` — Phase 2 implementation record.
-- `CLAUDE.md` — testing policy, architecture, conventions (binding).
-- OWASP Top 10 (2025), OWASP API Security Top 10 (2023), TSS-WEB.
-- WCAG 2.2 AA.
+- [WS Fallback — Planning](2026-04-21-planning-ws-fallback.md) — Phase 1 plan (21 decisions + 8 ADRs + C-01/C-02/C-03).
+- [WS Fallback — Implementation](2026-04-21-implementation-ws-fallback.md) — Phase 2 implementation record.
+- CLAUDE.md — testing policy, architecture, conventions (binding).
+- [OWASP Top 10 (2025)](https://owasp.org/www-project-top-ten/)
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/)
+- [Secodis TSS-WEB](https://www.secodis.com/tss-web/)
+- [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/)
 - `.claude/skills/glacier-fallback-mode-discipline.md`, `glacier-structured-logging-logback.md`, `angular-i18n-localize.md` (mandatory skills consulted throughout the three phases).

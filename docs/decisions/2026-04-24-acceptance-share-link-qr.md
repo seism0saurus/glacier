@@ -124,8 +124,8 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Phase 1 decision: `docs/decisions/2026-04-22-planning-share-link-qr.md`
-- Phase 2 decision: `docs/decisions/2026-04-23-implementation-share-link-qr.md`
-- Resume handoff: `docs/decisions/2026-04-23-resume-handoff-share-link-qr.md`
-- CLAUDE.md: authoritative conventions and testing policy
+- [Share Link QR — Planning](2026-04-22-planning-share-link-qr.md)
+- [Share Link QR — Implementation](2026-04-23-implementation-share-link-qr.md)
+- [Share Link QR — Resume Handoff](2026-04-23-resume-handoff-share-link-qr.md)
+- CLAUDE.md — authoritative conventions and testing policy.
 - Branch: `feature/share-link-qr` (25+ commits ahead of `main`)

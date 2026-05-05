@@ -110,9 +110,12 @@ Phase 2 Approval Gate + forward path:
 
 ## References
 
-- Phase 1 decision: `docs/decisions/2026-04-22-planning-share-link-qr.md`
-- Secure lane summary: `/tmp/glacier-pipeline-share-link/secure_impl.md`
-- Frontend lane summary: `/tmp/glacier-pipeline-share-link/frontend_impl.md`
+- [Share Link QR — Planning](2026-04-22-planning-share-link-qr.md)
+- [Share Link QR — Acceptance](2026-04-24-acceptance-share-link-qr.md)
+- Secure lane summary (agent session — not persisted)
+- Frontend lane summary (agent session — not persisted)
 - tdd-ddd lane: commit message on `7fc92a1`
 - devops-infra lane: commit message on `19c7b39`
-- Prior fallback-mode planning: `docs/decisions/2026-04-21-*.md`, `docs/decisions/2026-04-22-acceptance-ws-fallback.md`
+- [WS Fallback — Planning](2026-04-21-planning-ws-fallback.md)
+- [WS Fallback — Implementation](2026-04-21-implementation-ws-fallback.md)
+- [WS Fallback — Acceptance](2026-04-22-acceptance-ws-fallback.md)

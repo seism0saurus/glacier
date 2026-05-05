@@ -76,8 +76,9 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Planning doc: `docs/decisions/2026-04-30-planning-f6info2-event-type-constants.md`
-- CWE-117: Improper Output Neutralization for Logs
-- OWASP A09:2021 Security Logging and Monitoring Failures
+- [F-6-INFO-2 Event-Type Constants — Planning](2026-04-30-planning-f6info2-event-type-constants.md)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - glacier-structured-logging-logback (D-13/SR-8)
 - glacier-fallback-mode-discipline (virtual-thread kill risk)
+- [F-6-INFO-2 Event-Type Constants — Acceptance](2026-04-30-acceptance-f6info2-event-type-constants.md)

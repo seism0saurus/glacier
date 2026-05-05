@@ -109,8 +109,11 @@ Approval message (verbatim): "I approve"
 
 ## References
 
-- `docs/decisions/2026-04-21-planning-ws-fallback.md` — frozen Phase 1 plan (21 decisions + 8 ADRs + C-01/C-02/C-03).
-- `CLAUDE.md` — testing policy, architecture, conventions (binding).
+- [WS Fallback — Planning](2026-04-21-planning-ws-fallback.md) — frozen Phase 1 plan (21 decisions + 8 ADRs + C-01/C-02/C-03).
+- [WS Fallback — Acceptance](2026-04-22-acceptance-ws-fallback.md)
+- CLAUDE.md — testing policy, architecture, conventions (binding).
 - Round 1 and Round 2 agent reports (archived in pipeline transcript).
-- OWASP Top 10 (2025), OWASP API Security Top 10 (2023), TSS-WEB.
-- WCAG 2.2 AA.
+- [OWASP Top 10 (2025)](https://owasp.org/www-project-top-ten/)
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/)
+- [Secodis TSS-WEB](https://www.secodis.com/tss-web/)
+- [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/)

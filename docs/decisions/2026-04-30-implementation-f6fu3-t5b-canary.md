@@ -64,8 +64,9 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Phase 1 planning: `docs/decisions/2026-04-29-planning-f6fu3-t5b-canary.md`
-- F-6 acceptance: `docs/decisions/2026-04-28-acceptance-f6-log-scrubbing.md` (R1 finding + F-6-FU-3 origin)
-- CWE-532: Insertion of Sensitive Information into Log File
-- OWASP A09:2021 Security Logging and Monitoring Failures
+- [F-6-FU-3 T5b Canary — Planning](2026-04-29-planning-f6fu3-t5b-canary.md)
+- [F-6 D-13/SR-8 Raw Logging Cleanup — Acceptance](2026-04-28-acceptance-f6-log-scrubbing.md) (R1 finding + F-6-FU-3 origin)
+- [CWE-532: Insertion of Sensitive Information into Log File](https://cwe.mitre.org/data/definitions/532.html)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - Glacier D-13/SR-8/ADR-F6-01
+- [F-6-FU-3 T5b Canary — Acceptance](2026-04-30-acceptance-f6fu3-t5b-canary.md)

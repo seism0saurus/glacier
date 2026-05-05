@@ -119,8 +119,10 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Prior pipeline: `docs/decisions/2026-04-28-acceptance-pentest-findings.md` (F-6 deferred there)
+- [Pentest Findings — Acceptance](2026-04-28-acceptance-pentest-findings.md) (F-6 deferred there)
 - CLAUDE.md: `glacier-structured-logging-logback` skill (authoritative D-13/SR-8 rules)
-- OWASP A09:2021 Security Logging and Monitoring Failures
-- CWE-117: Improper Output Neutralization for Logs
-- GDPR Recital 30 (session identifiers as personal data)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
+- [GDPR Recital 30](https://www.privacy-regulation.eu/en/recital-30-GDPR.htm) (session identifiers as personal data)
+- [F-6 D-13/SR-8 Raw Logging Cleanup — Implementation](2026-04-28-implementation-f6-log-scrubbing.md)
+- [F-6 D-13/SR-8 Raw Logging Cleanup — Acceptance](2026-04-28-acceptance-f6-log-scrubbing.md)

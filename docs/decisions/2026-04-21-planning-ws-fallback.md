@@ -349,8 +349,11 @@ Appended 2026-04-21 in response to `CLARIFICATION REQUEST` markers from the `dev
 
 ## References
 
-- `/home/ulrich.viefhaus/git/seism0saurus/glacier/CLAUDE.md` — testing policy, architecture, conventions (binding).
-- `/home/ulrich.viefhaus/git/seism0saurus/glacier/docs/websocket-http-fallback-plan.md` — architect's working notes (archive).
-- OWASP Top 10 (2025), OWASP API Security Top 10 (2023), TSS-WEB.
-- WCAG 2.2 AA.
-- Mastodon API `edited_at` field (ISO-8601 UTC).
+- CLAUDE.md — testing policy, architecture, conventions (binding).
+- [WS Fallback — Implementation](2026-04-21-implementation-ws-fallback.md)
+- [WS Fallback — Acceptance](2026-04-22-acceptance-ws-fallback.md)
+- [OWASP Top 10 (2025)](https://owasp.org/www-project-top-ten/)
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/)
+- [Secodis TSS-WEB](https://www.secodis.com/tss-web/)
+- [WCAG 2.2 AA](https://www.w3.org/TR/WCAG22/)
+- [Mastodon Streaming API](https://docs.joinmastodon.org/methods/streaming/) — `edited_at` field (ISO-8601 UTC).

@@ -93,8 +93,10 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- CWE-117: Improper Output Neutralization for Logs
-- OWASP A09:2021 Security Logging and Monitoring Failures
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
+- [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - glacier-structured-logging-logback (D-13/SR-8 rules)
-- TD-1 doc: `docs/decisions/` (log-key stability precedent)
-- TD-2 doc: `docs/decisions/` (Unicode-controls canary precedent)
+- [TD-1 JsonProcessingException Logging Fix — Planning](2026-04-28-planning-td1-json-parse-exception.md) (log-key stability precedent)
+- [TD-2 TechnicalEvent.Failure/Closing/Closed Log Scrubbing — Planning](2026-04-29-planning-td2-technical-failure.md) (Unicode-controls canary precedent)
+- [TD-3 normaliseEditedAt Log Hygiene — Implementation](2026-04-30-implementation-td3-normaliseeditedat.md)
+- [TD-3 normaliseEditedAt Log Hygiene — Acceptance](2026-04-30-acceptance-td3-normaliseeditedat.md)
