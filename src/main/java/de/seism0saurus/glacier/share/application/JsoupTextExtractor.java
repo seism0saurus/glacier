@@ -5,6 +5,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.NodeVisitor;
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -122,7 +123,7 @@ public class JsoupTextExtractor {
                 if (node instanceof org.jsoup.nodes.TextNode textNode) {
                     sb.append(textNode.getWholeText());
                 } else if (node instanceof org.jsoup.nodes.Element element) {
-                    String tag = element.tagName().toLowerCase();
+                    String tag = element.tagName().toLowerCase(Locale.ROOT);
                     if ("br".equals(tag)) {
                         sb.append("\n");
                     }
@@ -132,7 +133,7 @@ public class JsoupTextExtractor {
             @Override
             public void tail(org.jsoup.nodes.Node node, int depth) {
                 if (node instanceof org.jsoup.nodes.Element element) {
-                    String tag = element.tagName().toLowerCase();
+                    String tag = element.tagName().toLowerCase(Locale.ROOT);
                     if ("p".equals(tag) || "div".equals(tag)) {
                         sb.append("\n");
                     }

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -102,6 +103,6 @@ public class ShareHostRouter extends OncePerRequestFilter {
 
     private String extractHost(HttpServletRequest request) {
         String serverName = request.getServerName();
-        return serverName != null ? serverName.toLowerCase() : "";
+        return serverName != null ? serverName.toLowerCase(Locale.ROOT) : "";
     }
 }

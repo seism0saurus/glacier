@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -188,7 +189,7 @@ public class ShareImageProxyService {
                     ? response.getHeaders().getContentType().toString()
                     : "";
             // Strip parameters (e.g. "image/png; charset=...")
-            String baseType = contentType.split(";")[0].trim().toLowerCase();
+            String baseType = contentType.split(";")[0].trim().toLowerCase(Locale.ROOT);
             if (!ALLOWED_CONTENT_TYPES.contains(baseType)) {
                 AUDIT.info("share.proxy.fetch_blocked reason=content_type ct={}", baseType);
                 return Optional.empty();
