@@ -26,7 +26,6 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * The StompCallback class implements the WebSocketCallback interface and is responsible for
@@ -192,7 +191,11 @@ public class StompCallback implements WebSocketCallback {
         if (!tmpHandle.contains("@")) {
             throw new IllegalArgumentException("The mastodon handle does not contain an @ so either the name or the server is missing");
         }
-        return tmpHandle.substring(0, tmpHandle.indexOf('@'));
+        String shortHandle = tmpHandle.substring(0, tmpHandle.indexOf('@'));
+        if (shortHandle.isBlank()) {
+            throw new IllegalArgumentException("The mastodon handle has an empty local part");
+        }
+        return shortHandle;
     }
 
     /**
@@ -240,11 +243,18 @@ public class StompCallback implements WebSocketCallback {
         ObjectMapper mapper = new ObjectMapper();
         try {
             GenericMessageContent genericMessageContent = mapper.readValue(text, GenericMessageContent.class);
-            if (genericMessageContent.getStream().contains("hashtag") && "update".equals(genericMessageContent.getEvent())) {
+            // Null-safe guard: a hostile Mastodon fork may send a null stream field (UT-sec-09)
+            List<String> stream = genericMessageContent.getStream();
+            if (stream == null) {
+                LOGGER.warn("stream.generic.null_stream event={}",
+                        LogScrubber.safeEventName(genericMessageContent.getEvent()));
+                return;
+            }
+            if (stream.contains("hashtag") && "update".equals(genericMessageContent.getEvent())) {
                 sendMessage(mapper, StatusCreatedMessage.class, genericMessageContent);
-            } else if (genericMessageContent.getStream().contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
+            } else if (stream.contains("hashtag") && "status.update".equals(genericMessageContent.getEvent())) {
                 sendMessage(mapper, StatusUpdatedMessage.class, genericMessageContent);
-            } else if (genericMessageContent.getStream().contains("hashtag")
+            } else if (stream.contains("hashtag")
                     && ("delete".equals(genericMessageContent.getEvent())
                     || "status.delete".equals(genericMessageContent.getEvent()))) {
                 procesStatusDeletedEvent(genericMessageContent.getPayload().textValue());
@@ -252,7 +262,7 @@ public class StompCallback implements WebSocketCallback {
                 // D-13/SR-8 / ADR-F6-03: genericMessageContent full dump contains raw URLs,
                 // hashtags, and payload — emit only stream size and allowlisted event name
                 LOGGER.warn("stream.generic.unhandled streams-size={} event={}",
-                        genericMessageContent.getStream().size(),
+                        stream.size(),
                         LogScrubber.safeEventName(genericMessageContent.getEvent()));
             }
         } catch (JsonProcessingException e) {
@@ -316,8 +326,8 @@ public class StompCallback implements WebSocketCallback {
 
         // 3. Frame-ancestor / X-Frame-Options gate
         if (isLoadable(httpHeaders, glacierDomain)) {
-            // 4. Bot opt-in gate
-            if (payload.getMentions().stream().map(Mention::getAcct).anyMatch(shortHandle::equals)) {
+            // 4. Bot opt-in gate (ADR-PT-A04-01 — enforced on all paths via isOptedIn helper)
+            if (isOptedIn(payload, shortHandle)) {
                 // 5. Cache write (D-03)
                 CacheEntry partial;
                 if (StatusCreatedMessage.class.equals(statusMessageClass)) {
@@ -349,120 +359,81 @@ public class StompCallback implements WebSocketCallback {
     }
 
     /**
-     * Determines whether the status has opted in to the glacier wall by mentioning the bot.
+     * Determines whether a Bigbone {@link Status} has opted in to the glacier wall by mentioning
+     * the bot's short handle in its mentions list.
      *
-     * <p>Defence-in-depth (ADR-PT-A04-01): this check is enforced at the Glacier layer on every
-     * event path — typed ({@code processStatusCreatedEvent}, {@code processStatusEditedEvent}) and
-     * generic ({@code sendMessage}) — so that a future Bigbone API change or subscription
+     * <p>Defence-in-depth (ADR-PT-A04-01): this check is enforced at the Glacier layer on all
+     * three event paths — typed ({@code processStatusCreatedEvent}, {@code processStatusEditedEvent})
+     * and generic ({@code sendMessage}) — so that a future Bigbone API change or subscription
      * misconfiguration cannot bypass the opt-in invariant.
      *
-     * <p>Null-safe: if {@code payload.getMentions()} returns {@code null} or is empty, the method
-     * returns {@code false} without throwing an NPE.
+     * <p>Null-safe: if {@code status.getMentions()} returns {@code null}, the method returns
+     * {@code false} without throwing an NPE.
      *
      * <p>Exact-match semantics: the comparison uses {@code String#equals}, not
      * {@code String#startsWith} or {@code String#contains}, so a mention of
      * {@code "glacier@otherinstance.social"} does NOT satisfy a {@code shortHandle} of
-     * {@code "glacier"}. This is intentional — partial matches would allow impersonation.
+     * {@code "glacier"}. This is intentional — partial matches would allow impersonation via
+     * similarly-named accounts on other instances.
      *
-     * <p>D-13/SR-8: when the check fails, only the hashed hashtag length is logged — never the
-     * raw hashtag, raw wallId, or raw mention content.
+     * <p>D-13/SR-8: this method emits no log output at INFO or above. The caller is responsible
+     * for logging the drop decision using hashed identifiers only (never raw hashtag or wallId).
      *
-     * @param mentions     the list of mentions from the status; may be {@code null}
+     * @param status       the Bigbone status whose mentions list is to be checked; must not be null
      * @param shortHandle  the bot's short name (local part only, e.g. {@code "glacier"}) —
      *                     derived from the configured mastodon handle at construction time
-     * @return {@code true} if any mention's {@code acct} exactly equals {@code shortHandle};
-     *         {@code false} otherwise (including null-mentions case)
+     * @return {@code true} if any {@link social.bigbone.api.entity.Status.Mention#getAcct()} on
+     *         the status exactly equals {@code shortHandle}; {@code false} otherwise (including
+     *         the null-mentions case)
      */
-    private boolean isOptedIn(final List<? extends Object> mentions, final String shortHandle) {
+    private static boolean isOptedIn(final Status status, final String shortHandle) {
+        List<Status.Mention> mentions = status.getMentions();
         if (mentions == null) {
-            LOGGER.debug("opt-in.check mentions=null hashtag-len={} — treating as not-opted-in",
-                    LogScrubber.hashtagLen(hashtag));
             return false;
         }
         return mentions.stream()
-                .filter(m -> m != null)
-                .anyMatch(m -> {
-                    if (m instanceof social.bigbone.api.entity.Status.Mention bm) {
-                        return shortHandle.equals(bm.getAcct());
-                    }
-                    if (m instanceof de.seism0saurus.glacier.webservice.messaging.messages.Mention gm) {
-                        return shortHandle.equals(gm.getAcct());
-                    }
-                    return false;
-                });
+                .anyMatch(mention -> shortHandle.equals(mention.getAcct()));
+    }
+
+    /**
+     * Determines whether a {@link GenericMessageContentPayload} has opted in to the glacier wall
+     * by mentioning the bot's short handle in its mentions list.
+     *
+     * <p>This overload covers the GenericMessage path in {@link #sendMessage}, where the payload
+     * is already deserialized into our own DTO type. The semantics are identical to the
+     * {@link #isOptedIn(Status, String)} overload — null-safe and exact-match.
+     *
+     * <p>Exact-match semantics: uses {@code String#equals}, not {@code startsWith/contains},
+     * so {@code "glacier@otherinstance.social"} does NOT satisfy {@code shortHandle = "glacier"}.
+     *
+     * @param payload      the deserialized payload; must not be null
+     * @param shortHandle  the bot's short name (local part only)
+     * @return {@code true} if any {@link Mention#getAcct()} exactly equals {@code shortHandle};
+     *         {@code false} otherwise (including null-mentions case)
+     */
+    private static boolean isOptedIn(final GenericMessageContentPayload payload, final String shortHandle) {
+        List<Mention> mentions = payload.getMentions();
+        if (mentions == null) {
+            return false;
+        }
+        return mentions.stream()
+                .anyMatch(mention -> shortHandle.equals(mention.getAcct()));
     }
 
     /**
      * Checks if a webpage is loadable as iframe based on the provided HttpHeaders and the configured glacierDomain.
      * <p>
-     * If a content security policy with a frame-ancestors directive exists, that value is used, since it overrules
-     * the X-Frame-Options. Otherwise, the X-Frame-Options are used.
-     * If none of these is set, the browser default (allow) is used.
+     * Delegates all header-precedence logic to {@link IframeEmbedPolicy#isEmbeddable}.
      *
      * @param httpHeaders   The HttpHeaders of the webpage.
      * @param glacierDomain The glacier domain.
      * @return true if the webpage is loadable, false otherwise.
      */
     private static boolean isLoadable(final HttpHeaders httpHeaders, final String glacierDomain) {
-        List<String> xFrameOptions = httpHeaders.get("X-Frame-Options");
-        List<String> csp = httpHeaders.get("Content-Security-Policy");
-        boolean xFrameExplicitlyNotAllowed = false;
-        boolean xFrameExplicitlyAllowed = false;
-        boolean xFrameDefaultAllowed = true;
-        boolean frameAncestorsExists = false;
-        boolean frameAncestorsContainsServerOrWildcard = false;
-
-        if (csp != null && !csp.isEmpty()) {
-            // According to http standard, only the first Content-Security Policy is valid. So we take the first element of the Header list.
-            frameAncestorsExists = csp.getFirst().toUpperCase().contains("FRAME-ANCESTORS");
-            if (frameAncestorsExists) {
-                frameAncestorsContainsServerOrWildcard = Stream.of(csp.getFirst().split(";"))
-                        .filter(policy -> policy.toUpperCase().contains("FRAME-ANCESTORS"))
-                        .map(String::trim)
-                        // This is not perfect, but if the site of the toot does not explicitly allow glacier, or all http(s) sites as ancestors, we will most likely not be able to load it.
-                        // So this regex should match either *, http(s):, http(s)://* with or without ports or the glacier domain with or without leading http(s) and with or without ports.
-                        .anyMatch(policy -> policy.toUpperCase().matches(
-                                "FRAME-ANCESTORS (\\S+ )*((HTTPS?:(//)?)|((HTTPS?://)?\\*(:((\\*)|80|443))?)|((HTTPS?://)?"
-                                        + glacierDomain.toUpperCase()
-                                        + "(:((\\*)|80|443))?))( \\S+)*")
-                        );
-            }
-        }
-        if (xFrameOptions != null) {
-            xFrameDefaultAllowed = false;
-
-            xFrameExplicitlyNotAllowed = xFrameOptions.stream()
-                    .anyMatch(option -> option.equalsIgnoreCase("DENY") || option.equalsIgnoreCase("SAMEORIGIN"));
-
-            xFrameExplicitlyAllowed = xFrameOptions.stream()
-                    .anyMatch(option -> option.equalsIgnoreCase("ALLOWALL"));
-        }
-
-        if (frameAncestorsExists) {
-            if (frameAncestorsContainsServerOrWildcard) {
-                LOGGER.info("FRAME-ANCESTORS header exists and this server or a wildcard is allowed");
-            } else {
-                LOGGER.warn("FRAME-ANCESTORS header exists but this server is not allowed");
-            }
-            return frameAncestorsContainsServerOrWildcard;
-        } else if (xFrameDefaultAllowed) {
-            LOGGER.info("FRAME-ANCESTORS header does not exists. X-Frame-Options is default allowed");
-            return true;
-        } else {
-            if (xFrameExplicitlyNotAllowed) {
-                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options explicitly not allowed");
-                return false;
-            } else if (xFrameExplicitlyAllowed) {
-                LOGGER.info("FRAME-ANCESTORS header does not exists. X-Frame-Options explicitly allowed");
-                return true;
-            } else {
-                // D-13/SR-8/CWE-117 (TD-4 / ADR-TD4-01): xFrameOptions is a peer-controlled List<String>
-                // from the remote Mastodon instance HEAD response. Only the bounded summary is logged.
-                LOGGER.warn("FRAME-ANCESTORS header does not exists. X-Frame-Options has unknown or invalid value — {}",
-                        LogScrubber.xfoSummary(xFrameOptions));
-                return false;
-            }
-        }
+        return IframeEmbedPolicy.isEmbeddable(
+                httpHeaders.get("X-Frame-Options"),
+                httpHeaders.get("Content-Security-Policy"),
+                glacierDomain);
     }
 
     /**
@@ -477,14 +448,22 @@ public class StompCallback implements WebSocketCallback {
      *   <li>Relay to share-view topics (ADR-SHARE-04).</li>
      * </ol>
      *
-     * <p>Note: unlike the generic event path ({@link #sendMessage}), this path does not check
-     * the bot opt-in mention — it relies on the Mastodon subscription filter having already
-     * narrowed the stream to the configured hashtag.
+     * <p>Bot opt-in check (ADR-PT-A04-01): this typed path now enforces the same opt-in invariant
+     * as the generic path — the toot must mention the bot's short handle. Delegation to the
+     * Mastodon subscription filter alone is fragile (a future Bigbone change could bypass it);
+     * {@link #isOptedIn(Status, String)} provides a Glacier-layer defence-in-depth guard.
      *
      * @param status The newly created status.
      */
     private void processStatusCreatedEvent(final Status status) {
         logEvent("got a StatusCreated event");
+
+        // 0. Bot opt-in gate (ADR-PT-A04-01 — defence-in-depth: checked on ALL typed paths)
+        if (!isOptedIn(status, shortHandle)) {
+            LOGGER.debug("opt-in.check.failed hashtag-len={} — dropping StatusCreated",
+                    LogScrubber.hashtagLen(hashtag));
+            return;
+        }
 
         // 1. SSRF guard: validate the toot URL before issuing any outbound request or cache write
         Optional<URI> safeUri = safeUrlValidator.validate(status.getUrl());
@@ -533,10 +512,20 @@ public class StompCallback implements WebSocketCallback {
      * <p>Note: no {@code HEAD} request is issued for edited statuses — the toot URL was already
      * validated when the toot was first created.
      *
+     * <p>Bot opt-in check (ADR-PT-A04-01): same defence-in-depth guard as
+     * {@link #processStatusCreatedEvent} — toot must mention the bot's short handle.
+     *
      * @param status The edited status.
      */
     private void processStatusEditedEvent(final Status status) {
         logEvent("got a StatusEdited event");
+
+        // 0. Bot opt-in gate (ADR-PT-A04-01 — defence-in-depth: checked on ALL typed paths)
+        if (!isOptedIn(status, shortHandle)) {
+            LOGGER.debug("opt-in.check.failed hashtag-len={} — dropping StatusEdited",
+                    LogScrubber.hashtagLen(hashtag));
+            return;
+        }
 
         // 1. SSRF guard: validate the toot URL before publishing any message to the cache
         Optional<URI> safeUri = safeUrlValidator.validate(status.getUrl());

@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
+import de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpSession;
 import org.jetbrains.annotations.NotNull;
@@ -69,6 +70,11 @@ public class PrincipalHandler extends DefaultHandshakeHandler {
             HttpSession session = servletRequest.getServletRequest().getSession();
             sessionId = session.getId();
             attributes.put(SESSION_ID, sessionId);
+            // F-1 / OWASP API6:2023 / SR-WS-02 / SR-WS-03: populate REMOTE_ADDR so
+            // SubscribeRateLimitInterceptor can key buckets on (IP + principal).
+            // Without this, per-IP isolation is inert and every bucket key starts with "unknown:".
+            attributes.put(SubscribeRateLimitInterceptor.REMOTE_ADDR,
+                    servletRequest.getServletRequest().getRemoteAddr());
 
             if (servletRequest.getServletRequest().getCookies() != null) {
                 wallIdOptional = Arrays.stream(servletRequest

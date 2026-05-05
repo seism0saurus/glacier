@@ -1,0 +1,262 @@
+[
+  {
+    "_comment": "=== Branch 1: frameAncestorsExists && frameAncestorsContainsServerOrWildcard → true ===",
+    "_branch": "1"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors 'self' https://glacier.example.com"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors explicit domain — exact match"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors *"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors wildcard * — allows all"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https://*"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors https://* — wildcard origin"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https:"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors https: — scheme-only wildcard"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors http:"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors http: — http scheme-only wildcard"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["default-src 'none'; frame-ancestors https://glacier.example.com; script-src 'self'"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors in a multi-directive policy — exact domain"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["FRAME-ANCESTORS HTTPS://GLACIER.EXAMPLE.COM"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors — case-insensitive domain match (all uppercase)"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https://glacier.example.com:443"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors explicit domain with port 443"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https://glacier.example.com:80"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors explicit domain with port 80"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https://glacier.example.com:*"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors explicit domain with wildcard port"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors 'none' https://glacier.example.com"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP frame-ancestors with 'none' and explicit domain — domain wins (regex match)"
+  },
+  {
+    "_comment": "=== Branch 2: frameAncestorsExists && !frameAncestorsContainsServerOrWildcard → false ==="
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors 'none'"],
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "CSP frame-ancestors 'none' — no server or wildcard match"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https://other.example.com"],
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "CSP frame-ancestors wrong domain — glacier not in allowed list"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors 'self'"],
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "CSP frame-ancestors 'self' only — no wildcard or glacier domain"
+  },
+  {
+    "xFrameOptions": ["DENY"],
+    "csp": ["frame-ancestors https://other.example.com"],
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "CSP frame-ancestors wrong domain overrides XFO DENY (CSP takes precedence)"
+  },
+  {
+    "xFrameOptions": ["ALLOWALL"],
+    "csp": ["frame-ancestors https://other.example.com"],
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "CSP frame-ancestors wrong domain overrides XFO ALLOWALL (CSP takes precedence)"
+  },
+  {
+    "_comment": "=== Branch 3: no frameAncestors, no XFO (xFrameDefaultAllowed=true) → true ==="
+  },
+  {
+    "xFrameOptions": null,
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "No headers at all — browser default allows embedding"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": [],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "Empty CSP list, no XFO — default allowed"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["default-src 'self'"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP without frame-ancestors directive — no frame-ancestors control, default allowed"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["script-src 'nonce-abc123'; style-src 'self'"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP multiple non-frame-ancestors directives — default allowed"
+  },
+  {
+    "_comment": "=== Branch 4: no frameAncestors, XFO present, xFrameExplicitlyNotAllowed → false ==="
+  },
+  {
+    "xFrameOptions": ["DENY"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO DENY — embedding forbidden"
+  },
+  {
+    "xFrameOptions": ["SAMEORIGIN"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO SAMEORIGIN — embedding forbidden from cross-origin"
+  },
+  {
+    "xFrameOptions": ["deny"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO deny (lowercase) — case-insensitive match"
+  },
+  {
+    "xFrameOptions": ["sameorigin"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO sameorigin (lowercase) — case-insensitive match"
+  },
+  {
+    "xFrameOptions": ["Deny"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO Deny (mixed case) — case-insensitive match"
+  },
+  {
+    "_comment": "=== Branch 5: no frameAncestors, XFO present, xFrameExplicitlyAllowed → true ==="
+  },
+  {
+    "xFrameOptions": ["ALLOWALL"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "XFO ALLOWALL — embedding explicitly permitted"
+  },
+  {
+    "xFrameOptions": ["allowall"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "XFO allowall (lowercase) — case-insensitive match"
+  },
+  {
+    "xFrameOptions": ["AllowAll"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "XFO AllowAll (mixed case) — case-insensitive match"
+  },
+  {
+    "_comment": "=== Branch 6 (else): no frameAncestors, XFO present but unknown value → false ==="
+  },
+  {
+    "xFrameOptions": ["UNKNOWN-VALUE"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO unknown value — falls through to unknown/invalid branch"
+  },
+  {
+    "xFrameOptions": [""],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO empty string — not DENY, SAMEORIGIN, or ALLOWALL → unknown value branch"
+  },
+  {
+    "xFrameOptions": ["ALLOW-FROM https://other.example.com"],
+    "csp": null,
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "XFO ALLOW-FROM (deprecated directive) — unknown value in Glacier's model"
+  },
+  {
+    "_comment": "=== Additional edge cases ==="
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors https://glacier.example.com", "frame-ancestors 'none'"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "Multiple CSP headers — only first is used per HTTP standard; first allows glacier"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["frame-ancestors 'none'", "frame-ancestors https://glacier.example.com"],
+    "domain": "glacier.example.com",
+    "expected": false,
+    "_description": "Multiple CSP headers — only first is used per HTTP standard; first denies"
+  },
+  {
+    "xFrameOptions": null,
+    "csp": ["Frame-Ancestors https://glacier.example.com"],
+    "domain": "glacier.example.com",
+    "expected": true,
+    "_description": "CSP directive mixed case Frame-Ancestors — case-insensitive detection"
+  }
+]

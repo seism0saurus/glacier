@@ -54,9 +54,13 @@ public final class LogScrubber {
      * (CWE-117 log injection). This allowlist is the CWE-117 guard: only values in this set
      * pass through verbatim; everything else is rendered as {@code unknown(len=N)}.
      *
+     * <p>Package-private for test access: {@code LogScrubberFuzzTest} (same package) references
+     * this constant directly to avoid a shadow copy that could silently drift out of sync.
+     * Do not promote to {@code public} — only same-package test code needs direct access.
+     *
      * @see #safeEventName(String)
      */
-    private static final Set<String> KNOWN_STREAM_EVENTS = Set.of(
+    static final Set<String> KNOWN_STREAM_EVENTS = Set.of(
             "update", "status.update", "delete", "status.delete",
             "filters_changed", "announcement", "announcement.reaction",
             "announcement.delete", "encrypted_message", "notification", "conversation",
@@ -85,7 +89,7 @@ public final class LogScrubber {
         if (value.isBlank()) return "blank";
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(bytes).substring(0, 8);
         } catch (NoSuchAlgorithmException e) {
             // SHA-256 is guaranteed in every JVM (NIST FIPS 180-4)
@@ -112,6 +116,11 @@ public final class LogScrubber {
      *
      * <p>This is a log-output helper only — the full IP is retained as the rate-limit key.
      * Satisfies D-13 / SR-8: client IP must not appear verbatim in JSON log output.
+     *
+     * <p><b>Log-field convention</b>: callers log the return value under the key {@code ip-hash=}
+     * (e.g., {@code AUDIT.info("ws.handshake.rate_limited ip-hash={}", maskIp(ip))}). The key
+     * name {@code ip-hash} is a project convention adopted for SIEM/dashboard compatibility; the
+     * value is a <em>partial mask</em>, not a hash — the last octet is replaced with {@code .xxx}.
      *
      * @param ip the IP address string; may be {@code null}
      * @return a partially-masked string safe for log output

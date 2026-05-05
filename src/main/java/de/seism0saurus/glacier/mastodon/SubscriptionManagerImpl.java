@@ -144,9 +144,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
         Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
         if (previousSubscriptions.get(hashtag) != null) {
-            // D-13/SR-8: log only hashed principal — never the raw wallId UUID
-            LOGGER.info("A subscription for principal-hash={} with the hashtag={} already exists",
-                    LogScrubber.hash8(principal), hashtag);
+            // D-13/SR-8: log only hashed principal and hashtag length — never raw values
+            LOGGER.info("A subscription for principal-hash={} with hashtag-len={} already exists",
+                    LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag));
             return;
         }
 
@@ -161,14 +161,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
                     this, messageCache, shareViewStompRelay, restTemplate,
                     safeUrlValidator, principal, hashtag, handle, glacierDomain);
             try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
-                // D-13/SR-8: log only hashed principal — never the raw wallId UUID
-                LOGGER.info("Asynchronous subscription for principal-hash={} with the hashtag={} started",
-                        LogScrubber.hash8(principal), hashtag);
+                // D-13/SR-8: log only hashed principal and hashtag length — never raw values
+                LOGGER.info("Asynchronous subscription for principal-hash={} with hashtag-len={} started",
+                        LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag));
                 sleepForever(subscription);
             } catch (NullPointerException | IOException e) {
-                // D-13/SR-8: log only hashed principal — never the raw wallId UUID
-                LOGGER.error("Asynchronous subscription for principal-hash={} with the hashtag={} had an exception",
-                        LogScrubber.hash8(principal), hashtag, e);
+                // D-13/SR-8: log only hashed principal and hashtag length — never raw values
+                LOGGER.error("Asynchronous subscription for principal-hash={} with hashtag-len={} had an exception",
+                        LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag), e);
                 throw new RuntimeException(e);
             }
         });

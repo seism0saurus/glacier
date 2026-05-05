@@ -3,6 +3,8 @@ package de.seism0saurus.glacier.webservice.messaging;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor;
+import de.seism0saurus.glacier.webservice.security.HandshakeRateLimitInterceptor;
+import de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +14,7 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 
 // ADR-SHARE-04: dedicated /share-view-ws endpoint for viewer principals
 
@@ -43,15 +46,35 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     private final ShareLinkViewerCounter viewerCounter;
     private final ShareLinkCapPolicy capPolicy;
 
+    // SR-WS-05 (ADR-PT-G5-01): explicit WebSocket transport limits (OWASP API4)
+    private final int messageSizeBytes;
+    private final int sendBufferBytes;
+    private final int sendTimeMs;
+
+    // SR-WS-01 (ADR-PT-G5-01): handshake rate limiter — injected via @Autowired
+    // so that the bean is available for both /websocket and /share-view-ws registrations.
+    @Autowired
+    private HandshakeRateLimitInterceptor handshakeRateLimitInterceptor;
+
+    // SR-WS-02 (ADR-PT-G7-01): subscribe rate limiter for clientInboundChannel
+    @Autowired
+    private SubscribeRateLimitInterceptor subscribeRateLimitInterceptor;
+
     public WebSocketConfiguration(
             @Value(value = "${glacier.domain}") String glacierDomain,
             @Value(value = "${glacier.cookie.secure:true}") boolean secureCookies,
             final ShareLinkViewerCounter viewerCounter,
-            final ShareLinkCapPolicy capPolicy) {
+            final ShareLinkCapPolicy capPolicy,
+            @Value(value = "${glacier.security.ws.message-size-bytes:65536}") int messageSizeBytes,
+            @Value(value = "${glacier.security.ws.send-buffer-bytes:524288}") int sendBufferBytes,
+            @Value(value = "${glacier.security.ws.send-time-ms:20000}") int sendTimeMs) {
         this.glacierDomain = glacierDomain;
         this.secureCookies = secureCookies;
         this.viewerCounter = viewerCounter;
         this.capPolicy = capPolicy;
+        this.messageSizeBytes = messageSizeBytes;
+        this.sendBufferBytes = sendBufferBytes;
+        this.sendTimeMs = sendTimeMs;
     }
 
     /**
@@ -68,11 +91,15 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     /**
      * Register channel interceptors on the inbound channel.
      *
-     * <p>Two interceptors are registered in order:
+     * <p>Three interceptors are registered in order:
      * <ol>
+     *   <li>{@link de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor} —
+     *       rate-limits STOMP SUBSCRIBE frames per (IP + principal) to prevent subscription
+     *       enumeration attacks (SR-WS-02, OWASP API6, ADR-PT-G7-01). Runs first so that
+     *       over-limit frames are silently dropped before any authorization check.</li>
      *   <li>{@link WallTopicAuthInterceptor} — enforces per-{@link WallPrincipal} topic
      *       isolation for {@code /topic/hashtags/...} (OWASP API1 BOLA, ADR-TEST-01).
-     *       Runs first so that wall-owner SUBSCRIBE frames are validated before the
+     *       Runs second so that wall-owner SUBSCRIBE frames are validated before the
      *       share-viewer interceptor evaluates them.</li>
      *   <li>{@link de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor} —
      *       enforces that viewer principals can only subscribe to
@@ -84,10 +111,35 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     public void configureClientInboundChannel(ChannelRegistration registration) {
         WallTopicAuthInterceptor wallInterceptor = new WallTopicAuthInterceptor();
         if (shareViewTopicAuthInterceptor != null) {
-            registration.interceptors(wallInterceptor, shareViewTopicAuthInterceptor);
+            registration.interceptors(subscribeRateLimitInterceptor, wallInterceptor, shareViewTopicAuthInterceptor);
         } else {
-            registration.interceptors(wallInterceptor);
+            registration.interceptors(subscribeRateLimitInterceptor, wallInterceptor);
         }
+    }
+
+    /**
+     * Configures WebSocket transport limits (SR-WS-05, ADR-PT-G5-01).
+     *
+     * <p>Explicitly sets three axes of resource consumption control:
+     * <ol>
+     *   <li><b>Message size limit</b> ({@code glacier.security.ws.message-size-bytes}, default 64 KB) —
+     *       prevents oversized STOMP frame attacks (OWASP API4, CWE-400).</li>
+     *   <li><b>Send buffer size limit</b> ({@code glacier.security.ws.send-buffer-bytes}, default 512 KB) —
+     *       caps the per-session send buffer to prevent slow-client memory exhaustion.</li>
+     *   <li><b>Send time limit</b> ({@code glacier.security.ws.send-time-ms}, default 20 s) —
+     *       disconnects sessions that cannot consume messages within the time limit.</li>
+     * </ol>
+     *
+     * <p>Without these explicit values, Spring defaults apply only partially.
+     * Making them explicit ensures operators can tune them via environment variables
+     * and that security auditors can verify the configuration (SR-WS-06).
+     */
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        // OWASP API4 / CWE-400: explicit frame-size and buffer caps
+        registration.setMessageSizeLimit(messageSizeBytes);
+        registration.setSendBufferSizeLimit(sendBufferBytes);
+        registration.setSendTimeLimit(sendTimeMs);
     }
 
     /**
@@ -122,7 +174,9 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
 
         registry.addEndpoint("/websocket")
                 .setAllowedOrigins(allowedOrigins)
-                .setHandshakeHandler(new PrincipalHandler());
+                .setHandshakeHandler(new PrincipalHandler())
+                // SR-WS-01: per-IP handshake rate limit (OWASP API4, ADR-PT-G5-01)
+                .addInterceptors(handshakeRateLimitInterceptor);
 
         // ADR-SHARE-04: Dedicated endpoint for readonly share viewers.
         // Uses ShareViewPrincipalHandler which reads __Host-shareViewerId exclusively,
@@ -134,6 +188,11 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
                 : new String[]{"http://localhost:4200", "http://localhost:8080", "https://" + glacierDomain, "https://share." + glacierDomain};
         registry.addEndpoint("/share-view-ws")
                 .setAllowedOrigins(shareViewOrigins)
-                .setHandshakeHandler(shareViewPrincipalHandler());
+                .setHandshakeHandler(shareViewPrincipalHandler())
+                // SR-WS-01: per-IP handshake rate limit — same interceptor instance as /websocket (OWASP API4).
+                // Design choice: budgets are combined across both endpoints. A high-traffic source IP
+                // opening many /websocket connections consumes from the same per-IP bucket as /share-view-ws
+                // viewers at that IP. Acceptable for single-instance homelab deployment (AR-WS-01).
+                .addInterceptors(handshakeRateLimitInterceptor);
     }
 }

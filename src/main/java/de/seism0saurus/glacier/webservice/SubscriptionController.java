@@ -117,9 +117,11 @@ public class SubscriptionController {
     @SendToUser("/topic/subscriptions")
     public SubscriptionAckMessage subscribe(SimpMessageHeaderAccessor headerAccessor, SubscriptionMessage event) {
         if (headerAccessor.getUser() == null) {
-            // D-13/SR-8: log sessionId only — not the raw headerAccessor (may contain cookies)
-            LOGGER.error("Someone tried to subscribe without a principal. This is not supported. sessionId={}",
-                    headerAccessor.getSessionId());
+            // D-13/SR-8: hash sessionId — raw STOMP session IDs are opaque but linkable identifiers
+            LOGGER.error("Someone tried to subscribe without a principal. This is not supported. sessionId-hash={}",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
+            AUDIT.info("stomp.subscribe.rejected reason=null_principal sessionId-hash={}",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
             return SubscriptionAckMessage.builder()
                     .hashtag(event.getHashtag())
                     .principal(null)
@@ -196,10 +198,12 @@ public class SubscriptionController {
     @SendToUser("/topic/terminations")
     public TerminationAckMessage unsubscribe(SimpMessageHeaderAccessor headerAccessor, TerminationMessage event) {
         if (headerAccessor.getUser() == null) {
-            // D-13/SR-8: log sessionId only — not the raw headerAccessor
-            LOGGER.error("Someone tried to unsubscribe without a principal. This is not supported. sessionId={}",
-                    headerAccessor.getSessionId());
-            return getMessage(null, event.getHashtag(), false, "Could not unsubscibe due to missing principal. Sending response to user...");
+            // D-13/SR-8: hash sessionId — raw STOMP session IDs are opaque but linkable identifiers
+            LOGGER.error("Someone tried to unsubscribe without a principal. This is not supported. sessionId-hash={}",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
+            AUDIT.info("stomp.terminate.rejected reason=null_principal sessionId-hash={}",
+                    LogScrubber.hash8(headerAccessor.getSessionId()));
+            return getMessage(null, event.getHashtag(), false, "Could not unsubscribe due to missing principal. Sending response to user...");
         }
         String principal = headerAccessor.getUser().getName();
         // D-13/SR-8: log only hashed principal — never the raw wallId UUID

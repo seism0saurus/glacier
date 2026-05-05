@@ -3,6 +3,7 @@ package de.seism0saurus.glacier.webservice.messaging;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpSession;
 import org.jetbrains.annotations.NotNull;
@@ -116,6 +117,11 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
         if (request instanceof ServletServerHttpRequest servletRequest) {
             HttpSession session = servletRequest.getServletRequest().getSession();
             attributes.put(PrincipalHandler.SESSION_ID, session.getId());
+            // F-1 / OWASP API6:2023 / SR-WS-02 / SR-WS-03: populate REMOTE_ADDR so
+            // SubscribeRateLimitInterceptor can key buckets on (IP + principal).
+            // Without this, per-IP isolation is inert and every bucket key starts with "unknown:".
+            attributes.put(SubscribeRateLimitInterceptor.REMOTE_ADDR,
+                    servletRequest.getServletRequest().getRemoteAddr());
 
             Cookie[] cookies = servletRequest.getServletRequest().getCookies();
             if (cookies != null) {
