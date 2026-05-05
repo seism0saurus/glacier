@@ -60,6 +60,16 @@ public final class IframeEmbedPolicy {
     private static final Logger LOGGER = LoggerFactory.getLogger(IframeEmbedPolicy.class);
 
     /**
+     * AUDIT logger for security-relevant events.
+     *
+     * <p>SR-PQ-10R2 / glacier-structured-logging-logback skill: security-header-bypass
+     * attempts (domain-mismatch blocks) must be routed to the AUDIT channel so that
+     * SOC/SIEM log aggregators filtering on logger name {@code "AUDIT"} capture all
+     * embed-rejection events. The class LOGGER retains its own WARN for operator alerting.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
      * Private constructor — this class is a non-instantiable pure-function holder.
      * All interaction is via {@link #isEmbeddable}.
      */
@@ -148,7 +158,9 @@ public final class IframeEmbedPolicy {
             } else {
                 // SR-PQ-10R2 / CWE-117 / D-13/SR-8: static scrubbed message for SOC/SIEM tooling.
                 // Do NOT log the raw domain or any peer-controlled header value here.
+                // Class LOGGER retains WARN for operator alerting; AUDIT channel required for SIEM filtering.
                 LOGGER.warn("iframe.embed.rejected reason=domain_mismatch");
+                AUDIT.info("iframe.embed.rejected reason=domain_mismatch");
             }
             return frameAncestorsContainsServerOrWildcard;
         } else if (xFrameDefaultAllowed) {

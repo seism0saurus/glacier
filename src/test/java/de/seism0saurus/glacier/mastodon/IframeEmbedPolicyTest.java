@@ -417,13 +417,15 @@ class IframeEmbedPolicyTest {
     @Test
     @DisplayName("isEmbeddable emits AUDIT security event (reason=domain_mismatch) when domain is blocked (SR-PQ-10R2)")
     void isEmbeddable_emitsAuditEventOnBlockedHost() {
-        // Capture log events from the production logger used in IframeEmbedPolicy
-        ch.qos.logback.classic.Logger productionLogger = (ch.qos.logback.classic.Logger)
-                LoggerFactory.getLogger(IframeEmbedPolicy.class);
+        // SR-PQ-10R2: Capture from the AUDIT logger channel (not the class logger) so that
+        // the test enforces correct routing — SOC/SIEM aggregators filter on logger name "AUDIT".
+        // AUDIT events are emitted at INFO level per glacier-structured-logging-logback skill.
+        ch.qos.logback.classic.Logger auditLogger = (ch.qos.logback.classic.Logger)
+                LoggerFactory.getLogger("AUDIT");
         ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> listAppender =
                 new ch.qos.logback.core.read.ListAppender<>();
         listAppender.start();
-        productionLogger.addAppender(listAppender);
+        auditLogger.addAppender(listAppender);
 
         try {
             List<String> csp = List.of("frame-ancestors https://trusted.example.com");
@@ -431,21 +433,21 @@ class IframeEmbedPolicyTest {
 
             assertThat(result).isFalse();
 
-            // Verify security event was emitted
-            List<ch.qos.logback.classic.spi.ILoggingEvent> warnEvents = listAppender.list.stream()
-                    .filter(e -> e.getLevel() == Level.WARN)
+            // Verify security event was emitted on the AUDIT channel at INFO level
+            List<ch.qos.logback.classic.spi.ILoggingEvent> auditEvents = listAppender.list.stream()
+                    .filter(e -> e.getLevel() == Level.INFO)
                     .collect(Collectors.toList());
-            assertThat(warnEvents).isNotEmpty();
+            assertThat(auditEvents).isNotEmpty();
 
             // Security event must contain reason= key for SOC/SIEM tooling
-            String warnMessage = warnEvents.get(0).getFormattedMessage();
-            assertThat(warnMessage).contains("reason=domain_mismatch");
+            String auditMessage = auditEvents.get(0).getFormattedMessage();
+            assertThat(auditMessage).contains("reason=domain_mismatch");
 
             // Raw domain must NOT appear in log (CWE-117 — log injection prevention)
-            assertThat(warnMessage).doesNotContain("glacier.events");
-            assertThat(warnMessage).doesNotContain("trusted.example.com");
+            assertThat(auditMessage).doesNotContain("glacier.events");
+            assertThat(auditMessage).doesNotContain("trusted.example.com");
         } finally {
-            productionLogger.detachAppender(listAppender);
+            auditLogger.detachAppender(listAppender);
         }
     }
 
