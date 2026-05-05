@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -94,6 +95,15 @@ public final class IframeEmbedPolicy {
             @Nullable final List<String> csp,
             final String domain) {
 
+        // SR-PQ-12 / C5 — fail-closed guard: blank domain means we cannot determine a safe
+        // allowlist entry. Pattern.quote("") would produce a trivially-matching literal that
+        // accepts any frame-ancestors host, silently opening an iframe-embedding bypass.
+        // Return false immediately so misconfigured deployments are denied, not opened.
+        if (domain == null || domain.isBlank()) {
+            LOGGER.warn("Rejecting embed check: configured domain is blank — failing closed");
+            return false;
+        }
+
         boolean xFrameExplicitlyNotAllowed = false;
         boolean xFrameExplicitlyAllowed = false;
         boolean xFrameDefaultAllowed = true;
@@ -111,9 +121,13 @@ public final class IframeEmbedPolicy {
                         .map(String::trim)
                         // This is not perfect, but if the site of the toot does not explicitly allow glacier, or all http(s) sites as ancestors, we will most likely not be able to load it.
                         // So this regex should match either *, http(s):, http(s)://* with or without ports or the glacier domain with or without leading http(s) and with or without ports.
+                        // SR-PQ-07 / CWE-625 / ADR-PQ-06: Pattern.quote() escapes the operator-controlled
+                        // domain so that dots and other metacharacters are matched literally, not as
+                        // regex wildcards. Without this, a lookalike host (e.g. "glacierXevents") would
+                        // bypass the check because '.' in "GLACIER.EVENTS" matches any character.
                         .anyMatch(policy -> policy.toUpperCase(Locale.ROOT).matches(
                                 "FRAME-ANCESTORS (\\S+ )*((HTTPS?:(//)?)|((HTTPS?://)?\\*(:((\\*)|80|443))?)|((HTTPS?://)?"
-                                        + domain.toUpperCase(Locale.ROOT)
+                                        + Pattern.quote(domain.toUpperCase(Locale.ROOT))
                                         + "(:((\\*)|80|443))?))( \\S+)*")
                         );
             }
@@ -132,7 +146,9 @@ public final class IframeEmbedPolicy {
             if (frameAncestorsContainsServerOrWildcard) {
                 LOGGER.info("FRAME-ANCESTORS header exists and this server or a wildcard is allowed");
             } else {
-                LOGGER.warn("FRAME-ANCESTORS header exists but this server is not allowed");
+                // SR-PQ-10R2 / CWE-117 / D-13/SR-8: static scrubbed message for SOC/SIEM tooling.
+                // Do NOT log the raw domain or any peer-controlled header value here.
+                LOGGER.warn("iframe.embed.rejected reason=domain_mismatch");
             }
             return frameAncestorsContainsServerOrWildcard;
         } else if (xFrameDefaultAllowed) {
