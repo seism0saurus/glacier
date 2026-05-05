@@ -17,7 +17,11 @@ name: "Security Scan"
 
 on:
   push:
-    branches: ["*.*.*"]
+    branches: ["*.*.*", main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'   # every Monday 06:00 UTC — post-commit CVE detection (SR-NA-03)
   workflow_dispatch:
     inputs:
       run_full_scan:
@@ -257,3 +261,22 @@ jobs:
             -f docker-compose.yaml \
             -f docker-compose.override.security.yaml \
             down -v --remove-orphans
+
+  # frontend-audit — npm audit gate for the Angular SPA bundle (SR-FUZZ-07, SR-NA-01..09)
+  frontend-audit:
+    name: Frontend dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Audit frontend dependencies (high+ threshold)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+        # SR-NA-01/SR-NA-04: gates on high/critical advisories; no continue-on-error
