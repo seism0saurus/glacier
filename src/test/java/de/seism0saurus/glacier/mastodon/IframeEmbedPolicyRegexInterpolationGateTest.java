@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,15 +44,31 @@ class IframeEmbedPolicyRegexInterpolationGateTest {
         Path sourceFile = Paths.get("src/main/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicy.java");
         String source = Files.readString(sourceFile);
 
-        // Must contain Pattern.quote( in the production source
+        // Quick sanity check: Pattern.quote( must appear at least once in the source.
         assertThat(source)
                 .as("IframeEmbedPolicy must use Pattern.quote() to escape domain before regex composition (SR-PQ-07/CWE-625)")
                 .contains("Pattern.quote(");
 
-        // The unsafe call shape 'domain.toUpperCase(Locale.ROOT))' must NOT appear without Pattern.quote
-        // (i.e., the closing paren of toUpperCase must be followed by a closing paren of Pattern.quote)
-        assertThat(source)
-                .as("Raw domain.toUpperCase(Locale.ROOT) must not be concatenated into regex without Pattern.quote()")
-                .doesNotContain("+ domain.toUpperCase(Locale.ROOT)\n");
+        // Robust count-match assertion: every occurrence of domain.toUpperCase(Locale.ROOT)
+        // must be immediately wrapped by Pattern.quote(). Count-based and CRLF-insensitive —
+        // survives whitespace/line-ending changes and inline reformatting (unlike a fragile
+        // doesNotContain on a line-terminator-sensitive substring).
+        //
+        // If an unsafe raw interpolation is introduced, allDomainUpper > wrappedDomainUpper
+        // and the assertion fails regardless of how the line is formatted.
+        Matcher allDomainUpper = Pattern
+                .compile("domain\\.toUpperCase\\(Locale\\.ROOT\\)")
+                .matcher(source);
+        Matcher wrappedDomainUpper = Pattern
+                .compile("Pattern\\.quote\\(domain\\.toUpperCase\\(Locale\\.ROOT\\)\\)")
+                .matcher(source);
+
+        long total = allDomainUpper.results().count();
+        long wrapped = wrappedDomainUpper.results().count();
+
+        assertThat(wrapped)
+                .as("Every domain.toUpperCase(Locale.ROOT) in IframeEmbedPolicy must be wrapped in "
+                        + "Pattern.quote() — found %d unwrapped occurrence(s)", total - wrapped)
+                .isEqualTo(total);
     }
 }
