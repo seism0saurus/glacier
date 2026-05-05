@@ -278,5 +278,7 @@ jobs:
         run: npm ci
       - name: Audit frontend dependencies (high+ threshold)
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high --omit=dev
         # SR-NA-01/SR-NA-04: gates on high/critical advisories; no continue-on-error
+        # --omit=dev: scopes audit to production runtime deps only; dev-toolchain advisories
+        # (e.g. @angular/cli, webpack loaders) are never included in the deployed SPA bundle

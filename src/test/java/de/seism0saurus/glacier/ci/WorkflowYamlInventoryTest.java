@@ -158,11 +158,17 @@ class WorkflowYamlInventoryTest {
 
     /**
      * SR-NA-01, SR-NA-04: Asserts that the npm audit step specifies
-     * {@code --audit-level=high} or {@code --audit-level=critical}, and that
+     * {@code --audit-level=high} or {@code --audit-level=critical}, that {@code --omit=dev}
+     * is present to restrict the scan to production runtime dependencies only, and that
      * {@code continue-on-error} is absent or explicitly {@code false} on the audit step.
      *
      * <p>A missing or {@code true} {@code continue-on-error} would silently swallow audit
      * failures and defeat the purpose of the gate (SR-NA-04).
+     *
+     * <p>{@code --omit=dev} is required because dev-toolchain packages (e.g. {@code @angular/cli},
+     * webpack loaders) are never included in the deployed Angular SPA bundle and routinely carry
+     * advisories that are not exploitable in production. Without this flag the gate generates
+     * noise and fails on build-time-only vulnerabilities, defeating the signal/noise ratio.
      */
     @Test
     void auditLevelIsHighOrCritical() throws IOException {
@@ -200,6 +206,12 @@ class WorkflowYamlInventoryTest {
                         s -> assertThat(s).contains("--audit-level=high"),
                         s -> assertThat(s).contains("--audit-level=critical")
                 );
+
+        assertThat(runScript)
+                .as("npm audit step must include --omit=dev to restrict the scan to production runtime " +
+                    "dependencies only — dev-toolchain advisories (e.g. @angular/cli, webpack loaders) are " +
+                    "never deployed in the SPA bundle and must not block the gate (SR-NA-01)")
+                .contains("--omit=dev");
 
         // SR-NA-04: continue-on-error must be absent or false
         Object continueOnError = auditStep.get("continue-on-error");
