@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -371,13 +372,12 @@ class OwaspMatrixCookieAttributesLockstepTest {
          * {@code __Host-shareCsrf} cookie. Verify the actual {@code Set-Cookie} header
          * emitted by {@code GET /rest/share-csrf} matches.
          *
-         * <p>Parses matrix rows containing {@code EP-09} or {@code share-csrf} for the first
-         * {@code SameSite=(Lax|Strict|None)} token and asserts the real header carries it.
+         * <p>ADR-4: filter by cookie name first ({@code __Host-shareCsrf=}), assert
+         * exactly one header (I-CSRF-1), then check the SameSite token via substring
+         * containment. {@code anyMatch} over an unfiltered Set-Cookie stream is banned.
          *
-         * <p>{@link CsrfTokenCookieFactory#issueCsrfToken} writes the cookie twice: once via
-         * {@code response.addCookie()} (without SameSite) and once via
-         * {@code response.addHeader("Set-Cookie", ...)} with the SameSite token.
-         * This test filters for the header that carries {@code SameSite=}.
+         * <p>ADR-2: assertions use substring containment only — {@code ResponseCookie}
+         * co-emits {@code Expires=} alongside {@code Max-Age}; never assert on that value.
          */
         @Test
         void csrfCookie_actualSameSite_matchesMatrixClaim() throws Exception {
@@ -388,25 +388,30 @@ class OwaspMatrixCookieAttributesLockstepTest {
                     .andExpect(status().isOk())
                     .andReturn();
 
-            // CsrfTokenCookieFactory emits TWO Set-Cookie values; pick the one with SameSite=
-            String setCookieWithSameSite = extractCsrfSetCookieWithSameSite(result);
-            assertThat(setCookieWithSameSite)
-                    .as("GET /rest/share-csrf must emit a Set-Cookie header for the CSRF cookie "
-                            + "that contains a SameSite= attribute (CsrfTokenCookieFactory adds it "
-                            + "via response.addHeader)")
-                    .isNotNull();
+            // ADR-4: filter by name prefix, then assert single emission (I-CSRF-1)
+            List<String> csrfHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+                    .stream()
+                    .filter(h -> h.startsWith("__Host-shareCsrf="))
+                    .collect(Collectors.toList());
+
+            assertThat(csrfHeaders)
+                    .as("I-CSRF-1 (SR-CSRF-13): GET /rest/share-csrf must emit exactly one "
+                            + "Set-Cookie header for '__Host-shareCsrf' (after Lane B fix)")
+                    .hasSize(1);
+
+            String setCookieHeader = csrfHeaders.get(0);
 
             // Parse matrix claim — fails explicitly if EP-09 / share-csrf row lacks SameSite token
             String matrixSameSite = parseMatrixCsrfSameSite();
 
-            assertThat(setCookieWithSameSite)
+            assertThat(setCookieHeader)
                     .as("UT-sec-LOCK-02a (C5, ASVS V7.1.1, WSTG-SESS-02, SR-SHARE-07): "
                             + "actual Set-Cookie SameSite token for __Host-shareCsrf must match "
                             + "the claim in OWASP_COVERAGE_MATRIX.md EP-09 rows. "
                             + "Matrix claims: [%s]. "
                             + "If this fails RED, update the matrix to match the code (ADR-3). "
                             + "Actual Set-Cookie: [%s]",
-                            matrixSameSite, setCookieWithSameSite)
+                            matrixSameSite, setCookieHeader)
                     .containsIgnoringCase(matrixSameSite);
         }
 
@@ -418,8 +423,8 @@ class OwaspMatrixCookieAttributesLockstepTest {
          * and echo it in a request header. Setting {@code HttpOnly=true} would break the
          * frontend and is explicitly documented as {@code NOT HttpOnly} in the matrix EP-09 rows.
          *
-         * <p>This test catches a future regression where {@code HttpOnly} is accidentally added
-         * to the CSRF cookie (e.g., by a library update or misconfiguration).
+         * <p>ADR-4: filter by cookie name first, then assert the attribute on the single
+         * resulting header — no {@code anyMatch} over an unfiltered stream (banned).
          */
         @Test
         void csrfCookie_notHttpOnly_perDoubleSubmitPattern() throws Exception {
@@ -430,32 +435,32 @@ class OwaspMatrixCookieAttributesLockstepTest {
                     .andExpect(status().isOk())
                     .andReturn();
 
-            List<String> allSetCookieHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE);
-            assertThat(allSetCookieHeaders)
-                    .as("GET /rest/share-csrf must emit at least one Set-Cookie header")
-                    .isNotEmpty();
+            // ADR-4: filter by name prefix, assert single emission (I-CSRF-1)
+            List<String> csrfHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+                    .stream()
+                    .filter(h -> h.startsWith("__Host-shareCsrf="))
+                    .collect(Collectors.toList());
 
-            // None of the Set-Cookie headers for the CSRF cookie must have HttpOnly.
-            // CsrfTokenCookieFactory sets cookie.setHttpOnly(false) explicitly.
-            // Filter to headers that contain the CSRF cookie name fragment to avoid
-            // false-negatives from unrelated cookies.
-            boolean anyHttpOnly = allSetCookieHeaders.stream()
-                    .filter(h -> h.contains("shareCsrf") || h.contains("CSRF") || h.contains("csrf"))
-                    .anyMatch(h -> h.toLowerCase().contains("httponly"));
+            assertThat(csrfHeaders)
+                    .as("I-CSRF-1 (SR-CSRF-13): exactly one Set-Cookie header for '__Host-shareCsrf'")
+                    .hasSize(1);
 
-            assertThat(anyHttpOnly)
+            String setCookieHeader = csrfHeaders.get(0);
+
+            // I-CSRF-3: the single header must NOT contain HttpOnly
+            assertThat(setCookieHeader.toLowerCase())
                     .as("UT-sec-LOCK-02b (SR-SHARE-05, SR-SHARE-07, OWASP CSRF Prevention Cheat Sheet): "
                             + "CSRF cookie must NOT carry HttpOnly flag — JS must be able to read the token "
-                            + "for the double-submit CSRF pattern (CsrfTokenCookieFactory sets HttpOnly=false). "
+                            + "for the double-submit CSRF pattern. "
                             + "If this fails, a regression has introduced HttpOnly on the CSRF cookie, "
                             + "which would break the share-view frontend. "
-                            + "Actual Set-Cookie headers: %s",
-                            allSetCookieHeaders)
-                    .isFalse();
+                            + "Actual Set-Cookie header: [%s]",
+                            setCookieHeader)
+                    .doesNotContain("httponly");
         }
 
         // -----------------------------------------------------------------------
-        // Helpers
+        // Helper: matrix parsing
         // -----------------------------------------------------------------------
 
         /**
@@ -487,22 +492,6 @@ class OwaspMatrixCookieAttributesLockstepTest {
                             + "that also mentions 'EP-09' or 'share-csrf'. "
                             + "Add the explicit SameSite claim to the matrix EP-09 rows. "
                             + "Accepted tokens: SameSite=Lax, SameSite=Strict, SameSite=None.");
-        }
-
-        /**
-         * Extracts the {@code Set-Cookie} header value that contains the {@code SameSite=} attribute
-         * for the CSRF cookie. {@link CsrfTokenCookieFactory} emits two headers — the one with
-         * SameSite is the manually-added header via {@code response.addHeader("Set-Cookie", ...)}.
-         *
-         * @return the Set-Cookie header string carrying SameSite, or {@code null} if absent
-         */
-        private static String extractCsrfSetCookieWithSameSite(MvcResult result) {
-            return result.getResponse()
-                    .getHeaders(HttpHeaders.SET_COOKIE)
-                    .stream()
-                    .filter(h -> h.toLowerCase().contains("samesite="))
-                    .findFirst()
-                    .orElse(null);
         }
     }
 }
