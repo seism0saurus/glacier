@@ -53,14 +53,16 @@ class CsrfTokenCookieFactoryTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         secureFactory.issueCsrfToken(response);
 
-        // ASSERT — the Set-Cookie header must contain SameSite=Strict
-        List<String> headers = response.getHeaders("Set-Cookie");
-        assertThat(headers).isNotEmpty();
-        boolean hasSameSiteStrict = headers.stream()
-                .anyMatch(h -> h.contains("SameSite=Strict"));
-        assertThat(hasSameSiteStrict)
-                .as("At least one Set-Cookie header must contain SameSite=Strict")
-                .isTrue();
+        // ASSERT — filter by cookie name (ADR-4: no unfiltered anyMatch), then check attribute
+        List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                .filter(h -> h.startsWith("__Host-shareCsrf="))
+                .collect(Collectors.toList());
+        assertThat(csrfHeaders)
+                .as("Exactly one Set-Cookie header must be emitted for __Host-shareCsrf (I-CSRF-1)")
+                .hasSize(1);
+        assertThat(csrfHeaders.get(0))
+                .as("The __Host-shareCsrf Set-Cookie header must contain SameSite=Strict")
+                .contains("SameSite=Strict");
     }
 
     // ---------------------------------------------------------------------------
@@ -97,12 +99,16 @@ class CsrfTokenCookieFactoryTest {
         secureFactory.issueCsrfToken(response);
 
         // In secure mode, __Host- prefix requires Path=/ (RFC 6265bis §4.1.3)
-        List<String> headers = response.getHeaders("Set-Cookie");
-        assertThat(headers).isNotEmpty();
-        boolean hasPathRoot = headers.stream().anyMatch(h -> h.contains("Path=/"));
-        assertThat(hasPathRoot)
+        // ADR-4: filter by cookie name before checking attribute — no unfiltered anyMatch
+        List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                .filter(h -> h.startsWith("__Host-shareCsrf="))
+                .collect(Collectors.toList());
+        assertThat(csrfHeaders)
+                .as("Exactly one Set-Cookie header must be emitted for __Host-shareCsrf (I-CSRF-1)")
+                .hasSize(1);
+        assertThat(csrfHeaders.get(0))
                 .as("Secure-mode CSRF cookie must have Path=/ (required by __Host- prefix)")
-                .isTrue();
+                .contains("Path=/");
     }
 
     @Test
@@ -110,14 +116,17 @@ class CsrfTokenCookieFactoryTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         insecureFactory.issueCsrfToken(response);
 
-        List<String> headers = response.getHeaders("Set-Cookie");
-        assertThat(headers).isNotEmpty();
         // In insecure mode, path is /share (scoped to share routes only)
-        boolean hasSharePath = headers.stream().anyMatch(h ->
-                h.contains("Path=/share") || h.contains("Path=/"));
-        assertThat(hasSharePath)
-                .as("Insecure-mode CSRF cookie must have a path set")
-                .isTrue();
+        // ADR-4: filter by cookie name before checking attribute — no unfiltered anyMatch
+        List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                .filter(h -> h.startsWith("shareCsrf="))
+                .collect(Collectors.toList());
+        assertThat(csrfHeaders)
+                .as("Exactly one Set-Cookie header must be emitted for shareCsrf (I-CSRF-1)")
+                .hasSize(1);
+        assertThat(csrfHeaders.get(0))
+                .as("Insecure-mode CSRF cookie must have Path=/share (scoped to share routes only)")
+                .contains("Path=/share");
     }
 
     // ---------------------------------------------------------------------------
@@ -162,13 +171,17 @@ class CsrfTokenCookieFactoryTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         secureFactory.issueCsrfToken(response);
 
-        List<String> headers = response.getHeaders("Set-Cookie");
-        assertThat(headers).isNotEmpty();
-        // Verify Max-Age is present with a positive value
-        boolean hasMaxAge = headers.stream().anyMatch(h -> h.contains("Max-Age="));
-        assertThat(hasMaxAge)
-                .as("CSRF cookie must have a Max-Age attribute")
-                .isTrue();
+        // ADR-4: filter by cookie name before checking attribute — no unfiltered anyMatch
+        // ADR-2: assert Max-Age=3600 (not Expires=) — ResponseCookie may co-emit Expires
+        List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                .filter(h -> h.startsWith("__Host-shareCsrf="))
+                .collect(Collectors.toList());
+        assertThat(csrfHeaders)
+                .as("Exactly one Set-Cookie header must be emitted for __Host-shareCsrf (I-CSRF-1)")
+                .hasSize(1);
+        assertThat(csrfHeaders.get(0))
+                .as("CSRF cookie must have Max-Age=3600 attribute (I-CSRF-5)")
+                .contains("Max-Age=3600");
     }
 
     // ---------------------------------------------------------------------------
