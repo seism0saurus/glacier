@@ -42,9 +42,9 @@ public class CsrfTokenCookieFactory {
      * Generates a new CSRF token and adds the cookie to the response.
      *
      * <p>Emits exactly one {@code Set-Cookie} header via {@link ResponseCookie} (ADR-1, ADR-2).
-     * The former pattern of calling both {@code response.addCookie()} and
-     * {@code response.addHeader("Set-Cookie", ...)} produced two headers for the same cookie
-     * name — a violation of RFC 6265 and invariant I-CSRF-1.
+     * The former pattern of calling both {@code response.addCookie()} and a manual
+     * raw-string {@code addHeader} produced two headers for the same cookie name —
+     * a violation of RFC 6265 and invariant I-CSRF-1.
      *
      * @param response the HTTP response to add the cookie to
      * @return the generated token string (must be stored in response for the client to echo back)
