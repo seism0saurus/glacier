@@ -1,11 +1,13 @@
 package de.seism0saurus.glacier.share.web;
 
 import de.seism0saurus.glacier.webservice.messaging.ShareViewPrincipalHandler;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 
 /**
@@ -17,9 +19,13 @@ import java.time.Instant;
  *   <li>HttpOnly: true (prevents JS access — XSS theft prevention)</li>
  *   <li>Secure: per {@code glacier.cookie.secure}</li>
  *   <li>SameSite: Lax (top-nav friendly while blocking cross-site subrequests)</li>
- *   <li>Path: /share (scoped — not sent to main wall endpoints)</li>
+ *   <li>Path: / (secure, required by __Host- prefix) or /share (insecure/dev)</li>
  *   <li>Max-Age: capped to share link TTL remaining; max 7 days</li>
  * </ul>
+ *
+ * <p>ADR-1: uses {@link ResponseCookie} exclusively to emit a single canonical
+ * Set-Cookie header. The former dual-emission pattern (Cookie API + raw addHeader) is
+ * replaced by a single {@code response.addHeader(HttpHeaders.SET_COOKIE, ...)} call.
  *
  * <p>Security: SR-SHARE-07, ADR-SHARE-05.
  * References: OWASP A02 (Cookie security), spring-security-hardening skill.
@@ -70,22 +76,21 @@ public class ShareViewerCookieFactory {
         // SR-SHARE-07, Finding 8.
         String cookiePath = secureCookies ? "/" : "/share";
 
-        Cookie cookie = new Cookie(cookieName, viewerId);
-        cookie.setPath(cookiePath);
-        cookie.setMaxAge(maxAge);
-        cookie.setHttpOnly(true);
-        if (secureCookies) {
-            cookie.setSecure(true);
-        }
+        // ADR-1: use ResponseCookie (not jakarta.servlet.http.Cookie) to emit a single
+        // canonical Set-Cookie header with SameSite=Lax.
+        // SameSite=Lax is appropriate for the viewer identity cookie — it allows top-level
+        // navigation (share link clicks) while blocking cross-site subrequests. (ADR-SHARE-05)
+        // HttpOnly=true prevents XSS theft of the viewer session identity. (OWASP A02)
+        ResponseCookie viewerCookie = ResponseCookie.from(cookieName, viewerId)
+                .path(cookiePath)
+                .maxAge(Duration.ofSeconds(maxAge))
+                .sameSite("Lax")
+                .secure(secureCookies)
+                .httpOnly(true)
+                .build();
 
-        // SameSite=Lax via Set-Cookie header (Cookie API doesn't support SameSite directly)
-        response.addHeader("Set-Cookie",
-                cookieName + "=" + viewerId
-                        + "; Path=" + cookiePath
-                        + "; HttpOnly"
-                        + "; SameSite=Lax"
-                        + "; Max-Age=" + maxAge
-                        + (secureCookies ? "; Secure" : ""));
+        // Single Set-Cookie header — no addCookie() call (ADR-1 / SR-CSRF-13 pattern).
+        response.addHeader(HttpHeaders.SET_COOKIE, viewerCookie.toString());
     }
 
     private int computeMaxAge(Instant linkExpiresAt) {

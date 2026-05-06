@@ -1,20 +1,27 @@
 package de.seism0saurus.glacier.share.web;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.Base64;
 
 /**
  * Factory for the share CSRF token cookie.
  *
  * <p>The CSRF token is NOT HttpOnly (JS must be able to read it for the double-submit
- * pattern). It is Secure per transport mode, SameSite=Strict, Path=/share.
+ * pattern). It is Secure per transport mode, SameSite=Strict, Path=/ (secure) or
+ * Path=/share (insecure/dev).
  *
- * <p>Security: SR-SHARE-05, SR-SHARE-12.
+ * <p>I-CSRF-1 (SR-CSRF-13): exactly one Set-Cookie header is emitted per call.
+ * Achieved by using {@link ResponseCookie} exclusively — the former dual-emission
+ * (addCookie + addHeader) is eliminated. ADR-1, ADR-2.
+ *
+ * <p>Security: SR-SHARE-05, SR-SHARE-12, SR-CSRF-13.
  * References: OWASP CSRF Prevention Cheat Sheet.
  */
 @Component
@@ -34,6 +41,11 @@ public class CsrfTokenCookieFactory {
     /**
      * Generates a new CSRF token and adds the cookie to the response.
      *
+     * <p>Emits exactly one {@code Set-Cookie} header via {@link ResponseCookie} (ADR-1, ADR-2).
+     * The former pattern of calling both {@code response.addCookie()} and
+     * {@code response.addHeader("Set-Cookie", ...)} produced two headers for the same cookie
+     * name — a violation of RFC 6265 and invariant I-CSRF-1.
+     *
      * @param response the HTTP response to add the cookie to
      * @return the generated token string (must be stored in response for the client to echo back)
      */
@@ -50,24 +62,22 @@ public class CsrfTokenCookieFactory {
         // SR-SHARE-07, Finding 8.
         String cookiePath = secureCookies ? "/" : "/share";
 
-        Cookie cookie = new Cookie(cookieName, token);
-        cookie.setPath(cookiePath);
-        cookie.setMaxAge(3600); // 1 hour — short-lived CSRF token
-        cookie.setHttpOnly(false); // must be readable by JS for double-submit pattern
-        // SameSite=Strict is the strongest — prevents cross-site requests entirely
-        // This is set via response header since Cookie API doesn't support SameSite directly
-        if (secureCookies) {
-            cookie.setSecure(true);
-        }
+        // ADR-1: use ResponseCookie (not jakarta.servlet.http.Cookie) to emit a single
+        // canonical Set-Cookie header that includes SameSite=Strict.
+        // ADR-2: ResponseCookie.toString() co-emits Expires= alongside Max-Age for
+        // HTTP/1.0 proxy compatibility — callers must not assert on the Expires= value.
+        // C5: HttpOnly=false is intentional — the double-submit pattern requires JS to read
+        // this token and echo it in the X-Share-CSRF request header. (SR-SHARE-05)
+        ResponseCookie csrfCookie = ResponseCookie.from(cookieName, token)
+                .path(cookiePath)
+                .maxAge(Duration.ofSeconds(3600))
+                .sameSite("Strict")
+                .secure(secureCookies)
+                .httpOnly(false)
+                .build();
 
-        response.addCookie(cookie);
-        // Set SameSite=Strict via Set-Cookie header manipulation
-        response.addHeader("Set-Cookie",
-                cookieName + "=" + token
-                        + "; Path=" + cookiePath
-                        + "; SameSite=Strict"
-                        + "; Max-Age=3600"
-                        + (secureCookies ? "; Secure" : ""));
+        // I-CSRF-1 (SR-CSRF-13): exactly one Set-Cookie header emitted — no addCookie() call.
+        response.addHeader(HttpHeaders.SET_COOKIE, csrfCookie.toString());
 
         return token;
     }
