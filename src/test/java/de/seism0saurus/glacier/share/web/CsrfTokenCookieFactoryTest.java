@@ -1,12 +1,14 @@
 package de.seism0saurus.glacier.share.web;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>{@code HttpOnly=false} — double-submit pattern requires JS to read the token.</li>
  *   <li>{@code SameSite=Strict} in the Set-Cookie header.</li>
  *   <li>Token uniqueness — each call produces a different token.</li>
- *   <li>No dual-emission of Set-Cookie headers for the same cookie name.</li>
+ *   <li>Exactly one Set-Cookie header per cookie name (I-CSRF-1: no dual-emission).</li>
  *   <li>Token contains only URL-safe characters (no {@code +}, {@code /}, or {@code =}).</li>
  * </ul>
  *
@@ -181,5 +183,197 @@ class CsrfTokenCookieFactoryTest {
                 .as("issueCsrfToken must return a non-null, non-blank token string")
                 .isNotNull()
                 .isNotBlank();
+    }
+
+    // ---------------------------------------------------------------------------
+    // I-CSRF-1: exactly one Set-Cookie header per cookie name (RED canary)
+    //
+    // CsrfTokenCookieFactory currently calls response.addCookie() AND
+    // response.addHeader("Set-Cookie", ...) for the same cookie name.
+    // This produces two Set-Cookie headers — a violation of RFC 6265.
+    // These tests MUST FAIL RED on the current production code and turn GREEN
+    // only after Lane B replaces the dual-emission with a single ResponseCookie.
+    // ---------------------------------------------------------------------------
+
+    /**
+     * I-CSRF-1 canary tests — single Set-Cookie emission per cookie name.
+     *
+     * <p>Invariant I-CSRF-1: {@code response.getHeaders("Set-Cookie")} filtered by the
+     * CSRF cookie name prefix must yield exactly one entry per {@code issueCsrfToken} call.
+     *
+     * <p>ADR-2: assertions use substring containment (not equality) because
+     * {@code ResponseCookie.toString()} co-emits {@code Expires=} alongside {@code Max-Age}
+     * for HTTP/1.0 proxy compatibility. Never assert on the {@code Expires=} value.
+     *
+     * <p>ADR-4: filter by cookie name first, then assert size and attribute substrings.
+     * {@code anyMatch} over an unfiltered Set-Cookie stream is banned.
+     */
+    @Nested
+    class SingleSetCookieEmission {
+
+        /**
+         * I-CSRF-1 secure mode: exactly one Set-Cookie header with name {@code __Host-shareCsrf=}.
+         *
+         * <p>Arrange: secure factory (secureCookies=true), fresh MockHttpServletResponse.
+         * Act: call {@code issueCsrfToken}.
+         * Assert: filtering by {@code __Host-shareCsrf=} prefix yields exactly 1 header.
+         *
+         * <p>FAILS RED on current code because {@code addCookie()} + {@code addHeader("Set-Cookie")}
+         * both emit a header for {@code __Host-shareCsrf}, resulting in count==2.
+         */
+        @Test
+        void issueCsrfToken_emitsExactlyOneSetCookieHeader_inSecureMode() {
+            // ARRANGE
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // ACT
+            secureFactory.issueCsrfToken(response);
+
+            // ASSERT — filter by name prefix, then demand exactly one entry (I-CSRF-1, ADR-4)
+            List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                    .filter(h -> h.startsWith("__Host-shareCsrf="))
+                    .collect(Collectors.toList());
+
+            assertThat(csrfHeaders)
+                    .as("I-CSRF-1 (SR-CSRF-13): secure mode must emit exactly one Set-Cookie "
+                            + "header for cookie name '__Host-shareCsrf'. "
+                            + "Current code calls addCookie() + addHeader() for the same name, "
+                            + "producing two headers — fix by using ResponseCookie only (Lane B).")
+                    .hasSize(1);
+        }
+
+        /**
+         * I-CSRF-1 insecure mode: exactly one Set-Cookie header with name {@code shareCsrf=}.
+         *
+         * <p>Arrange: insecure factory (secureCookies=false), fresh MockHttpServletResponse.
+         * Act: call {@code issueCsrfToken}.
+         * Assert: filtering by {@code shareCsrf=} prefix yields exactly 1 header.
+         *
+         * <p>FAILS RED on current code for the same dual-emission reason.
+         */
+        @Test
+        void issueCsrfToken_emitsExactlyOneSetCookieHeader_inInsecureMode() {
+            // ARRANGE
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // ACT
+            insecureFactory.issueCsrfToken(response);
+
+            // ASSERT — filter by name prefix, then demand exactly one entry (I-CSRF-1, ADR-4)
+            List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                    .filter(h -> h.startsWith("shareCsrf="))
+                    .collect(Collectors.toList());
+
+            assertThat(csrfHeaders)
+                    .as("I-CSRF-1 (SR-CSRF-13): insecure mode must emit exactly one Set-Cookie "
+                            + "header for cookie name 'shareCsrf'. "
+                            + "Current code calls addCookie() + addHeader() for the same name, "
+                            + "producing two headers — fix by using ResponseCookie only (Lane B).")
+                    .hasSize(1);
+        }
+
+        /**
+         * I-CSRF-2 + I-CSRF-3 + I-CSRF-4 + I-CSRF-5: attribute matrix on the single header,
+         * secure mode.
+         *
+         * <p>After I-CSRF-1 passes (exactly one header), verify the single header carries
+         * the required attribute set using substring containment (ADR-2: Expires= is co-emitted
+         * by ResponseCookie and must NOT be asserted).
+         *
+         * <p>FAILS RED on current code because there are two headers (size==2 not 1),
+         * making the prerequisite {@code hasSize(1)} fail first.
+         */
+        @Test
+        void issueCsrfToken_singleHeader_hasCorrectAttributes_inSecureMode() {
+            // ARRANGE
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // ACT
+            secureFactory.issueCsrfToken(response);
+
+            // ASSERT — filter by name prefix (ADR-4)
+            List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                    .filter(h -> h.startsWith("__Host-shareCsrf="))
+                    .collect(Collectors.toList());
+
+            assertThat(csrfHeaders)
+                    .as("Prerequisite: exactly one __Host-shareCsrf= Set-Cookie header (I-CSRF-1)")
+                    .hasSize(1);
+
+            String header = csrfHeaders.get(0);
+
+            // I-CSRF-2: SameSite=Strict
+            assertThat(header)
+                    .as("I-CSRF-2: single CSRF Set-Cookie header must contain SameSite=Strict")
+                    .contains("SameSite=Strict");
+
+            // I-CSRF-3: NOT HttpOnly (double-submit JS readability)
+            assertThat(header.toLowerCase())
+                    .as("I-CSRF-3: CSRF cookie must NOT carry HttpOnly "
+                            + "(JS must read it for the double-submit pattern)")
+                    .doesNotContain("httponly");
+
+            // I-CSRF-4 secure: Path=/ and Secure present
+            assertThat(header)
+                    .as("I-CSRF-4 (secure): __Host- cookie requires Path=/")
+                    .contains("Path=/");
+            assertThat(header)
+                    .as("I-CSRF-4 (secure): Secure attribute must be present")
+                    .contains("Secure");
+
+            // I-CSRF-5: Max-Age=3600
+            assertThat(header)
+                    .as("I-CSRF-5: Max-Age=3600 must be present (ADR-2: do not assert Expires=)")
+                    .contains("Max-Age=3600");
+        }
+
+        /**
+         * I-CSRF-2 + I-CSRF-3 + I-CSRF-4 + I-CSRF-5: attribute matrix on the single header,
+         * insecure mode.
+         *
+         * <p>FAILS RED on current code for the same dual-emission reason.
+         */
+        @Test
+        void issueCsrfToken_singleHeader_hasCorrectAttributes_inInsecureMode() {
+            // ARRANGE
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // ACT
+            insecureFactory.issueCsrfToken(response);
+
+            // ASSERT — filter by name prefix (ADR-4)
+            List<String> csrfHeaders = response.getHeaders("Set-Cookie").stream()
+                    .filter(h -> h.startsWith("shareCsrf="))
+                    .collect(Collectors.toList());
+
+            assertThat(csrfHeaders)
+                    .as("Prerequisite: exactly one shareCsrf= Set-Cookie header (I-CSRF-1)")
+                    .hasSize(1);
+
+            String header = csrfHeaders.get(0);
+
+            // I-CSRF-2: SameSite=Strict
+            assertThat(header)
+                    .as("I-CSRF-2: single CSRF Set-Cookie header must contain SameSite=Strict")
+                    .contains("SameSite=Strict");
+
+            // I-CSRF-3: NOT HttpOnly
+            assertThat(header.toLowerCase())
+                    .as("I-CSRF-3: CSRF cookie must NOT carry HttpOnly")
+                    .doesNotContain("httponly");
+
+            // I-CSRF-4 insecure: name=shareCsrf, Path=/share, no Secure
+            assertThat(header)
+                    .as("I-CSRF-4 (insecure): path must be /share (not /)")
+                    .contains("Path=/share");
+            assertThat(header)
+                    .as("I-CSRF-4 (insecure): Secure attribute must NOT be present")
+                    .doesNotContain("Secure");
+
+            // I-CSRF-5: Max-Age=3600
+            assertThat(header)
+                    .as("I-CSRF-5: Max-Age=3600 must be present (ADR-2: do not assert Expires=)")
+                    .contains("Max-Age=3600");
+        }
     }
 }
