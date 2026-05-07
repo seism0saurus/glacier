@@ -299,6 +299,9 @@ public class StompCallbackTest {
      * <p>In the merged design, the SSRF guard runs first, then {@link MessageCache#recordThenPublish}
      * receives an {@code UPDATED} entry (D-03). The test verifies the cache is called when the
      * toot URL passes validation.</p>
+     *
+     * <p>P2-13: a prior StatusCreated event for the same statusId must be fired first so that
+     * {@code publishedStatusIds} contains the id before the StatusEdited guard runs.</p>
      */
     @Test
     public void onEvent_statusEdited_writesUpdatedEntryToCache() {
@@ -312,9 +315,21 @@ public class StompCallbackTest {
         when(mockStatus.getUrl()).thenReturn("https://mastodon.example.com/12345");
         when(mockStatus.getAccount()).thenReturn(account);
 
+        HttpHeaders allowHeader = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders("https://mastodon.example.com/12345/embed")).thenReturn(allowHeader);
+
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+
+        // P2-13: prime publishedStatusIds by firing a StatusCreated first
+        ParsedStreamEvent.StatusCreated createEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
+        callback.onEvent(new MastodonApiEvent.StreamEvent(createEvent, List.of()));
+        // Reset mock so only the edit invocation is counted in the final verify
+        reset(messageCache);
+        when(messageCache.recordThenPublish(any(PrincipalKey.class), any(String.class), any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, "stub-id", "https://stub.example.com/embed", null, 1L));
+
         ParsedStreamEvent.StatusEdited event = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -643,6 +658,10 @@ public class StompCallbackTest {
      * <p>In the merged design, a qualified update event writes an {@code UPDATED} entry to the
      * cache via {@link MessageCache#recordThenPublish} (D-03). The test verifies the cache
      * receives the call with the correct hashtag.</p>
+     *
+     * <p>P2-13: an {@code "update"} (create) GenericMessage for the same id is fired first to
+     * populate {@code publishedStatusIds} before the {@code "status.update"} (edit) event
+     * reaches the P2-13 guard.</p>
      */
     @Test
     public void onEvent_EventGenericMessage_StatusUpdateWithLoadableTootAndOptInIsHandled() throws JsonProcessingException {
@@ -654,13 +673,32 @@ public class StompCallbackTest {
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
 
-        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
-        GenericMessageContentPayload payload = GenericMessageContentPayload.builder().mentions(List.of(mention)).url("https://example.com/4567").id("4567").editedAt("2025-01-17T00:00:00Z").build();
+
+        // P2-13: prime publishedStatusIds — fire an "update" (create) event for id "4567" first
+        GenericMessageContentPayload createPayload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        JsonNode createJsonNode = TextNode.valueOf(mapper.writeValueAsString(createPayload));
+        GenericMessageContent createContent = GenericMessageContent.builder()
+                .event("update").stream(List.of("hashtag")).payload(createJsonNode).build();
+        MastodonApiEvent.GenericMessage createEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(createEvent.getText()).thenReturn(mapper.writeValueAsString(createContent));
+        callback.onEvent(createEvent);
+        // Reset mock so only the status.update invocation is counted in the final verify
+        reset(messageCache);
+        when(messageCache.recordThenPublish(any(PrincipalKey.class), any(String.class), any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, "stub-id", "https://stub.example.com/embed", null, 1L));
+
+        // Now fire the status.update (edit) event
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
+        GenericMessageContentPayload payload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567")
+                .editedAt("2025-01-17T00:00:00Z").build();
         String payloadAsText = mapper.writeValueAsString(payload);
         JsonNode jsonNode = TextNode.valueOf(payloadAsText);
-        GenericMessageContent content = GenericMessageContent.builder().event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
+        GenericMessageContent content = GenericMessageContent.builder()
+                .event("status.update").stream(List.of("hashtag")).payload(jsonNode).build();
         String serializedContent = mapper.writeValueAsString(content);
         when(mockEvent.getText()).thenReturn(serializedContent);
 
@@ -1869,7 +1907,7 @@ public class StompCallbackTest {
      * and {@code scheme} fields — raw URL must never appear in the log (D-13 / SR-8).</p>
      */
     @Test
-    public void onEvent_statusEdited_ssrfGuardBlocks_emitsAuditEvent() {
+    public void onEvent_statusEdited_ssrfGuardBlocks_emitsAuditEvent() throws NoSuchFieldException, IllegalAccessException {
         // Arrange
         TestLogAppender auditAppender = new TestLogAppender();
         auditAppender.start();
@@ -1885,6 +1923,17 @@ public class StompCallbackTest {
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate, BLOCKING_VALIDATOR,
                 principal, hashtag, "glacier@example.com", "glacier.example.com");
+
+        // P2-13: inject "edit-1" directly into publishedStatusIds so the P2-13 guard passes
+        // and the SSRF guard at the next layer can fire.  We use reflection because the callback
+        // uses BLOCKING_VALIDATOR — firing a StatusCreated event would itself be blocked before
+        // it could populate publishedStatusIds.
+        Field publishedField = StompCallback.class.getDeclaredField("publishedStatusIds");
+        publishedField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Set<String> publishedStatusIds = (Set<String>) publishedField.get(callback);
+        publishedStatusIds.add("edit-1");
+
         ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
 
@@ -1973,6 +2022,10 @@ public class StompCallbackTest {
 
     /**
      * D-07: GenericMessage with malformed editedAt must drop the event — zero recordThenPublish.
+     *
+     * <p>P2-13: an {@code "update"} (create) GenericMessage for the same id is fired first to
+     * populate {@code publishedStatusIds} so the P2-13 guard does not mask the malformed-editedAt
+     * behaviour under test.</p>
      */
     @Test
     public void onEvent_EventGenericMessage_MalformedEditedAt_dropsEvent() throws com.fasterxml.jackson.core.JsonProcessingException {
@@ -1989,6 +2042,32 @@ public class StompCallbackTest {
         de.seism0saurus.glacier.webservice.messaging.messages.Mention mention =
                 de.seism0saurus.glacier.webservice.messaging.messages.Mention.builder()
                         .id("4567").username("@peter.kropotkin").acct("glacier").build();
+
+        // P2-13: prime publishedStatusIds — fire an "update" (create) event for id "4567" first
+        de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContentPayload primePayload =
+                de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContentPayload.builder()
+                        .mentions(List.of(mention))
+                        .url("https://example.com/4567")
+                        .id("4567")
+                        .build();
+        String primePayloadText = mapper.writeValueAsString(primePayload);
+        com.fasterxml.jackson.databind.JsonNode primeJsonNode =
+                com.fasterxml.jackson.databind.node.TextNode.valueOf(primePayloadText);
+        de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContent primeContent =
+                de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContent.builder()
+                        .event("update")
+                        .stream(List.of("hashtag"))
+                        .payload(primeJsonNode)
+                        .build();
+        MastodonApiEvent.GenericMessage primeEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(primeEvent.getText()).thenReturn(mapper.writeValueAsString(primeContent));
+        callback.onEvent(primeEvent);
+        // Reset mock so only the malformed status.update invocation counts in the final verify
+        reset(messageCache);
+        when(messageCache.recordThenPublish(any(PrincipalKey.class), any(String.class), any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, "stub-id", "https://stub.example.com/embed", null, 1L));
+
+        // Now fire the malformed status.update event
         de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContentPayload payload =
                 de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContentPayload.builder()
                         .mentions(List.of(mention))
@@ -2734,6 +2813,18 @@ public class StompCallbackTest {
 
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
+
+        // P2-13: prime publishedStatusIds — fire an "update" (create) event for id "4567" first
+        GenericMessageContentPayload primePayload = GenericMessageContentPayload.builder()
+                .mentions(List.of(mention)).url("https://example.com/4567").id("4567").build();
+        JsonNode primeJsonNode = TextNode.valueOf(mapper.writeValueAsString(primePayload));
+        GenericMessageContent primeContent = GenericMessageContent.builder()
+                .event("update").stream(List.of("hashtag")).payload(primeJsonNode).build();
+        MastodonApiEvent.GenericMessage primeEvent = mock(MastodonApiEvent.GenericMessage.class);
+        when(primeEvent.getText()).thenReturn(mapper.writeValueAsString(primeContent));
+        callback.onEvent(primeEvent);
+
+        // Now fire the "status.update" (modification) event under test
         GenericMessageContentPayload payload = GenericMessageContentPayload.builder()
                 .mentions(List.of(mention)).url("https://example.com/4567").id("4567")
                 .editedAt("2025-01-17T00:00:00Z").build();
@@ -4041,6 +4132,152 @@ public class StompCallbackTest {
             loggedMessages.add(eventObject.getFormattedMessage());
             loggedEvents.add(eventObject);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // P2-13: HEAD-check guard — only publish StatusEdited if prior StatusCreated was published
+    // -----------------------------------------------------------------------
+
+    /**
+     * A {@code StatusEdited} event for a toot that was previously created and published
+     * should be forwarded to the cache.
+     *
+     * <p>Arrange: subscribe, fire StatusCreated → cache records successfully; then fire
+     * StatusEdited for the same statusId.<br>
+     * Act: process StatusEdited via {@link StompCallback#onEvent}.<br>
+     * Assert: cache receives exactly one UPDATED entry for the statusId (P2-13).
+     */
+    @Test
+    public void onEvent_statusEdited_withPriorCreate_publishesUpdate() {
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+        String statusId = "status-create-before-edit";
+        String statusUrl = "https://mastodon.example.com/" + statusId;
+
+        // Set up status mock with opt-in mention
+        when(mockStatus.getId()).thenReturn(statusId);
+        when(mockStatus.getUrl()).thenReturn(statusUrl);
+
+        HttpHeaders allowHeaders = getHeaders("ALLOWALL", null);
+        when(restTemplate.headForHeaders(statusUrl + "/embed")).thenReturn(allowHeaders);
+
+        // Stub recordThenPublish to return a created entry (enables publishedStatusIds tracking)
+        when(messageCache.recordThenPublish(any(PrincipalKey.class), eq(hashtag),
+                argThat(e -> e.type() == EventType.CREATED && statusId.equals(e.statusId()))))
+                .thenReturn(new CacheEntry(EventType.CREATED, statusId, statusUrl + "/embed", null, 1L));
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+
+        // Step 1: fire StatusCreated to record the status
+        ParsedStreamEvent.StatusCreated createdEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
+        callback.onEvent(new MastodonApiEvent.StreamEvent(createdEvent, List.of()));
+
+        // Step 2: fire StatusEdited — should be forwarded
+        Status editedStatus = mock(Status.class);
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(editedStatus.getMentions()).thenReturn(List.of(botMention));
+        when(editedStatus.getId()).thenReturn(statusId);
+        when(editedStatus.getUrl()).thenReturn(statusUrl);
+
+        ParsedStreamEvent.StatusEdited editedEvent = new ParsedStreamEvent.StatusEdited(editedStatus);
+        callback.onEvent(new MastodonApiEvent.StreamEvent(editedEvent, List.of()));
+
+        // Assert: UPDATED entry was sent to cache
+        verify(messageCache).recordThenPublish(
+                any(PrincipalKey.class),
+                eq(hashtag),
+                argThat(e -> e.type() == EventType.UPDATED && statusId.equals(e.statusId()))
+        );
+    }
+
+    /**
+     * A {@code StatusEdited} event for a toot that was NEVER published (e.g. dropped by
+     * {@code isLoadable} at create-time) must be silently dropped without calling the cache.
+     *
+     * <p>Arrange: no prior StatusCreated for the statusId.<br>
+     * Act: process StatusEdited.<br>
+     * Assert: cache receives NO call for an UPDATED entry (P2-13).
+     */
+    @Test
+    public void onEvent_statusEdited_withoutPriorCreate_isDropped() {
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+        String statusId = "status-edit-only-never-created";
+        String statusUrl = "https://mastodon.example.com/" + statusId;
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+
+        // Fire StatusEdited without a prior StatusCreated
+        Status editedStatus = mock(Status.class);
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(editedStatus.getMentions()).thenReturn(List.of(botMention));
+        when(editedStatus.getId()).thenReturn(statusId);
+        when(editedStatus.getUrl()).thenReturn(statusUrl);
+
+        ParsedStreamEvent.StatusEdited editedEvent = new ParsedStreamEvent.StatusEdited(editedStatus);
+        callback.onEvent(new MastodonApiEvent.StreamEvent(editedEvent, List.of()));
+
+        // Assert: cache must NOT receive any UPDATED entry
+        verify(messageCache, never()).recordThenPublish(
+                any(PrincipalKey.class),
+                eq(hashtag),
+                argThat(e -> e.type() == EventType.UPDATED && statusId.equals(e.statusId()))
+        );
+    }
+
+    /**
+     * A {@code StatusCreated} that is dropped by {@code isLoadable} (not-loadable header)
+     * must NOT register the statusId for future edits.
+     *
+     * <p>Arrange: fire StatusCreated with a DENY X-Frame-Options header → dropped by isLoadable.<br>
+     * Act: fire StatusEdited for the same statusId.<br>
+     * Assert: cache receives no UPDATED entry — prior create was dropped, guard applies (P2-13).
+     */
+    @Test
+    public void onEvent_statusEdited_afterDroppedCreate_isDropped() {
+        String principal = UUID.randomUUID().toString();
+        String hashtag = "hashtag";
+        String statusId = "status-dropped-create";
+        String statusUrl = "https://mastodon.example.com/" + statusId;
+
+        when(mockStatus.getId()).thenReturn(statusId);
+        when(mockStatus.getUrl()).thenReturn(statusUrl);
+
+        // DENY X-Frame-Options → isLoadable returns false → create is dropped
+        HttpHeaders denyHeaders = getHeaders("DENY", null);
+        when(restTemplate.headForHeaders(statusUrl + "/embed")).thenReturn(denyHeaders);
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
+                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+
+        // Step 1: StatusCreated is dropped due to non-loadable headers
+        ParsedStreamEvent.StatusCreated createdEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
+        callback.onEvent(new MastodonApiEvent.StreamEvent(createdEvent, List.of()));
+
+        // Step 2: StatusEdited — should also be dropped because prior create was dropped
+        Status editedStatus = mock(Status.class);
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(editedStatus.getMentions()).thenReturn(List.of(botMention));
+        when(editedStatus.getId()).thenReturn(statusId);
+        when(editedStatus.getUrl()).thenReturn(statusUrl);
+
+        ParsedStreamEvent.StatusEdited editedEvent = new ParsedStreamEvent.StatusEdited(editedStatus);
+        callback.onEvent(new MastodonApiEvent.StreamEvent(editedEvent, List.of()));
+
+        // Assert: cache must NOT receive any UPDATED entry
+        verify(messageCache, never()).recordThenPublish(
+                any(PrincipalKey.class),
+                eq(hashtag),
+                argThat(e -> e.type() == EventType.UPDATED && statusId.equals(e.statusId()))
+        );
     }
 
     /**

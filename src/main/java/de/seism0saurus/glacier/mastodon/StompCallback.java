@@ -27,6 +27,8 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The StompCallback class implements the WebSocketCallback interface and is responsible for
@@ -130,6 +132,26 @@ public class StompCallback implements WebSocketCallback {
      * The glacierDomain variable represents the domain used for this instance of glacier.
      */
     private final String glacierDomain;
+
+    /**
+     * Set of status IDs that have been successfully published as {@code StatusCreated} events
+     * for this callback's {@code (principal, hashtag)} subscription (P2-13).
+     *
+     * <p>A {@code StatusEdited} event is only published if the corresponding status ID was
+     * previously recorded in this set. This prevents delivering edits for toots that were
+     * silently dropped during creation (e.g. because {@code isLoadable} returned {@code false}
+     * or the SSRF guard blocked the URL at create-time), which would cause the client to display
+     * an update for a toot it never received.
+     *
+     * <p>Uses {@link ConcurrentHashMap#newKeySet()} because {@code StompCallback.onEvent} is
+     * called from a Bigbone I/O thread, while {@code TechnicalEvent.Failure} handling calls back
+     * into the subscription manager which may access this set concurrently.
+     *
+     * <p>Memory: bounded by the number of toots that pass all creation gates for this
+     * subscription. The callback has a subscription lifetime — it is discarded with the
+     * subscription — so the set does not accumulate indefinitely.
+     */
+    private final Set<String> publishedStatusIds = ConcurrentHashMap.newKeySet();
 
     /**
      * Initializes a new instance of the StompCallback class.
@@ -334,7 +356,13 @@ public class StompCallback implements WebSocketCallback {
                 if (StatusCreatedMessage.class.equals(statusMessageClass)) {
                     partial = new CacheEntry(EventType.CREATED, payload.getId(), payload.getUrl() + "/embed", null, 0L);
                 } else {
-                    // StatusUpdatedMessage — normalise editedAt to UTC (D-07)
+                    // StatusUpdatedMessage — P2-13: guard against edits without prior create
+                    if (!publishedStatusIds.contains(payload.getId())) {
+                        LOGGER.debug("stomp.edit.dropped_no_prior_create hashtag-len={} — generic-path edit silently dropped (P2-13)",
+                                LogScrubber.hashtagLen(hashtag));
+                        return;
+                    }
+                    // normalise editedAt to UTC (D-07)
                     String editedAt = normaliseEditedAt(payload.getEditedAt());
                     if (editedAt == null && payload.getEditedAt() != null) {
                         // normalisation failed (malformed input) — already warned, drop
@@ -346,6 +374,10 @@ public class StompCallback implements WebSocketCallback {
                 // 6. ADR-SHARE-04: relay to viewer share topics after successful cache write
                 if (shareViewStompRelay != null && stored != null) {
                     shareViewStompRelay.relayTootEvent(principal, hashtag, type.suffix(), stored);
+                }
+                // 7. P2-13: record successful StatusCreated publishes for future edit guard
+                if (StatusCreatedMessage.class.equals(statusMessageClass) && stored != null) {
+                    publishedStatusIds.add(payload.getId());
                 }
                 // D-13/SR-8 / ADR-F6-05: emit structured triple — type derived from statusMessageClass,
                 // never from destination bytes (F-6-INFO-2, SR-F6INFO2-03)
@@ -496,6 +528,10 @@ public class StompCallback implements WebSocketCallback {
             if (shareViewStompRelay != null && stored != null) {
                 shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.CREATION.suffix(), stored);
             }
+            // P2-13: record that this status was published so future StatusEdited events are allowed
+            if (stored != null) {
+                publishedStatusIds.add(status.getId());
+            }
         }
     }
 
@@ -524,6 +560,15 @@ public class StompCallback implements WebSocketCallback {
         // 0. Bot opt-in gate (ADR-PT-A04-01 — defence-in-depth: checked on ALL typed paths)
         if (!isOptedIn(status, shortHandle)) {
             LOGGER.debug("opt-in.check.failed hashtag-len={} — dropping StatusEdited",
+                    LogScrubber.hashtagLen(hashtag));
+            return;
+        }
+
+        // P2-13: guard — only publish edits for statuses that were previously published
+        // as StatusCreated. If the toot was dropped at create-time (SSRF block, not-loadable,
+        // opt-in failure), the client never saw it and delivering the edit would be confusing.
+        if (!publishedStatusIds.contains(status.getId())) {
+            LOGGER.debug("stomp.edit.dropped_no_prior_create hashtag-len={} — edit silently dropped (P2-13)",
                     LogScrubber.hashtagLen(hashtag));
             return;
         }
