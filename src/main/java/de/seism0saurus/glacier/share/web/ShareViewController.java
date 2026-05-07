@@ -18,7 +18,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.Arrays;
@@ -85,10 +89,16 @@ public class ShareViewController {
      *
      * <p>Returns {@code 404} for unknown share IDs (anti-enumeration).
      * Returns {@code 200 {state}} for known-but-inactive IDs.
+     *
+     * <p>Owner-scoped authorization (Sec-16/P1-04): if a {@code wallId} cookie is
+     * present in the request, it must match the share link's owner ({@code sharerWallId}).
+     * A mismatch returns {@code 401} to avoid link enumeration (unified error code).
+     * Pure viewer requests (no {@code wallId} cookie) are not affected.
      */
     @GetMapping(value = "/rest/share/{shareId}/catalog", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ShareCatalogResponse> getCatalog(
             @PathVariable @Pattern(regexp = SHARE_ID_PATTERN) String shareId,
+            @CookieValue(value = "wallId", required = false) String wallId,
             HttpServletRequest request,
             HttpServletResponse response) {
 
@@ -127,6 +137,20 @@ public class ShareViewController {
         }
 
         ShareLink link = linkOpt.get();
+
+        // Sec-16/P1-04: owner-scoped authorization.
+        // If the request presents a wallId cookie (the sharer's identity), verify it matches
+        // the share link's owner. A mismatch returns 401 (not 403, not 404) to avoid
+        // link enumeration. Pure viewer requests (no wallId cookie) are unaffected.
+        // OWASP A01:2021 Broken Access Control — C1 — server-side authorization at every entry.
+        if (wallId != null && !wallId.isBlank()) {
+            if (!wallId.equals(link.sharerWallId())) {
+                AUDIT.info("share.catalog.owner_mismatch shareId-hash={} wallId-hash={}",
+                        LogScrubber.hash8(shareId), LogScrubber.hash8(wallId));
+                // 401 — unified error, does not reveal whether the link exists (Sec-16)
+                return ResponseEntity.status(401).build();
+            }
+        }
 
         // Mint or validate viewer cookie
         String viewerId;

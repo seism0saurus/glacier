@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * IP passed to {@code rateLimiter.check()} matches the expectation by capturing it via Mockito.
  */
 @WebMvcTest(controllers = {FallbackController.class, FallbackControllerAdvice.class})
-@Import({CookieBasedFallbackAuthGuard.class, FallbackSecurityHeadersFilter.class})
+@Import({CookieBasedFallbackAuthGuard.class, FallbackSecurityHeadersFilter.class,
+        de.seism0saurus.glacier.webservice.security.ClientIpResolver.class})
 @TestPropertySource(properties = {
         "glacier.fallback.enabled=true",
         "glacier.cache.maxHashtagsPerPrincipal=10",
@@ -41,7 +42,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "glacier.fallback.ratelimit.perMinutePerIp=120",
         "glacier.ratelimit.eviction.intervalMs=600000",
         // NONE mode: X-Forwarded-For headers are ignored (default)
-        "server.forward-headers-strategy=NONE"
+        "server.forward-headers-strategy=NONE",
+        // Sec-14/P1-12: trustedHops=0 means ClientIpResolver bypasses XFF entirely and uses
+        // remoteAddr directly. This mirrors the NONE/direct-connection deployment topology
+        // where no trusted proxy is in front of Glacier.
+        "glacier.proxy.trusted-hops=0"
 })
 class RateLimitHeaderTrustIT {
 

@@ -3,6 +3,7 @@ package de.seism0saurus.glacier.webservice;
 import de.seism0saurus.glacier.webservice.cache.*;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
+import de.seism0saurus.glacier.webservice.security.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,11 @@ class FallbackControllerTest {
         // Default: rate limiter allows all
         when(rateLimiter.check(any(), any())).thenReturn(FallbackRateLimiter.RateLimitResult.allowed());
 
-        FallbackController controller = new FallbackController(messageCache, authGuard, rateLimiter, true);
+        // trustedHops=0: always use remoteAddr directly (no XFF in unit tests)
+        ClientIpResolver ipResolver = new ClientIpResolver(0);
+
+        // jitterMsMax=0 disables jitter so tests are not affected by random sleeps (Sec-13)
+        FallbackController controller = new FallbackController(messageCache, authGuard, rateLimiter, true, 0, ipResolver);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new FallbackControllerAdvice())
                 .setValidator(new org.springframework.validation.beanvalidation.LocalValidatorFactoryBean())
@@ -187,7 +192,7 @@ class FallbackControllerTest {
 
     @Test
     void getMessages_killSwitchDisabled_returns404() throws Exception {
-        FallbackController killSwitched = new FallbackController(messageCache, authGuard, rateLimiter, false);
+        FallbackController killSwitched = new FallbackController(messageCache, authGuard, rateLimiter, false, 0, new ClientIpResolver(0));
         MockMvc killMvc = MockMvcBuilders.standaloneSetup(killSwitched)
                 .setControllerAdvice(new FallbackControllerAdvice())
                 .build();

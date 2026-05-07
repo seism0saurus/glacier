@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Input validation: invalid hashtag → 400 {error:invalid_hashtag}
  */
 @WebMvcTest(controllers = {FallbackController.class, FallbackControllerAdvice.class})
-@Import({CookieBasedFallbackAuthGuard.class, FallbackSecurityHeadersFilter.class})
+@Import({CookieBasedFallbackAuthGuard.class, FallbackSecurityHeadersFilter.class,
+        de.seism0saurus.glacier.webservice.security.ClientIpResolver.class})
 @TestPropertySource(properties = {
         "glacier.fallback.enabled=true",
         "glacier.cache.maxHashtagsPerPrincipal=10",

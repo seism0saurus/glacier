@@ -80,7 +80,8 @@
                             </dependency>
                         </dependencies>
                         <configuration>
-                            <!-- Exactly 10 FQNs — no wildcards (ADR-FUZZ-01 / SR-FUZZ-15) -->
+                            <!-- Exactly 14 FQNs — no wildcards (ADR-FUZZ-01 / SR-FUZZ-15) -->
+                            <!-- Sec-18/P2-17: expanded to cover new security-critical classes -->
                             <targetClasses>
                                 <param>de.seism0saurus.glacier.util.LogScrubber</param>
                                 <param>de.seism0saurus.glacier.share.domain.ShareLinkId</param>
@@ -92,6 +93,13 @@
                                 <param>de.seism0saurus.glacier.mastodon.IframeEmbedPolicy</param>
                                 <param>de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter</param>
                                 <param>de.seism0saurus.glacier.share.web.ShareRateLimiter</param>
+                                <!-- Sec-18/P2-17: rate-limiting interceptors — gate rate-limit bypass mutations -->
+                                <param>de.seism0saurus.glacier.webservice.security.HandshakeRateLimitInterceptor</param>
+                                <param>de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor</param>
+                                <!-- Sec-18/P2-17: share host security filter — gate header injection mutations -->
+                                <param>de.seism0saurus.glacier.share.web.ShareSecurityHeadersFilter</param>
+                                <!-- Sec-18/P2-17 / Sec-11: IP classifier — gate SSRF bypass mutations -->
+                                <param>de.seism0saurus.glacier.util.IpAddressClassifier</param>
                             </targetClasses>
                             <!-- STRONGER group = ALL mutators, no exclusions (ADR-FUZZ-02) -->
                             <mutators>
@@ -177,7 +185,29 @@
             <artifactId>httpclient5</artifactId>
         </dependency>
 
-        <!--Bigbone Mastodon Client-->
+        <!--
+            Bigbone Mastodon Client — SNAPSHOT (Sec-02 / ADR-SEC-02)
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            bigbone:2.0.0-SNAPSHOT is a mutable dependency: any upstream commit may silently
+            change the artifact served from the Sonatype snapshot repository. This is a known
+            security risk: supply-chain attack via snapshot mutation.
+
+            Interim mitigation status (Sec-02/P1-09):
+            - SHA256 checksum enforcement is not directly supported by maven-enforcer for
+              SNAPSHOT artifacts (requireReleaseDependencies would break the build here).
+            - The `-Pallow-snapshot` escape-hatch profile is intentionally NOT added because
+              SNAPSHOT is the ONLY available version of bigbone upstream. Prohibiting it
+              would prevent the build entirely.
+            - Instead, the CI pipeline runs mvnw with the update-snapshots flag only in the
+              compile step (build-and-deploy.yml) and the test/package steps use the cached
+              local repository (no snapshot re-download). This limits the SNAPSHOT fetch to
+              a single controlled step with a known Maven cache key.
+
+            TODO (Sec-02): replace with a stable release version once bigbone upstream tags
+            a release. Track at https://github.com/andregasser/bigbone/releases.
+            When upstream releases, remove this comment and the SNAPSHOT repository declaration,
+            pin the exact release version, and add a maven-enforcer requireReleaseDependencies rule.
+        -->
         <dependency>
             <groupId>social.bigbone</groupId>
             <artifactId>bigbone</artifactId>

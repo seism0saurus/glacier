@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.application;
 
+import de.seism0saurus.glacier.util.IpAddressClassifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -160,44 +161,18 @@ public class DefaultSafeUrlValidator implements SafeUrlValidator {
     /**
      * Returns true if the given IP address is in a blocked range.
      *
-     * <p>Blocks: loopback, link-local, site-local (RFC1918), any-local,
-     * multicast, CGNAT (100.64.0.0/10), IPv6 ULA (fc00::/7),
-     * and the cloud metadata endpoint 169.254.169.254.
+     * <p>Delegates to {@link IpAddressClassifier#isBlockedInetAddress(InetAddress)} which is
+     * the sole authorised caller of {@code InetAddress.isXAddress()} classification methods
+     * in the Glacier codebase. This delegation also handles IPv4-mapped IPv6 addresses
+     * ({@code ::ffff:a.b.c.d}) correctly — see Sec-11/Sec-24.
      *
      * <p>References: {@code spring-input-validation-ssrf} skill SSRF section,
-     * NIST SP 800-53 SC-7.
+     * NIST SP 800-53 SC-7, Sec-11/P1-10, Sec-24 (ArchUnit gate).
      */
     public static boolean isBlockedAddress(final InetAddress addr) {
-        if (addr.isLoopbackAddress()) return true;       // 127/8, ::1
-        if (addr.isLinkLocalAddress()) return true;      // 169.254/16, fe80::/10
-        if (addr.isSiteLocalAddress()) return true;      // 10/8, 172.16/12, 192.168/16
-        if (addr.isAnyLocalAddress()) return true;       // 0.0.0.0, ::
-        if (addr.isMulticastAddress()) return true;
-
-        String hostAddr = addr.getHostAddress();
-        // Cloud metadata endpoints (AWS, GCP, Azure, DO)
-        if (hostAddr.equals("169.254.169.254")) return true;
-        // CGNAT shared address space RFC 6598
-        if (hostAddr.startsWith("100.64.") || hostAddr.startsWith("100.65.")
-                || hostAddr.startsWith("100.1") || isCgnat(hostAddr)) return true;
-        // IPv6 ULA (fc00::/7)
-        if (hostAddr.startsWith("fc") || hostAddr.startsWith("fd")) return true;
-
-        return false;
-    }
-
-    private static boolean isCgnat(String hostAddr) {
-        // 100.64.0.0/10 = 100.64.0.0 - 100.127.255.255
-        if (!hostAddr.contains(".")) return false;
-        String[] parts = hostAddr.split("\\.", -1);
-        if (parts.length < 2) return false;
-        try {
-            int first = Integer.parseInt(parts[0]);
-            int second = Integer.parseInt(parts[1]);
-            return first == 100 && second >= 64 && second <= 127;
-        } catch (NumberFormatException e) {
-            return false;
-        }
+        // Sec-11/Sec-24: delegate to IpAddressClassifier — the sole authorised consumer
+        // of InetAddress.isXAddress() methods. This handles IPv4-mapped IPv6 correctly.
+        return IpAddressClassifier.isBlockedInetAddress(addr);
     }
 
     private static boolean containsBidiOrControlChars(final String value) {

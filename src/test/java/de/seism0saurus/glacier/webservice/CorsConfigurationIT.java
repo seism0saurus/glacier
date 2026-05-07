@@ -30,7 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Production origin (https://${glacier.domain}) is allowed
  */
 @WebMvcTest(controllers = {FallbackController.class, FallbackControllerAdvice.class})
-@Import({CookieBasedFallbackAuthGuard.class, FallbackSecurityHeadersFilter.class})
+@Import({CookieBasedFallbackAuthGuard.class, FallbackSecurityHeadersFilter.class,
+        de.seism0saurus.glacier.webservice.security.ClientIpResolver.class})
 @TestPropertySource(properties = {
         "glacier.domain=glacier.example.com",
         "glacier.fallback.enabled=true",

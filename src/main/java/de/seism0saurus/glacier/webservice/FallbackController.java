@@ -7,6 +7,7 @@ import de.seism0saurus.glacier.webservice.cache.UnknownSubscriptionException;
 import de.seism0saurus.glacier.webservice.messaging.HashtagFormat;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
+import de.seism0saurus.glacier.webservice.security.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import de.seism0saurus.glacier.util.LogScrubber;
+import java.security.SecureRandom;
 import java.util.List;
 import java.util.Map;
 
@@ -76,28 +78,54 @@ public class FallbackController {
      */
     public static final long SINCE_MAX = Long.MAX_VALUE / 2;
 
+    /**
+     * Cryptographically secure random source for response jitter (Sec-13/P2-15).
+     * Uses SecureRandom — not ThreadLocalRandom or Math.random() — because
+     * predictable jitter defeats the timing-channel mitigation. ASVS V6.3.1 (L2).
+     */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final MessageCache messageCache;
     private final FallbackAuthGuard authGuard;
     private final FallbackRateLimiter rateLimiter;
     private final boolean fallbackEnabled;
 
     /**
+     * Maximum jitter sleep in milliseconds (Sec-13/P2-15).
+     * Configurable via {@code glacier.security.jitter-ms-max}; default 50 ms.
+     */
+    private final int jitterMsMax;
+
+    /**
+     * Resolves the originating client IP address honoring trusted proxy hops (Sec-14/P1-12).
+     * Used for the per-IP rate-limit axis to prevent XFF spoofing.
+     */
+    private final ClientIpResolver clientIpResolver;
+
+    /**
      * Constructs the controller with all required collaborators.
      *
-     * @param messageCache    the ring-buffer cache service
-     * @param authGuard       the authentication guard (cookie-based in production)
-     * @param rateLimiter     the two-axis rate limiter
-     * @param fallbackEnabled {@code glacier.fallback.enabled} kill-switch (default {@code true})
+     * @param messageCache      the ring-buffer cache service
+     * @param authGuard         the authentication guard (cookie-based in production)
+     * @param rateLimiter       the two-axis rate limiter
+     * @param fallbackEnabled   {@code glacier.fallback.enabled} kill-switch (default {@code true})
+     * @param jitterMsMax       {@code glacier.security.jitter-ms-max} maximum jitter delay in ms
+     *                          (default 50); 0 disables jitter (for tests that measure raw latency)
+     * @param clientIpResolver  hop-aware client IP resolver (Sec-14/P1-12)
      */
     public FallbackController(
             final MessageCache messageCache,
             final FallbackAuthGuard authGuard,
             final FallbackRateLimiter rateLimiter,
-            @Value("${glacier.fallback.enabled:true}") final boolean fallbackEnabled) {
+            @Value("${glacier.fallback.enabled:true}") final boolean fallbackEnabled,
+            @Value("${glacier.security.jitter-ms-max:50}") final int jitterMsMax,
+            final ClientIpResolver clientIpResolver) {
         this.messageCache = messageCache;
         this.authGuard = authGuard;
         this.rateLimiter = rateLimiter;
         this.fallbackEnabled = fallbackEnabled;
+        this.jitterMsMax = Math.max(0, jitterMsMax);
+        this.clientIpResolver = clientIpResolver;
     }
 
     /**
@@ -134,6 +162,7 @@ public class FallbackController {
         // SR-7 / D-11: kill switch — checked before any auth/rate-limit processing
         if (!fallbackEnabled) {
             LOGGER.debug("Fallback kill-switch is active; returning 404");
+            applyJitter();
             return ResponseEntity.notFound().build();
         }
 
@@ -143,6 +172,7 @@ public class FallbackController {
             // Log with hashed wallId prefix only — never raw cookie (D-13, SR-8)
             LOGGER.debug("Auth failed for /rest/messages wallId-hash8={}",
                     LogScrubber.hash8(rawWallId));
+            applyJitter();
             return ResponseEntity.status(401)
                     .body(Map.of("error", "missing_wallid"));
         }
@@ -154,11 +184,14 @@ public class FallbackController {
         PrincipalKey principalKey = new PrincipalKey(PrincipalKind.WALL, principal);
 
         // SR-4 / D-10: two-axis rate limiting (per-wallId + per-IP)
-        String remoteIp = request.getRemoteAddr();
+        // Sec-14/P1-12: resolve via ClientIpResolver (honours glacier.proxy.trusted-hops)
+        // so that XFF spoofing cannot bypass the per-IP rate-limit axis.
+        String remoteIp = clientIpResolver.resolve(request);
         FallbackRateLimiter.RateLimitResult rl = rateLimiter.check(principalKey, remoteIp);
         if (!rl.permitted()) {
             LOGGER.debug("Rate limit exceeded wallId-hash8={} ip={}",
                     LogScrubber.hash8(principal), LogScrubber.maskIp(remoteIp));
+            applyJitter();
             return ResponseEntity.status(429)
                     .header("Retry-After", String.valueOf(rl.retryAfterSeconds()))
                     .build();
@@ -168,6 +201,8 @@ public class FallbackController {
         // (ConstraintViolationException → FallbackControllerAdvice → 400).
         try {
             var snapshot = messageCache.snapshot(principalKey, hashtag, since);
+
+            applyJitter();
 
             if (snapshot.events().isEmpty() && !snapshot.gap()) {
                 return ResponseEntity.noContent().build();
@@ -186,6 +221,33 @@ public class FallbackController {
             LOGGER.debug("Unknown subscription wallId-hash8={} hashtag-len={}",
                     LogScrubber.hash8(principal), hashtag.length());
             return ResponseEntity.badRequest().body(Map.of("error", "unknown_subscription"));
+        }
+    }
+
+    /**
+     * Applies a SecureRandom sleep jitter to mitigate response-timing side channels.
+     *
+     * <p>Sec-13/P2-15: different response paths (200, 204, 400, 401, 429, 404) may have
+     * different natural latencies that leak the outcome to a timing oracle. A small jitter
+     * drawn from SecureRandom (not ThreadLocalRandom/Math.random — ASVS V6.3.1 L2) makes
+     * the distribution indistinguishable.
+     *
+     * <p>If jitterMsMax is 0 (e.g. set via {@code glacier.security.jitter-ms-max=0} in tests),
+     * this is a no-op so that latency-sensitive tests can measure raw response times.
+     */
+    void applyJitter() {
+        if (jitterMsMax <= 0) {
+            return;
+        }
+        try {
+            // ASVS V6.3.1 (L2): SecureRandom is required — ThreadLocalRandom is predictable
+            // and would defeat the timing-channel mitigation (Sec-13, resolved conflict).
+            int sleepMs = SECURE_RANDOM.nextInt(jitterMsMax + 1);
+            if (sleepMs > 0) {
+                Thread.sleep(sleepMs);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

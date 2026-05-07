@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
+
 /**
  * Startup-validated {@code @ConfigurationProperties} bean for core Glacier settings.
  *
@@ -26,6 +27,7 @@ import org.springframework.validation.annotation.Validated;
 public class GlacierCoreProperties {
 
     @NotBlank(message = "glacier.domain must not be blank — set MY_DOMAIN to the operator hostname")
+    @DomainSafetyValidator
     private String domain;
 
     public String getDomain() {
