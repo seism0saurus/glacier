@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -436,16 +435,19 @@ class IframeEmbedPolicyTest {
             // Verify security event was emitted on the AUDIT channel at INFO level
             List<ch.qos.logback.classic.spi.ILoggingEvent> auditEvents = listAppender.list.stream()
                     .filter(e -> e.getLevel() == Level.INFO)
-                    .collect(Collectors.toList());
+                    .toList();
             assertThat(auditEvents).isNotEmpty();
 
-            // Security event must contain reason= key for SOC/SIEM tooling
-            String auditMessage = auditEvents.get(0).getFormattedMessage();
-            assertThat(auditMessage).contains("reason=domain_mismatch");
+            // At least one event must carry the reason= key for SOC/SIEM tooling
+            assertThat(auditEvents)
+                    .anySatisfy(event -> assertThat(event.getFormattedMessage())
+                            .contains("reason=domain_mismatch"));
 
-            // Raw domain must NOT appear in log (CWE-117 — log injection prevention)
-            assertThat(auditMessage).doesNotContain("glacier.events");
-            assertThat(auditMessage).doesNotContain("trusted.example.com");
+            // Raw domain must NOT appear in any AUDIT event (CWE-117 — log injection prevention)
+            assertThat(auditEvents).allSatisfy(event -> {
+                assertThat(event.getFormattedMessage()).doesNotContain("glacier.events");
+                assertThat(event.getFormattedMessage()).doesNotContain("trusted.example.com");
+            });
         } finally {
             auditLogger.detachAppender(listAppender);
         }
