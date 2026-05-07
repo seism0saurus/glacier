@@ -18,8 +18,7 @@ import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -52,9 +51,13 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final static ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
-     * The list of subscriptions as list of Futures.
+     * The list of subscriptions as map of Futures.
+     *
+     * <p>Both the outer and inner maps are {@link ConcurrentHashMap} so that concurrent
+     * mutations from virtual threads, STOMP event-listener threads, and disconnect-timer
+     * threads cannot corrupt the data structure (Q-01).
      */
-    private final Map<String, Map<String, Future<?>>> subscriptions;
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Future<?>>> subscriptions;
 
     /**
      * The message cache. Provisioned before starting a virtual-thread subscription and
@@ -120,7 +123,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         this.messageCache = messageCache;
         this.shareViewStompRelay = shareViewStompRelay;
         this.safeUrlValidator = safeUrlValidator;
-        this.subscriptions = new HashMap<>();
+        this.subscriptions = new ConcurrentHashMap<>();
         this.streaming = client.streaming();
         LOGGER.info("StatusInterfaceImpl for mastodon instance {} created", instance);
     }
@@ -141,8 +144,10 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         LOGGER.info("subscribeToHashtag");
         assert principal != null;
         assert hashtag != null;
-        subscriptions.computeIfAbsent(principal, k -> new HashMap<>());
-        Map<String, Future<?>> previousSubscriptions = subscriptions.get(principal);
+        // Atomically obtain the per-principal map, creating it if absent (Q-01).
+        // computeIfAbsent is atomic on ConcurrentHashMap — no separate get + put needed.
+        ConcurrentHashMap<String, Future<?>> previousSubscriptions =
+                subscriptions.computeIfAbsent(principal, k -> new ConcurrentHashMap<>());
         if (previousSubscriptions.get(hashtag) != null) {
             // D-13/SR-8: log only hashed principal and hashtag length — never raw values
             LOGGER.info("A subscription for principal-hash={} with hashtag-len={} already exists",
@@ -154,9 +159,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         // ADR-SHARE-05 (revised): wrap wallId in PrincipalKey to prevent cross-namespace collision
         messageCache.provisionHashtag(new PrincipalKey(PrincipalKind.WALL, principal), hashtag);
 
-        Future<?> future;
         LOGGER.debug("Submitting asynchronous future task...");
-        future = executorService.submit(() -> {
+        Future<?> future = executorService.submit(() -> {
             StompCallback stompCallback = new StompCallback(
                     this, messageCache, shareViewStompRelay, restTemplate,
                     safeUrlValidator, principal, hashtag, handle, glacierDomain);
@@ -172,8 +176,12 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
                 throw new RuntimeException(e);
             }
         });
-        previousSubscriptions.put(hashtag, future);
-        subscriptions.put(principal, previousSubscriptions);
+        // putIfAbsent: if a concurrent subscription raced us to the same key, prefer the
+        // winner's future and cancel ours — the subscription must be idempotent (Q-01).
+        Future<?> existing = previousSubscriptions.putIfAbsent(hashtag, future);
+        if (existing != null) {
+            future.cancel(true);
+        }
     }
 
     /**
@@ -187,7 +195,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      */
     @Override
     public void terminateSubscription(final String principal, final String hashtag) {
-        Map<String, Future<?>> subscriptionsOfPrincipal = this.subscriptions.get(principal);
+        ConcurrentHashMap<String, Future<?>> subscriptionsOfPrincipal = this.subscriptions.get(principal);
         if (subscriptionsOfPrincipal == null) {
             // D-13/SR-8: never echo raw principal in exception messages (feeds into 4xx responses)
             throw new IllegalArgumentException("The provided principal is unknown");
@@ -220,7 +228,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         // eviction regardless of whether subscriptions were already removed individually
         // (e.g., via terminateSubscription). This prevents dormant cache entries from
         // accumulating toward the 10 000-principal cap (ADR-05, D-11 memory-reclamation).
-        Map<String, Future<?>> futureMap = this.subscriptions.get(principal);
+        ConcurrentHashMap<String, Future<?>> futureMap = this.subscriptions.get(principal);
         if (futureMap != null) {
             futureMap.forEach((tag, future) -> future.cancel(true));
             this.subscriptions.remove(principal);
@@ -256,7 +264,8 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * @return the total number of subscriptions associated with the specified principal
      */
     public int numberOfSubscriptions(String principal) {
-        return subscriptions.getOrDefault(principal, new HashMap<>()).size();
+        ConcurrentHashMap<String, Future<?>> principalMap = subscriptions.get(principal);
+        return principalMap != null ? principalMap.size() : 0;
     }
 
     /**

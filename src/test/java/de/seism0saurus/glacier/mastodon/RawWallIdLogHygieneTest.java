@@ -474,7 +474,7 @@ class RawWallIdLogHygieneTest {
     void T4_subscriptionListener_onConnectedEvent_doesNotLogRawPrincipalOrSession() {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         MessageCache messageCache = mock(MessageCache.class);
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L, 300_000L, 2.0);
 
         SessionConnectedEvent event = mock(SessionConnectedEvent.class);
         MessageHeaders headers = new MessageHeaders(null);
@@ -512,7 +512,7 @@ class RawWallIdLogHygieneTest {
     void T5_subscriptionListener_onConnectedEvent_noPrincipal_doesNotLogRawSession() {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         MessageCache messageCache = mock(MessageCache.class);
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L, 300_000L, 2.0);
 
         SessionConnectedEvent event = mock(SessionConnectedEvent.class);
         // ADR-T5b-01: inject CANARY_SESSION so getSessionId() returns it — canary is now at real risk
@@ -575,7 +575,7 @@ class RawWallIdLogHygieneTest {
     void T5b_subscriptionListener_onDisconnectEvent_noPrincipal_doesNotLogRawSession() {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         MessageCache messageCache = mock(MessageCache.class);
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50_000L, 300_000L, 2.0);
 
         SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);
         // ADR-T5b-01: inject CANARY_SESSION so the production code's getSessionId() sees the real value
@@ -662,7 +662,7 @@ class RawWallIdLogHygieneTest {
         MessageCache messageCache = mock(MessageCache.class);
         // Use a very long timeout so the timer thread does NOT fire during the test window —
         // we only want to assert the synchronous outer method log lines (Fix #7c/d).
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 300_000L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 300_000L, 300_000L, 2.0);
 
         SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);
         MessageHeaders headers = new MessageHeaders(null);
@@ -708,7 +708,7 @@ class RawWallIdLogHygieneTest {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         MessageCache messageCache = mock(MessageCache.class);
         // Short timeout so the timer fires and we can observe its log lines
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50L, 300_000L, 2.0);
 
         SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);
         MessageHeaders headers = new MessageHeaders(null);

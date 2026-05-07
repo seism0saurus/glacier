@@ -251,7 +251,7 @@ class RawWallIdLogHygieneTest {
     void subscriptionListener_onConnectedEvent_doesNotLogRawPrincipalUuid() {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         de.seism0saurus.glacier.webservice.cache.MessageCache messageCache = mock(de.seism0saurus.glacier.webservice.cache.MessageCache.class);
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 1L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 1L, 300_000L, 2.0);
 
         SessionConnectedEvent event = mock(SessionConnectedEvent.class);
         MessageHeaders headers = new MessageHeaders(null);
@@ -278,7 +278,7 @@ class RawWallIdLogHygieneTest {
         SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
         de.seism0saurus.glacier.webservice.cache.MessageCache messageCache = mock(de.seism0saurus.glacier.webservice.cache.MessageCache.class);
         // Short timeout so the test does not hang
-        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50L);
+        SubscriptionListener listener = new SubscriptionListener(subscriptionManager, messageCache, 50L, 300_000L, 2.0);
 
         SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);
         MessageHeaders headers = new MessageHeaders(null);
