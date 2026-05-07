@@ -166,6 +166,17 @@
             <optional>true</optional>
         </dependency>
 
+        <!--
+            Apache HttpClient 5 — connection pool for RestTemplate HEAD embed checks (P2-01).
+            Spring Boot BOM manages the httpclient5 version; no explicit version needed here.
+            The pooled client replaces the SimpleClientHttpRequestFactory used for HEAD requests,
+            providing: max 50 total / 20 per-route connections, 30 s TTL, 5 s socket/connect timeouts.
+        -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
         <!--Bigbone Mastodon Client-->
         <dependency>
             <groupId>social.bigbone</groupId>
@@ -223,6 +234,13 @@
             <version>3.10.0</version>
         </dependency>
 
+        <!--
+            mockito-inline: inline mock-maker, integrated into mockito-core since Mockito 5.0.
+            Kept here at 5.2.0 (the last standalone release) for backwards compatibility.
+            In Mockito 5+, inline mocking is the default — this dependency is effectively
+            redundant but kept to prevent future dependency-mediation selecting an older version.
+            The BOM-managed mockito-core from spring-boot-starter-test is the authoritative version (P1-05).
+        -->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-inline</artifactId>

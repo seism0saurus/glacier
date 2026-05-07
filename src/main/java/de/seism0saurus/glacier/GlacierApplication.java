@@ -6,14 +6,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import java.io.IOException;
-import java.net.HttpURLConnection;
 import java.time.Clock;
 
 /**
@@ -68,58 +64,6 @@ public class GlacierApplication {
                 // allowCredentials() not called — defaults to false (OWASP A05)
             }
         };
-    }
-
-    /**
-     * Creates a {@link RestTemplate} bean with explicit connect and read timeouts (C-03)
-     * and redirect-following disabled (H-3 SSRF guard).
-     *
-     * <p>Used by {@link de.seism0saurus.glacier.mastodon.StompCallback} to issue HEAD
-     * requests to toot embed URLs.  Without timeouts, a slow or hung remote Mastodon
-     * instance would stall the Bigbone virtual thread indefinitely, blocking event
-     * delivery for that {@code (principal, hashtag)} subscription.
-     *
-     * <p>H-3 security control (OWASP A10 SSRF, NIST SP 800-53 SI-3): redirect-following is
-     * disabled by overriding {@link SimpleClientHttpRequestFactory#prepareConnection} and
-     * calling {@link HttpURLConnection#setInstanceFollowRedirects(false)}.  Without this,
-     * an attacker-controlled Mastodon instance can issue a 302 redirect from a HEAD request
-     * to {@code https://trusted-host.com/embed} to an internal address such as
-     * {@code http://169.254.169.254/latest/meta-data/}, bypassing any URL allowlist that
-     * {@code StompCallback.isLoadable} applies before the request.  With redirect-following
-     * disabled, 3xx responses are returned directly to {@code isLoadable}, which must treat
-     * them as non-embeddable.
-     *
-     * <p>Defaults (overridable via environment variables):
-     * <ul>
-     *   <li>Connect timeout: 3 000 ms ({@code GLACIER_EMBED_CONNECT_TIMEOUT_MS})</li>
-     *   <li>Read timeout:    5 000 ms ({@code GLACIER_EMBED_READ_TIMEOUT_MS})</li>
-     * </ul>
-     *
-     * @param connectMs connect timeout in milliseconds
-     * @param readMs    read timeout in milliseconds
-     * @return a {@link RestTemplate} backed by a {@link SimpleClientHttpRequestFactory}
-     *         with the configured timeouts and redirect-following disabled
-     */
-    @Bean
-    public RestTemplate restTemplate(
-            @Value("${glacier.embed.connectTimeoutMs:3000}") int connectMs,
-            @Value("${glacier.embed.readTimeoutMs:5000}") int readMs) {
-        // H-3: anonymous subclass overrides prepareConnection to disable redirect-following.
-        // This must come BEFORE super.prepareConnection so the flag is set on every connection.
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
-            @Override
-            protected void prepareConnection(HttpURLConnection connection, String httpMethod)
-                    throws IOException {
-                super.prepareConnection(connection, httpMethod);
-                // H-3 SSRF guard (OWASP A10): never follow 3xx redirects automatically.
-                // An attacker-controlled origin can 302-redirect HEAD /embed to an internal
-                // address, bypassing the URL allowlist in StompCallback.isLoadable.
-                connection.setInstanceFollowRedirects(false);
-            }
-        };
-        factory.setConnectTimeout(connectMs);
-        factory.setReadTimeout(readMs);
-        return new RestTemplate(factory);
     }
 
     /**
