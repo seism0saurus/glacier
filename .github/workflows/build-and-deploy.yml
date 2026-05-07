@@ -93,7 +93,9 @@ jobs:
 
   mutation:
     # Mutation testing runs after unit tests pass, on push/PR to main only.
-    # Scoped to Java source directories of the 10 PITest target classes (ADR-FUZZ-04).
+    # Scoped to Java source directories of the 14 PITest target classes (ADR-FUZZ-04).
+    # P2-11 / Sec-08: MutationRegexLockstepTest verifies this regex matches every package
+    # listed in <targetClasses> in pom.xml — update BOTH files together when adding new targets.
     # Informational/gating for main — NOT a prerequisite for publish-image or deploy.
     # No production secrets in env (SR-FUZZ-06).
     runs-on: ubuntu-latest
@@ -108,7 +110,7 @@ jobs:
         run: |
           CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "pom.xml")
           if echo "$CHANGED" | grep -qE \
-            "^src/(main|test)/java/de/seism0saurus/glacier/(util|share|webservice/(messaging|cache)|mastodon)/|^pom\.xml"; then
+            "^src/(main|test)/java/de/seism0saurus/glacier/(util|share|webservice/(messaging|cache|security)|mastodon)/|^pom\.xml"; then
             echo "java=true" >> "$GITHUB_OUTPUT"
           else
             echo "java=false" >> "$GITHUB_OUTPUT"
