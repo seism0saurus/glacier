@@ -494,4 +494,158 @@ class OwaspMatrixCookieAttributesLockstepTest {
                             + "Accepted tokens: SameSite=Lax, SameSite=Strict, SameSite=None.");
         }
     }
+
+    // -------------------------------------------------------------------------
+    // CSRF cookie lockstep — insecure mode (FU-R3)
+    // -------------------------------------------------------------------------
+
+    /**
+     * UT-sec-LOCK-02-insecure: parity tests for the {@code shareCsrf} cookie in
+     * insecure/dev mode ({@code glacier.cookie.secure=false}).
+     *
+     * <p>In insecure mode the cookie is named {@code shareCsrf} (no {@code __Host-} prefix),
+     * scoped to {@code Path=/share}, carries no {@code Secure} flag, but retains
+     * {@code SameSite=Strict} and the double-submit requirement ({@code HttpOnly=false}).
+     *
+     * <p>FU-R3: extends I-CSRF-1 (single-emission invariant) and the HttpOnly gate to the
+     * insecure transport path so regressions introduced by dev-mode configuration changes
+     * are caught as early as secure-mode regressions.
+     */
+    @Nested
+    @WebMvcTest(controllers = {ShareViewController.class})
+    @Import(CsrfTokenCookieFactory.class)
+    @TestPropertySource(properties = {
+            "glacier.cookie.secure=false",
+            "glacier.domain=example.com",
+            "glacier.fallback.enabled=true"
+    })
+    class CsrfCookieLockstepInsecure {
+
+        @Autowired
+        private MockMvc mockMvc;
+
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private ShareLinkService shareLinkService;
+
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private ShareViewerCookieFactory shareViewerCookieFactory;
+
+        @MockitoBean
+        private ShareRateLimiter shareRateLimiter;
+
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private ShareViewStompRelay shareViewStompRelay;
+
+        /**
+         * UT-sec-LOCK-02-insecure-a: GET /rest/share-csrf in insecure mode must emit exactly
+         * one {@code Set-Cookie} header for the {@code shareCsrf} cookie (I-CSRF-1).
+         *
+         * <p>ADR-4: filter by cookie name prefix, assert {@code hasSize(1)}.
+         */
+        @Test
+        void csrfCookie_insecureMode_emitsExactlyOneSetCookieHeader() throws Exception {
+            when(shareRateLimiter.checkCsrfIssuance(any()))
+                    .thenReturn(ShareRateLimiter.RateLimitResult.allowed());
+
+            MvcResult result = mockMvc.perform(get("/rest/share-csrf"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            List<String> csrfHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+                    .stream()
+                    .filter(h -> h.startsWith("shareCsrf="))
+                    .toList();
+
+            assertThat(csrfHeaders)
+                    .as("FU-R3 / I-CSRF-1: GET /rest/share-csrf in insecure mode must emit exactly "
+                            + "one Set-Cookie header for 'shareCsrf'")
+                    .hasSize(1);
+        }
+
+        /**
+         * UT-sec-LOCK-02-insecure-b: the {@code shareCsrf} cookie must NOT carry
+         * {@code HttpOnly} in insecure mode — double-submit pattern requires JS to read it.
+         *
+         * <p>ADR-4: filter by cookie name, assert single emission, then check attribute.
+         */
+        @Test
+        void csrfCookie_insecureMode_notHttpOnly_perDoubleSubmitPattern() throws Exception {
+            when(shareRateLimiter.checkCsrfIssuance(any()))
+                    .thenReturn(ShareRateLimiter.RateLimitResult.allowed());
+
+            MvcResult result = mockMvc.perform(get("/rest/share-csrf"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            List<String> csrfHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+                    .stream()
+                    .filter(h -> h.startsWith("shareCsrf="))
+                    .toList();
+
+            assertThat(csrfHeaders)
+                    .as("FU-R3 / I-CSRF-1: exactly one Set-Cookie header for 'shareCsrf' in insecure mode")
+                    .hasSize(1);
+
+            assertThat(csrfHeaders.get(0).toLowerCase())
+                    .as("FU-R3 / UT-sec-LOCK-02b-insecure: CSRF cookie in insecure mode must NOT "
+                            + "carry HttpOnly — double-submit pattern requires JS to read the token")
+                    .doesNotContain("httponly");
+        }
+
+        /**
+         * UT-sec-LOCK-02-insecure-c: the {@code shareCsrf} cookie SameSite token must match
+         * the matrix EP-09 claim — same requirement as secure mode.
+         */
+        @Test
+        void csrfCookie_insecureMode_actualSameSite_matchesMatrixClaim() throws Exception {
+            when(shareRateLimiter.checkCsrfIssuance(any()))
+                    .thenReturn(ShareRateLimiter.RateLimitResult.allowed());
+
+            MvcResult result = mockMvc.perform(get("/rest/share-csrf"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            List<String> csrfHeaders = result.getResponse().getHeaders(HttpHeaders.SET_COOKIE)
+                    .stream()
+                    .filter(h -> h.startsWith("shareCsrf="))
+                    .toList();
+
+            assertThat(csrfHeaders)
+                    .as("FU-R3 / I-CSRF-1: exactly one Set-Cookie header for 'shareCsrf' in insecure mode")
+                    .hasSize(1);
+
+            String setCookieHeader = csrfHeaders.get(0);
+            String matrixSameSite = parseMatrixCsrfSameSite();
+
+            assertThat(setCookieHeader)
+                    .as("FU-R3 / UT-sec-LOCK-02-insecure-c: actual SameSite for 'shareCsrf' must "
+                            + "match OWASP_COVERAGE_MATRIX.md EP-09 claim [%s]. "
+                            + "Actual Set-Cookie: [%s]",
+                            matrixSameSite, setCookieHeader)
+                    .containsIgnoringCase(matrixSameSite);
+        }
+
+        private String parseMatrixCsrfSameSite() throws IOException {
+            List<String> lines = Files.readAllLines(MATRIX_PATH);
+            Pattern sameSitePattern = Pattern.compile("(SameSite=(?:Lax|Strict|None))");
+
+            for (String line : lines) {
+                if (!line.startsWith("|")) continue;
+                if (!line.contains("EP-09") && !line.contains("share-csrf")) continue;
+
+                Matcher m = sameSitePattern.matcher(line);
+                if (m.find()) {
+                    return m.group(1);
+                }
+            }
+
+            throw new AssertionError(
+                    "FU-R3 (ADR-3): OWASP_COVERAGE_MATRIX.md does not contain a SameSite= token "
+                            + "on any table row mentioning 'EP-09' or 'share-csrf'. "
+                            + "Accepted tokens: SameSite=Lax, SameSite=Strict, SameSite=None.");
+        }
+    }
 }

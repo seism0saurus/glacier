@@ -77,11 +77,18 @@ class CsrfCookieEmissionStructureTest {
     @Test
     void csrfCookieEmissionGate_canary_packageIsNonEmptyAndFactoryIsLoadable()
             throws ClassNotFoundException {
-        // Assert the class under guard is loadable
+        // Assert the classes under guard are loadable
         Class<?> factoryClass =
                 Class.forName("de.seism0saurus.glacier.share.web.CsrfTokenCookieFactory");
         assertThat(factoryClass)
                 .as("SR-CSRF-09 canary: CsrfTokenCookieFactory must be loadable from its canonical "
+                        + "class name — if this fails, the class was renamed without updating this gate")
+                .isNotNull();
+
+        Class<?> viewerFactoryClass =
+                Class.forName("de.seism0saurus.glacier.share.web.ShareViewerCookieFactory");
+        assertThat(viewerFactoryClass)
+                .as("FU-R1 canary: ShareViewerCookieFactory must be loadable from its canonical "
                         + "class name — if this fails, the class was renamed without updating this gate")
                 .isNotNull();
 

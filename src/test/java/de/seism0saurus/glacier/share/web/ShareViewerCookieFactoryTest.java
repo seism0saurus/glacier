@@ -1,9 +1,11 @@
 package de.seism0saurus.glacier.share.web;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -69,6 +71,50 @@ class ShareViewerCookieFactoryTest {
         assertThat(setCookieHeader).isNotNull();
         assertThat(setCookieHeader).startsWith("shareViewerId=");
         assertThat(setCookieHeader).contains("Path=/share");
+    }
+
+    /**
+     * FU-R2: In secure mode exactly one {@code Set-Cookie} header must be emitted for the
+     * {@code __Host-shareViewerId} cookie (I-CSRF-1 parity — single-emission invariant).
+     *
+     * <p>Uses {@code getHeaders(SET_COOKIE)} (plural) + filter-by-name + {@code hasSize(1)},
+     * which is stronger than {@code getHeader(SET_COOKIE)} (singular) — the latter silently
+     * returns only the first value even when two headers are emitted.
+     */
+    @Test
+    void secureCookie_emitsExactlyOneSetCookieHeader() {
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
+
+        List<String> viewerHeaders = response.getHeaders(HttpHeaders.SET_COOKIE)
+                .stream()
+                .filter(h -> h.startsWith("__Host-shareViewerId="))
+                .toList();
+        assertThat(viewerHeaders)
+                .as("FU-R2 / I-CSRF-1: ShareViewerCookieFactory must emit exactly one Set-Cookie "
+                        + "header for '__Host-shareViewerId' in secure mode")
+                .hasSize(1);
+    }
+
+    /**
+     * FU-R2: In insecure mode exactly one {@code Set-Cookie} header must be emitted for the
+     * {@code shareViewerId} cookie (I-CSRF-1 parity — single-emission invariant).
+     */
+    @Test
+    void insecureCookie_emitsExactlyOneSetCookieHeader() {
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(false);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
+
+        List<String> viewerHeaders = response.getHeaders(HttpHeaders.SET_COOKIE)
+                .stream()
+                .filter(h -> h.startsWith("shareViewerId="))
+                .toList();
+        assertThat(viewerHeaders)
+                .as("FU-R2 / I-CSRF-1: ShareViewerCookieFactory must emit exactly one Set-Cookie "
+                        + "header for 'shareViewerId' in insecure mode")
+                .hasSize(1);
     }
 
     /**
