@@ -38,7 +38,7 @@ class DefaultSafeUrlValidatorLocaleTest {
     @BeforeEach
     void setUp() {
         savedLocale = Locale.getDefault();
-        Locale.setDefault(new Locale("tr", "TR"));
+        Locale.setDefault(Locale.of("tr", "TR"));
         validator = new DefaultSafeUrlValidator();
     }
 

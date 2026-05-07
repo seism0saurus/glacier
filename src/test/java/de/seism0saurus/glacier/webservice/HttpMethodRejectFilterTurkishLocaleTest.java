@@ -44,7 +44,7 @@ class HttpMethodRejectFilterTurkishLocaleTest {
     @BeforeEach
     void setUp() {
         savedLocale = Locale.getDefault();
-        Locale.setDefault(new Locale("tr", "TR"));
+        Locale.setDefault(Locale.of("tr", "TR"));
         filter = new HttpMethodRejectFilter();
         response = new MockHttpServletResponse();
     }

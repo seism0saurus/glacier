@@ -38,7 +38,7 @@ class IframeEmbedPolicyTurkishLocaleTest {
     @BeforeEach
     void setTurkishLocale() {
         savedLocale = Locale.getDefault();
-        Locale.setDefault(new Locale("tr", "TR"));
+        Locale.setDefault(Locale.of("tr", "TR"));
     }
 
     @AfterEach

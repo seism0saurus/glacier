@@ -43,7 +43,7 @@ class ShareImageProxyServiceLocaleTest {
     @BeforeEach
     void saveAndSetTurkishLocale() {
         savedLocale = Locale.getDefault();
-        Locale.setDefault(new Locale("tr", "TR"));
+        Locale.setDefault(Locale.of("tr", "TR"));
     }
 
     @AfterEach
