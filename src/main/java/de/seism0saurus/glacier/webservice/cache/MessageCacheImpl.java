@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
+import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -129,14 +130,7 @@ public class MessageCacheImpl implements MessageCache {
                     "STOMP fan-out preserved for live WS clients (D-11)",
                     LogScrubber.hash8(key.name()), hashtag);
             String destination = destinationFor(key.name(), hashtag, partial.type());
-            try {
-                simpMessagingTemplate.convertAndSend(destination, buildStompPayload(partial));
-            } catch (Exception ex) {
-                LOGGER.warn("STOMP publish failed (kill-switch path) principal-hash={} hashtag={} statusId={} — " +
-                        "no cache entry to preserve (D-11)",
-                        LogScrubber.hash8(key.name()), hashtag, partial.statusId());
-                publishFailureCounter.increment();
-            }
+            publishWithRetry(destination, partial, key, hashtag);
             return null;
         }
 
@@ -156,14 +150,7 @@ public class MessageCacheImpl implements MessageCache {
         CacheEntry stored = ring.append(partial);
 
         String destination = destinationFor(key.name(), hashtag, stored.type());
-        try {
-            simpMessagingTemplate.convertAndSend(destination, buildStompPayload(stored));
-            LOGGER.info("Sending message to {} sequence={} statusId={}", destination, stored.sequence(), stored.statusId());
-        } catch (Exception ex) {
-            LOGGER.warn("STOMP publish failed principal-hash={} hashtag={} sequence={} statusId={} eventType={} — cache entry preserved (D-03)",
-                    LogScrubber.hash8(key.name()), hashtag, stored.sequence(), stored.statusId(), stored.type());
-            publishFailureCounter.increment();
-        }
+        publishWithRetry(destination, stored, key, hashtag);
 
         return stored;
     }
@@ -264,6 +251,69 @@ public class MessageCacheImpl implements MessageCache {
     private static String destinationFor(final String principal, final String hashtag, final EventType type) {
         return "/topic/hashtags/" + principal + "/" + hashtag + "/" + suffixFor(type);
     }
+
+    /**
+     * Publishes a STOMP message to {@code destination}, with a single retry after
+     * 200 ms if the first attempt throws {@link MessageDeliveryException} (P2-12).
+     *
+     * <p>Retry rationale: transient STOMP broker backlogs can cause a single-message
+     * delivery failure that resolves within milliseconds. A one-shot retry recovers
+     * from these without losing the event. More than one retry would risk stalling
+     * the Bigbone virtual thread for too long; instead, after the retry fails the
+     * message is logged at ERROR and dropped. The cache entry is always preserved
+     * regardless of publish outcome (D-03).
+     *
+     * <p>All other {@link Exception} subtypes are caught, logged at WARN, and dropped
+     * without a retry — they indicate conditions (broker shutdown, serialisation error)
+     * that a retry will not fix.
+     *
+     * @param destination STOMP topic destination path
+     * @param entry       the cache entry to publish
+     * @param key         principal key used for log scrubbing (D-13 / SR-8)
+     * @param hashtag     hashtag label used for structured log fields
+     */
+    private void publishWithRetry(
+            final String destination, final CacheEntry entry,
+            final PrincipalKey key, final String hashtag) {
+        try {
+            simpMessagingTemplate.convertAndSend(destination, buildStompPayload(entry));
+            LOGGER.info("Sending message to {} sequence={} statusId={}", destination, entry.sequence(), entry.statusId());
+        } catch (MessageDeliveryException ex) {
+            // Single retry after 200 ms — transient broker backlog recovery (P2-12)
+            LOGGER.warn("STOMP publish failed (attempt 1/2) principal-hash={} hashtag={} sequence={} statusId={} " +
+                            "eventType={} — retrying in 200 ms (P2-12)",
+                    LogScrubber.hash8(key.name()), hashtag, entry.sequence(), entry.statusId(), entry.type());
+            publishFailureCounter.increment();
+            try {
+                Thread.sleep(RETRY_DELAY_MS);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                LOGGER.warn("STOMP retry sleep interrupted — dropping message principal-hash={} hashtag={} statusId={}",
+                        LogScrubber.hash8(key.name()), hashtag, entry.statusId());
+                return;
+            }
+            try {
+                simpMessagingTemplate.convertAndSend(destination, buildStompPayload(entry));
+                LOGGER.info("STOMP retry succeeded principal-hash={} hashtag={} sequence={} statusId={}",
+                        LogScrubber.hash8(key.name()), hashtag, entry.sequence(), entry.statusId());
+            } catch (Exception retryEx) {
+                LOGGER.error("STOMP publish failed after retry (attempt 2/2) — dropping message. " +
+                                "principal-hash={} hashtag={} sequence={} statusId={} eventType={} (P2-12, D-03)",
+                        LogScrubber.hash8(key.name()), hashtag, entry.sequence(), entry.statusId(), entry.type());
+                publishFailureCounter.increment();
+            }
+        } catch (Exception ex) {
+            // Non-MessageDeliveryException: no retry — condition is not transient
+            LOGGER.warn("STOMP publish failed principal-hash={} hashtag={} sequence={} statusId={} eventType={} — cache entry preserved (D-03)",
+                    LogScrubber.hash8(key.name()), hashtag, entry.sequence(), entry.statusId(), entry.type());
+            publishFailureCounter.increment();
+        }
+    }
+
+    /**
+     * Delay in milliseconds between the first failed STOMP publish attempt and the retry (P2-12).
+     */
+    private static final long RETRY_DELAY_MS = 200L;
 
     /**
      * Builds the STOMP payload DTO corresponding to the given cache entry.

@@ -9,6 +9,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -483,5 +484,94 @@ class MessageCacheImplTest {
 
         assertThat(killswitchedCache.isProvisioned(wall("principal-C"), "news")).isFalse();
         assertThat(ksRegistry.get("glacier.cache.principals.count").gauge().value()).isEqualTo(0.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // P2-12: MessageDeliveryException retry behaviour
+    // -----------------------------------------------------------------------
+
+    /**
+     * When {@code convertAndSend} throws {@link MessageDeliveryException} on the first attempt,
+     * it is retried exactly once and the cache entry is preserved regardless of publish outcome.
+     *
+     * <p>Arrange: stub {@code convertAndSend} to throw {@link MessageDeliveryException} on the
+     * first call, then succeed on the retry.<br>
+     * Act: call {@code recordThenPublish}.<br>
+     * Assert: {@code convertAndSend} called twice; returned entry is non-null (cache preserved, D-03).
+     */
+    @Test
+    void recordThenPublish_messageDeliveryException_retriesOnceAndSucceeds() {
+        cache.provisionHashtag(wall("retry-principal"), "tech");
+        CacheEntry partial = partial(EventType.CREATED, "retry-s1");
+
+        // First call throws, second call succeeds
+        doThrow(new MessageDeliveryException("transient broker backlog"))
+                .doNothing()
+                .when(template).convertAndSend(any(String.class), any(Object.class));
+
+        CacheEntry stored = cache.recordThenPublish(wall("retry-principal"), "tech", partial);
+
+        // Cache entry must be preserved (D-03), publish attempted twice
+        assertThat(stored).isNotNull();
+        assertThat(stored.statusId()).isEqualTo("retry-s1");
+        verify(template, times(2)).convertAndSend(
+                eq("/topic/hashtags/retry-principal/tech/creation"), any(Object.class));
+    }
+
+    /**
+     * When both the initial attempt and the retry throw {@link MessageDeliveryException},
+     * the message is dropped but the cache entry is still preserved (D-03).
+     * The publish-failure counter must be incremented twice.
+     *
+     * <p>Arrange: stub {@code convertAndSend} to throw on both calls.<br>
+     * Act: call {@code recordThenPublish}.<br>
+     * Assert: {@code convertAndSend} called twice; entry non-null; failure counter incremented 2×.
+     */
+    @Test
+    void recordThenPublish_messageDeliveryException_bothAttemptsFail_entryPreservedAndCounterIncremented() {
+        MeterRegistry retryRegistry = new SimpleMeterRegistry();
+        MessageCacheImpl retryCache = new MessageCacheImpl(template, retryRegistry, 20, 10, 10000, true);
+        retryCache.provisionHashtag(wall("retry-fail-principal"), "news");
+        CacheEntry partial = partial(EventType.CREATED, "retry-fail-s1");
+
+        // Both attempts throw
+        doThrow(new MessageDeliveryException("broker down"))
+                .doThrow(new MessageDeliveryException("still down"))
+                .when(template).convertAndSend(any(String.class), any(Object.class));
+
+        CacheEntry stored = retryCache.recordThenPublish(wall("retry-fail-principal"), "news", partial);
+
+        // Entry must be preserved even when both publish attempts fail (D-03)
+        assertThat(stored).isNotNull();
+        assertThat(stored.statusId()).isEqualTo("retry-fail-s1");
+        verify(template, times(2)).convertAndSend(
+                eq("/topic/hashtags/retry-fail-principal/news/creation"), any(Object.class));
+        // Failure counter incremented once for the initial failure and once for the retry failure
+        assertThat(retryRegistry.get("glacier.fallback.publish.failures").counter().count()).isEqualTo(2.0);
+    }
+
+    /**
+     * A non-{@link MessageDeliveryException} (e.g. a serialisation error) must NOT be retried —
+     * it is not a transient condition, and a retry would waste time and cause duplicate log entries.
+     *
+     * <p>Arrange: stub {@code convertAndSend} to throw a generic {@link RuntimeException}.<br>
+     * Act: call {@code recordThenPublish}.<br>
+     * Assert: {@code convertAndSend} called exactly once (no retry); entry still non-null (D-03).
+     */
+    @Test
+    void recordThenPublish_nonMessageDeliveryException_isNotRetried() {
+        cache.provisionHashtag(wall("no-retry-principal"), "art");
+        CacheEntry partial = partial(EventType.CREATED, "no-retry-s1");
+
+        // Generic exception — should NOT trigger retry
+        doThrow(new RuntimeException("serialisation error"))
+                .when(template).convertAndSend(any(String.class), any(Object.class));
+
+        CacheEntry stored = cache.recordThenPublish(wall("no-retry-principal"), "art", partial);
+
+        assertThat(stored).isNotNull();
+        // Only one attempt — no retry for non-MessageDeliveryException
+        verify(template, times(1)).convertAndSend(
+                eq("/topic/hashtags/no-retry-principal/art/creation"), any(Object.class));
     }
 }
