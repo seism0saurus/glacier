@@ -19,7 +19,8 @@ class SubscriptionListenerTest {
     private final SubscriptionManager subscriptionManager = mock(SubscriptionManager.class);
     private final MessageCache messageCache = mock(MessageCache.class);
 
-    private SubscriptionListener subscriptionListener = new SubscriptionListener(subscriptionManager, messageCache, 300_000L);
+    private SubscriptionListener subscriptionListener = new SubscriptionListener(
+            subscriptionManager, messageCache, 300_000L, 300_000L, 2.0);
 
     @Test
     void testOnConnectedEvent_WithoutPreviousDisconnect() throws Exception {
@@ -66,7 +67,8 @@ class SubscriptionListenerTest {
     @Test
     void testOnConnectedEvent_WithPreviousDisconnect_WithWaitingForTimeout() throws Exception {
         // Reduce the timeout to one second
-        subscriptionListener = new SubscriptionListener(subscriptionManager, messageCache, 1_000L);
+        subscriptionListener = new SubscriptionListener(
+                subscriptionManager, messageCache, 1_000L, 300_000L, 2.0);
 
         // Create a valid Principal object
         Principal principal = () -> "user1";
@@ -115,7 +117,8 @@ class SubscriptionListenerTest {
     @Test
     void testOnDisconnectEvent_WithWaitingForTimeout() throws Exception {
         // Reduce the timeout to one second
-        subscriptionListener = new SubscriptionListener(subscriptionManager, messageCache, 1_000L);
+        subscriptionListener = new SubscriptionListener(
+                subscriptionManager, messageCache, 1_000L, 300_000L, 2.0);
 
         // Create a valid Principal object
         Principal principal = () -> "user1";
@@ -175,7 +178,117 @@ class SubscriptionListenerTest {
         assertTrue(subscriptionListener.hasRunningDisconnectTimers());
     }
 
+    // -----------------------------------------------------------------------
+    // P2-02: Exponential back-off unit tests
+    // -----------------------------------------------------------------------
+
+    /**
+     * First disconnect returns the initial timeout as the delay.
+     *
+     * <p>Arrange: fresh listener, timeout = 5 000 ms, multiplier = 2.0, max = 60 000 ms.<br>
+     * Act: call nextBackoffDelay once.<br>
+     * Assert: returns 5 000 ms (the initial delay, not yet multiplied).
+     */
+    @Test
+    void backoffDelay_firstDisconnect_returnsInitialTimeout() {
+        SubscriptionListener listener = new SubscriptionListener(
+                subscriptionManager, messageCache, 5_000L, 60_000L, 2.0);
+
+        long delay = listener.nextBackoffDelay("principal-a");
+
+        assertEquals(5_000L, delay);
+    }
+
+    /**
+     * Second disconnect returns the initial timeout multiplied by 2.
+     *
+     * <p>Arrange: fresh listener, timeout = 5 000 ms, multiplier = 2.0, max = 60 000 ms.<br>
+     * Act: call nextBackoffDelay twice for the same principal.<br>
+     * Assert: second call returns 10 000 ms.
+     */
+    @Test
+    void backoffDelay_secondDisconnect_returnsDoubledDelay() {
+        SubscriptionListener listener = new SubscriptionListener(
+                subscriptionManager, messageCache, 5_000L, 60_000L, 2.0);
+
+        listener.nextBackoffDelay("principal-b");
+        long delay = listener.nextBackoffDelay("principal-b");
+
+        assertEquals(10_000L, delay);
+    }
+
+    /**
+     * Back-off delay is capped at the configured maximum.
+     *
+     * <p>Arrange: timeout = 5 000 ms, multiplier = 2.0, max = 12 000 ms.<br>
+     * Act: advance back-off until it would exceed max (5 000 → 10 000 → would be 20 000, capped).<br>
+     * Assert: third call returns max (12 000 ms).
+     */
+    @Test
+    void backoffDelay_exceedingMax_isCappedAtMaxDelay() {
+        SubscriptionListener listener = new SubscriptionListener(
+                subscriptionManager, messageCache, 5_000L, 12_000L, 2.0);
+
+        listener.nextBackoffDelay("principal-c"); // returns 5 000, next = 10 000
+        listener.nextBackoffDelay("principal-c"); // returns 10 000, next = min(20 000, 12 000) = 12 000
+        long delay = listener.nextBackoffDelay("principal-c"); // returns 12 000
+
+        assertEquals(12_000L, delay);
+    }
+
+    /**
+     * Back-off state is reset when the principal reconnects successfully.
+     *
+     * <p>Arrange: advance back-off for principal by calling nextBackoffDelay twice,
+     * then simulate a connected event for the principal.<br>
+     * Act: call nextBackoffDelay again after reconnect.<br>
+     * Assert: delay resets to the initial timeout value.
+     */
+    @Test
+    void backoffDelay_afterSuccessfulReconnect_resetsToInitialTimeout() {
+        SubscriptionListener listener = new SubscriptionListener(
+                subscriptionManager, messageCache, 5_000L, 60_000L, 2.0);
+        String principalName = "principal-d";
+        Principal principal = () -> principalName;
+
+        listener.nextBackoffDelay(principalName); // returns 5 000, next = 10 000
+        listener.nextBackoffDelay(principalName); // returns 10 000, next = 20 000
+
+        // Simulate successful reconnect — should reset back-off state
+        connect(principal, listener);
+
+        long delayAfterReset = listener.nextBackoffDelay(principalName);
+
+        assertEquals(5_000L, delayAfterReset,
+                "Back-off must reset to initial timeout after a successful reconnect (P2-02)");
+    }
+
+    /**
+     * Different principals have independent back-off state.
+     *
+     * <p>Arrange: advance back-off for principalA twice.<br>
+     * Act: get back-off delay for principalB.<br>
+     * Assert: principalB delay is the initial timeout, not affected by principalA's state.
+     */
+    @Test
+    void backoffDelay_differentPrincipals_haveIndependentBackoffState() {
+        SubscriptionListener listener = new SubscriptionListener(
+                subscriptionManager, messageCache, 5_000L, 60_000L, 2.0);
+
+        listener.nextBackoffDelay("principal-e"); // 5000 → next 10000
+        listener.nextBackoffDelay("principal-e"); // 10000 → next 20000
+
+        long delayForOtherPrincipal = listener.nextBackoffDelay("principal-f");
+
+        assertEquals(5_000L, delayForOtherPrincipal,
+                "Back-off state must be independent per principal (P2-02)");
+    }
+
     private void connect(Principal principal) {
+        connect(principal, subscriptionListener);
+    }
+
+    private void connect(Principal principal, SubscriptionListener listener) {
         // Mock the event
         SessionConnectedEvent event = mock(SessionConnectedEvent.class);
 
@@ -193,8 +306,8 @@ class SubscriptionListenerTest {
         when(event.getMessage()).thenReturn(message);
         when(event.getUser()).thenReturn(principal);
 
-        // Set up the subscription listener to handle the mock event
-        subscriptionListener.onConnectedEvent(event);
+        // Set up the given listener to handle the mock event
+        listener.onConnectedEvent(event);
     }
 
     private void disconnect(Principal principal) {
