@@ -118,3 +118,144 @@ The ports `80`, `443`, `8080` and `8090` need to be free on your system, and you
   ![Screenshot of the Run/Debug configuration of the playwright test](run_configuration_playwright.png){width=400px}
 - Run the playwright configuration in your IDE
 
+
+## Mode-specific debug recipes
+
+Glacier has five Playwright projects, each targeting a distinct backend state. When debugging test failures, use the recipe that matches the failing project. Start the Mastodon-only stack first (per the [Manual E2E Testing for debugging](#manual-e2e-testing-for-debugging) section above), then start Glacier with the required environment variables, and finally run only the relevant Playwright project.
+
+### Standard modes (chromium / firefox / webkit)
+
+These three projects run against the default live stack. No special backend flags are needed beyond the base environment variables from the manual debug section.
+
+**Backend start (example):**
+```bash
+ACCESS_KEY=hMfsEYl9Hgk2Pt-iTyZyvKvfbXh9tjXV41-tsr3vRak \
+DEVMODE=true \
+HANDLE=glacier_e2e_test@proxy \
+INSTANCE=proxy \
+MY_CITY=somecity \
+MY_COUNTRY=Germany \
+MY_DOMAIN=localhost:8080 \
+MY_MAIL=kontakt@seism0saurus.de \
+MY_NAME=seism0saurus \
+MY_PHONE=+1234567890 \
+MY_STREET_AND_NUMBER="sometherestreet 1" \
+MY_WEBSITE=seism0saurus.de \
+MY_ZIP_CODE=12345 \
+GLACIER_SHARE_HOST=share.proxy \
+GLACIER_SHARE_IMGPROXY_HMAC_SECRET=dev-only-secret-replace-in-prod \
+  java -jar target/glacier-0.0.9.jar
+```
+
+**Run specific Playwright project:**
+```bash
+cd frontend
+# Run only the chromium project (all standard specs):
+MASTODON_USER_API_URL=https://proxy \
+MASTODON_USER_ACCESS_TOKEN=pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34 \
+GLACIER_HANDLE=@glacier_e2e_test@proxy \
+BASE_URL=http://localhost:8080 \
+  npx playwright test --project=chromium
+
+# Or firefox / webkit:
+npx playwright test --project=firefox
+npx playwright test --project=webkit
+```
+
+### Killswitch mode
+
+**What it tests:** `GLACIER_FALLBACK_ENABLED=false` disables the HTTP fallback polling path. `FallbackController` returns 404 for `/rest/messages` and `/rest/share/{id}/messages`. The frontend enters the "Limited" (`KILLSWITCHED`) indicator state.
+
+**Config key:** `glacier.fallback.enabled` (set via `GLACIER_FALLBACK_ENABLED` env var, default `true`).
+
+**Backend start — add `GLACIER_FALLBACK_ENABLED=false`:**
+```bash
+ACCESS_KEY=hMfsEYl9Hgk2Pt-iTyZyvKvfbXh9tjXV41-tsr3vRak \
+DEVMODE=true \
+HANDLE=glacier_e2e_test@proxy \
+INSTANCE=proxy \
+MY_CITY=somecity \
+MY_COUNTRY=Germany \
+MY_DOMAIN=localhost:8080 \
+MY_MAIL=kontakt@seism0saurus.de \
+MY_NAME=seism0saurus \
+MY_PHONE=+1234567890 \
+MY_STREET_AND_NUMBER="sometherestreet 1" \
+MY_WEBSITE=seism0saurus.de \
+MY_ZIP_CODE=12345 \
+GLACIER_SHARE_HOST=share.proxy \
+GLACIER_SHARE_IMGPROXY_HMAC_SECRET=dev-only-secret-replace-in-prod \
+GLACIER_FALLBACK_ENABLED=false \
+  java -jar target/glacier-0.0.9.jar
+```
+
+**Run the killswitch Playwright project:**
+```bash
+cd frontend
+MASTODON_USER_API_URL=https://proxy \
+MASTODON_USER_ACCESS_TOKEN=pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34 \
+GLACIER_HANDLE=@glacier_e2e_test@proxy \
+BASE_URL=http://localhost:8080 \
+  npx playwright test --project=killswitch
+```
+
+**Specs covered:** `frontend/e2e/workflows/fallback-killswitch.spec.ts`, `frontend/e2e/workflows/share-link-killswitch.spec.ts`, `frontend/e2e/workflows/fallback-unsubscribe-prune.spec.ts`.
+
+### Insecure transport mode
+
+**What it tests:** Glacier served over plain HTTP (no TLS). `COOKIE_SECURE=false` removes the `Secure` attribute and `__Host-` prefix from `wallId` and `__Host-shareViewerId` cookies so they are sent by the browser over HTTP. The frontend enters the "Insecure Connection" indicator state.
+
+**Config key:** `glacier.cookie.secure` (set via `COOKIE_SECURE` env var, default `true`). The backend binds an additional plain-HTTP port at `:8081` via `docker-compose.override.insecure.yaml`; in the IDE debug flow you can pass `COOKIE_SECURE=false` and use port `8080` directly (it is already plain HTTP when running from the IDE without Traefik).
+
+**Backend start — add `COOKIE_SECURE=false`:**
+```bash
+ACCESS_KEY=hMfsEYl9Hgk2Pt-iTyZyvKvfbXh9tjXV41-tsr3vRak \
+DEVMODE=true \
+HANDLE=glacier_e2e_test@proxy \
+INSTANCE=proxy \
+MY_CITY=somecity \
+MY_COUNTRY=Germany \
+MY_DOMAIN=localhost:8080 \
+MY_MAIL=kontakt@seism0saurus.de \
+MY_NAME=seism0saurus \
+MY_PHONE=+1234567890 \
+MY_STREET_AND_NUMBER="sometherestreet 1" \
+MY_WEBSITE=seism0saurus.de \
+MY_ZIP_CODE=12345 \
+GLACIER_SHARE_HOST=share.proxy \
+GLACIER_SHARE_IMGPROXY_HMAC_SECRET=dev-only-secret-replace-in-prod \
+COOKIE_SECURE=false \
+  java -jar target/glacier-0.0.9.jar
+```
+
+**Run the insecure Playwright project** — note `BASE_URL_INSECURE` points to the loopback HTTP port (port 8080 in the IDE debug flow, or 8081 when using the compose override):
+```bash
+cd frontend
+MASTODON_USER_API_URL=https://proxy \
+MASTODON_USER_ACCESS_TOKEN=pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34 \
+GLACIER_HANDLE=@glacier_e2e_test@proxy \
+BASE_URL=http://localhost:8080 \
+BASE_URL_INSECURE=http://localhost:8080 \
+  npx playwright test --project=insecure
+```
+
+**Specs covered:** `frontend/e2e/workflows/fallback-insecure.spec.ts`, `frontend/e2e/workflows/share-link-insecure.spec.ts`, `frontend/e2e/workflows/fallback-unsubscribe-prune.spec.ts`.
+
+### Accessibility mode (a11y)
+
+**What it tests:** WCAG 2.2 AA axe-core scans and keyboard/zoom accessibility checks against the live Glacier + Mastodon stack. Runs chromium-only. No special backend flags are needed beyond the base configuration.
+
+**Backend start:** same as [Standard modes](#standard-modes-chromium--firefox--webkit) above.
+
+**Run the a11y Playwright project:**
+```bash
+cd frontend
+MASTODON_USER_API_URL=https://proxy \
+MASTODON_USER_ACCESS_TOKEN=pyPuRhw4cZJHN4QJuMX8mo9CFmziZp_BjvuCf71sV34 \
+GLACIER_HANDLE=@glacier_e2e_test@proxy \
+BASE_URL=http://localhost:8080 \
+  npx playwright test --project=a11y
+```
+
+**Specs covered:** all files matching `**/*-a11y.spec.ts` (e.g. `share-link-a11y.spec.ts`, `subscriptions-prune-a11y.spec.ts`).
+

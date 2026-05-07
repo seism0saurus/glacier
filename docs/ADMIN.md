@@ -102,17 +102,19 @@ ghcr.io/seism0saurus/glacier:main
 | `MY_PHONE` | Phone number for the Legal Notice | `+49 30 12345678` |
 | `MY_MAIL` | Contact email address for the Legal Notice | `admin@example.com` |
 | `MY_WEBSITE` | Website URL for the Legal Notice | `https://example.com` |
+| `GLACIER_SHARE_IMGPROXY_HMAC_SECRET` | HMAC-SHA256 secret (minimum 32 characters) for signing image proxy URLs. The backend refuses to start in secure mode (`COOKIE_SECURE=true`) if this value is absent or shorter than 32 characters. Use a cryptographically random value — never reuse a password or a predictable string. | *(no default — must be set)* |
 
 > **Why the Legal Notice fields?** In some countries (e.g. Germany) operators of public websites are legally required to provide contact information (Impressum). These fields populate Glacier's built-in Legal Notice and GDPR pages.
 
+> **Why is `GLACIER_SHARE_IMGPROXY_HMAC_SECRET` required?** Without it the image proxy endpoint is either disabled (causing share views to load without toot images) or signs URLs with an empty secret — both are insecure. In production (`COOKIE_SECURE=true`, the default) the application performs a startup check and fails fast if the secret is missing or too short, preventing an accidentally-insecure deployment.
+
 ### Share link variables
 
-These variables enable the share link and QR code feature. If `GLACIER_SHARE_IMGPROXY_HMAC_SECRET` is not set the image proxy is disabled and share views will not load toot images.
+The following variables tune the share link and QR code feature. `GLACIER_SHARE_HOST` must also be set for share links to work; the remaining variables have sensible defaults.
 
 | Variable | Description | Default |
 |---|---|---|
 | `GLACIER_SHARE_HOST` | Hostname for read-only share views — must be a subdomain of `MY_DOMAIN` | `share.example.com` |
-| `GLACIER_SHARE_IMGPROXY_HMAC_SECRET` | 32-character secret for signing image proxy URLs | *(disabled if unset)* |
 | `GLACIER_SHARE_TTL` | How long a share link stays valid (ISO-8601 duration) | `P7D` (7 days) |
 | `GLACIER_SHARE_MAX_VIEWERS_PER_LINK` | Maximum concurrent viewers per share link | `100` |
 | `GLACIER_SHARE_MAX_ACTIVE_PER_SHARER` | Maximum active links a single wall owner can have at once | `3` |

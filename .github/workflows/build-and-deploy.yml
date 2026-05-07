@@ -16,32 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 23
-        uses: actions/setup-java@v4
+      - name: Set up JDK 23 and cache (save)
+        uses: ./.github/actions/setup-java-cache
         with:
-          java-version: '23'
-          distribution: 'temurin'
-      - name: Use cache for local Maven repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-main-${{ hashFiles('~/.m2/repository') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-main-
-      - name: Use cache for node
-        uses: actions/cache@v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-main-${{ hashFiles('~/.m2/frontend/node') }}
-          restore-keys: |
-            ${{ runner.os }}-node-main-
-      - name: Use cache for node_modules
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-main-
+          cache-prefix: main
+          cache-mode: save
       - name: Compile the webapp
         run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 
@@ -50,26 +29,10 @@ jobs:
     needs: compile
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 23
-        uses: actions/setup-java@v4
+      - name: Set up JDK 23 and cache (restore)
+        uses: ./.github/actions/setup-java-cache
         with:
-          java-version: '23'
-          distribution: 'temurin'
-      - name: Use cache for local Maven repository
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-main-
-      - name: Use cache for node
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-main-
-      - name: Use cache for node_modules
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify
+          cache-prefix: main
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results
@@ -95,8 +58,8 @@ jobs:
     # Mutation testing runs after unit tests pass, on push/PR to main only.
     # Scoped to Java source directories of the 14 PITest target classes (ADR-FUZZ-04).
     # P2-11 / Sec-08: MutationRegexLockstepTest verifies this regex matches every package
-    # listed in <targetClasses> in pom.xml — update BOTH files together when adding new targets.
-    # Informational/gating for main — NOT a prerequisite for publish-image or deploy.
+    # listed in <targetClasses> in pom.xml -- update BOTH files together when adding new targets.
+    # Informational/gating for main -- NOT a prerequisite for publish-image or deploy.
     # No production secrets in env (SR-FUZZ-06).
     runs-on: ubuntu-latest
     needs: [test]
@@ -116,33 +79,11 @@ jobs:
             echo "java=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up JDK 23
+      - name: Set up JDK 23 and cache (restore)
         if: steps.filter.outputs.java == 'true'
-        uses: actions/setup-java@v4
+        uses: ./.github/actions/setup-java-cache
         with:
-          java-version: '23'
-          distribution: 'temurin'
-
-      - name: Use cache for local Maven repository
-        if: steps.filter.outputs.java == 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-main-
-
-      - name: Use cache for node
-        if: steps.filter.outputs.java == 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-main-
-
-      - name: Use cache for node_modules
-        if: steps.filter.outputs.java == 'true'
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-main-
+          cache-prefix: main
 
       - name: Run PITest mutation coverage
         if: steps.filter.outputs.java == 'true'
@@ -160,26 +101,10 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 23
-        uses: actions/setup-java@v4
+      - name: Set up JDK 23 and cache (restore)
+        uses: ./.github/actions/setup-java-cache
         with:
-          java-version: '23'
-          distribution: 'temurin'
-      - name: Use cache for local Maven repository
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-main-
-      - name: Use cache for node
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-main-
-      - name: Use cache for node_modules
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-main-
+          cache-prefix: main
       - name: Package the webapp
         run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
       - name: Check if frontend is bundled into jar
@@ -199,15 +124,74 @@ jobs:
           name: glacier
           path: glacier.jar
           retention-days: 1
+      - name: Upload CycloneDX SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            target/bom.json
+            target/bom.xml
+          retention-days: 90
       - name: Update dependency graph
         uses: advanced-security/maven-dependency-submission-action@b275d12641ac2d2108b2cbb7598b154ad2f2cee8
 
+  # ── Playwright e2e matrix ─────────────────────────────────────────────────
+  #
+  # Each matrix leg boots its own isolated docker-compose stack because the
+  # four test modes require mutually incompatible backend configurations:
+  #
+  #   standard   -- default stack (docker-compose.yaml only)
+  #                 chromium + firefox + webkit Playwright projects.
+  #                 This leg also builds the Docker image and saves it as an
+  #                 artifact for trivy-image and zap-and-headers to consume.
+  #   killswitch -- GLACIER_FALLBACK_ENABLED=false
+  #                 (docker-compose.override.killswitch.yaml)
+  #   a11y       -- WCAG 2.2 AA axe-core scans, chromium-only
+  #                 (docker-compose.override.a11y.yaml)
+  #   insecure   -- plain-HTTP :8081 loopback, COOKIE_SECURE=false
+  #                 (docker-compose.override.insecure.yaml)
+  #
+  # It is NOT safe to share one running stack across these legs -- the killswitch
+  # and insecure overrides change runtime behaviour that other projects depend on
+  # being in the default state.  See glacier-fallback-mode-discipline skill and
+  # infrastructure/docker-compose.override.*.yaml for details.
+  #
+  # publish-image and security jobs gate on ALL matrix legs passing.
   e2e:
     runs-on: ubuntu-latest
     needs: package
     env:
       GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
       REPOSITORY: "/home/runner/work/glacier/glacier/"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: standard
+            # No override file -- runs the default stack.
+            # Executes: chromium + firefox + webkit Playwright projects.
+            # Also builds the Docker image artifact for trivy-image + zap-and-headers.
+            compose_overrides: ""
+            artifact_suffix: ""
+            build_image: true
+          - variant: killswitch
+            # GLACIER_FALLBACK_ENABLED=false; /rest/messages returns 404.
+            # Executes: killswitch Playwright project only.
+            compose_overrides: "-f docker-compose.override.killswitch.yaml"
+            artifact_suffix: "-killswitch"
+            build_image: false
+          - variant: a11y
+            # WCAG 2.2 AA axe-core accessibility scans (chromium-only).
+            # Executes: a11y Playwright project only.
+            compose_overrides: "-f docker-compose.override.a11y.yaml"
+            artifact_suffix: "-a11y"
+            build_image: false
+          - variant: insecure
+            # Plain-HTTP :8081 loopback; COOKIE_SECURE=false.
+            # Executes: insecure Playwright project only.
+            compose_overrides: "-f docker-compose.override.insecure.yaml"
+            artifact_suffix: "-insecure"
+            build_image: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -232,220 +216,69 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose
-      - name: Build image
+      - name: Build Docker image (standard leg only)
+        if: matrix.build_image == true
         working-directory: infrastructure
         run: |
           docker compose -f docker-compose.yaml build
           docker save ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} -o glacier-image.tar
-      - name: Upload image as artifact
+      - name: Upload image as artifact (standard leg only)
+        if: matrix.build_image == true
         uses: actions/upload-artifact@v4
         with:
           name: glacier-image
           path: infrastructure/glacier-image.tar
-      - name: Start e2e test inside docker-compose
+
+      - name: Run syft SBOM against Docker image (standard leg only)
+        if: matrix.build_image == true
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} \
+            -o cyclonedx-json=sbom-image.json
+      - name: Upload image SBOM (standard leg only)
+        if: matrix.build_image == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-image
+          path: sbom-image.json
+          retention-days: 90
+
+      - name: Start e2e test (${{ matrix.variant }}) inside docker-compose
         working-directory: infrastructure
+        env:
+          COMPOSE_OVERRIDES: ${{ matrix.compose_overrides }}
         run: |
           echo "to update data in infrastructure-content.tar.gz run 'sudo tar -czf infrastructure-content.tar.gz mastodon mastodon.env postgres redis proxy.* v3.ext dynamic.yml traefik.yml'"
           tar -xf infrastructure-content.tar.gz -C ./
           chmod -R a+rwx mastodon
-          docker compose -f docker-compose.yaml up --build --abort-on-container-exit playwright --exit-code-from playwright
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: frontend/playwright-report
-      - name: Upload Playwright Error screenshots
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-error-screenshots
-          path: frontend/test-results
-      - name: Show logs of service
-        working-directory: infrastructure
-        if: failure()
-        run: |
-          docker ps
-          docker compose logs
-
-  # ── Killswitch mode e2e (GLACIER_FALLBACK_ENABLED=false) ─────────────────────
-  e2e-killswitch:
-    runs-on: ubuntu-latest
-    needs: package
-    env:
-      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
-      REPOSITORY: "/home/runner/work/glacier/glacier/"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: glacier
-          path: infrastructure/glacier
-      - name: Use cache for node_modules
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-main-
-      - name: Use cache for ms-playwright
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-main-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-      - name: Start e2e killswitch test inside docker-compose
-        working-directory: infrastructure
-        run: |
-          tar -xf infrastructure-content.tar.gz -C ./
-          chmod -R a+rwx mastodon
+          # shellcheck disable=SC2086
           docker compose \
             -f docker-compose.yaml \
-            -f docker-compose.override.killswitch.yaml \
+            $COMPOSE_OVERRIDES \
             up --build --abort-on-container-exit playwright --exit-code-from playwright
-      - name: Upload Playwright report (killswitch)
+      - name: Upload Playwright report (${{ matrix.variant }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-killswitch
+          name: playwright-report${{ matrix.artifact_suffix }}
           path: frontend/playwright-report
-      - name: Upload Playwright Error screenshots (killswitch)
+      - name: Upload Playwright Error screenshots (${{ matrix.variant }})
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-error-screenshots-killswitch
+          name: playwright-error-screenshots${{ matrix.artifact_suffix }}
           path: frontend/test-results
-      - name: Show logs of service (killswitch)
+      - name: Show logs of service (${{ matrix.variant }})
         working-directory: infrastructure
         if: failure()
+        env:
+          COMPOSE_OVERRIDES: ${{ matrix.compose_overrides }}
         run: |
           docker ps
-          docker compose -f docker-compose.yaml -f docker-compose.override.killswitch.yaml logs
+          # shellcheck disable=SC2086
+          docker compose -f docker-compose.yaml $COMPOSE_OVERRIDES logs
 
-  # ── Accessibility e2e (WCAG 2.2 AA axe-core scans) ───────────────────────────
-  e2e-a11y:
-    runs-on: ubuntu-latest
-    needs: package
-    env:
-      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
-      REPOSITORY: "/home/runner/work/glacier/glacier/"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: glacier
-          path: infrastructure/glacier
-      - name: Use cache for node_modules
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-main-
-      - name: Use cache for ms-playwright
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-main-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-      - name: Start e2e a11y test inside docker-compose
-        working-directory: infrastructure
-        run: |
-          tar -xf infrastructure-content.tar.gz -C ./
-          chmod -R a+rwx mastodon
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.a11y.yaml \
-            up --build --abort-on-container-exit playwright --exit-code-from playwright
-      - name: Upload Playwright report (a11y)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-a11y
-          path: frontend/playwright-report
-      - name: Upload Playwright Error screenshots (a11y)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-error-screenshots-a11y
-          path: frontend/test-results
-      - name: Show logs of service (a11y)
-        working-directory: infrastructure
-        if: failure()
-        run: |
-          docker ps
-          docker compose -f docker-compose.yaml -f docker-compose.override.a11y.yaml logs
-
-  # ── Insecure (plain-HTTP / no-TLS) e2e ───────────────────────────────────────
-  e2e-insecure:
-    runs-on: ubuntu-latest
-    needs: package
-    env:
-      GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
-      REPOSITORY: "/home/runner/work/glacier/glacier/"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: glacier
-          path: infrastructure/glacier
-      - name: Use cache for node_modules
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-main-
-      - name: Use cache for ms-playwright
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-main-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-      - name: Start e2e insecure test inside docker-compose
-        working-directory: infrastructure
-        run: |
-          tar -xf infrastructure-content.tar.gz -C ./
-          chmod -R a+rwx mastodon
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.insecure.yaml \
-            up --build --abort-on-container-exit playwright --exit-code-from playwright
-      - name: Upload Playwright report (insecure)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-insecure
-          path: frontend/playwright-report
-      - name: Upload Playwright Error screenshots (insecure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-error-screenshots-insecure
-          path: frontend/test-results
-      - name: Show logs of service (insecure)
-        working-directory: infrastructure
-        if: failure()
-        run: |
-          docker ps
-          docker compose -f docker-compose.yaml -f docker-compose.override.insecure.yaml logs
-
-  # ── Trivy filesystem scan (jar dependency CVEs) ───────────────────────────────
+  # ── Trivy filesystem scan (jar dependency CVEs) ───────────────────────────
   trivy-fs:
     runs-on: ubuntu-latest
     needs: package
@@ -476,7 +309,8 @@ jobs:
           sarif_file: trivy-fs-report.sarif
           category: trivy-fs
 
-  # ── Trivy image scan (OS-layer CVEs — scans the exact image before push) ──────
+  # ── Trivy image scan (OS-layer CVEs -- scans the exact image before push) ──
+  # Depends on the standard e2e leg which builds and saves the Docker image.
   trivy-image:
     runs-on: ubuntu-latest
     needs: e2e
@@ -515,13 +349,13 @@ jobs:
           sarif_file: trivy-report.sarif
           category: trivy-image
 
-  # ── Dynamic security scan (ZAP baseline + security headers + WS BOLA) ─────────
+  # ── Dynamic security scan (ZAP baseline + security headers + WS BOLA) ────────
   # Runs against the running app started from the jar artifact (before the image
-  # is pushed to the registry — a finding here blocks publish-image and deploy).
+  # is pushed to the registry -- a finding here blocks publish-image and deploy).
   # CodeQL static analysis is enforced via codeql.yml + GitHub branch-protection
   # required status checks ("CodeQL / Analyze (java-kotlin)" and
-  # "CodeQL / Analyze (javascript-typescript)") — configure those under
-  # Settings → Branches → main → Require status checks to pass.
+  # "CodeQL / Analyze (javascript-typescript)") -- configure those under
+  # Settings -> Branches -> main -> Require status checks to pass.
   zap-and-headers:
     runs-on: ubuntu-latest
     needs: e2e
@@ -616,15 +450,15 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # publish-image only runs when ALL quality gates pass:
-  #   Functional:    e2e (live mode) + e2e-killswitch + e2e-a11y + e2e-insecure
+  #   Functional:    e2e matrix (all four legs: standard + killswitch + a11y + insecure)
   #   Security:      trivy-fs (jar CVEs) + trivy-image (OS-layer CVEs) +
   #                  zap-and-headers (ZAP baseline + security headers + WS BOLA)
-  # Static analysis: CodeQL runs in codeql.yml — enforce via branch-protection
+  # Static analysis: CodeQL runs in codeql.yml -- enforce via branch-protection
   #                  required status checks on the main branch.
   # ─────────────────────────────────────────────────────────────────────────────
   publish-image:
     runs-on: ubuntu-latest
-    needs: [e2e, e2e-killswitch, e2e-a11y, e2e-insecure, trivy-fs, trivy-image, zap-and-headers]
+    needs: [e2e, trivy-fs, trivy-image, zap-and-headers]
     steps:
       - name: Download image artifact
         uses: actions/download-artifact@v4

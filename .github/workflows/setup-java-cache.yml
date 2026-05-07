@@ -1,0 +1,64 @@
+name: "Setup Java and Maven/Node Cache"
+
+# Reusable workflow that installs JDK 23 (Temurin) and restores Maven + Node caches.
+#
+# Usage in a calling job:
+#   jobs:
+#     my-job:
+#       uses: ./.github/workflows/setup-java-cache.yml
+#       with:
+#         cache-prefix: verify   # Matches the cache key written by the compile job
+#
+# Restrictions (GitHub Actions reusable workflow limits):
+#   - The `env` context is NOT available in `with:` -- all inputs must be literals or
+#     expressions using `github`, `inputs`, or `needs` context.
+#   - This workflow only RESTORES caches (read-only). The compile job in each calling
+#     workflow writes the cache with actions/cache (read-write).
+#
+# Cache strategy:
+#   compile writes with actions/cache (saves + restores),
+#   later jobs restore with actions/cache/restore (read-only).
+
+on:
+  workflow_call:
+    inputs:
+      cache-prefix:
+        description: >
+          Logical suffix that distinguishes cache key families between workflows.
+          Use "verify" for the push-test workflow and "main" for build-and-deploy.
+        required: true
+        type: string
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 23 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+
+      - name: Restore Maven repository cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ inputs.cache-prefix }}-${{ hashFiles('pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-${{ inputs.cache-prefix }}-
+
+      - name: Restore Node binary cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node
+          key: ${{ runner.os }}-node-${{ inputs.cache-prefix }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ inputs.cache-prefix }}-
+
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node_modules-${{ inputs.cache-prefix }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-${{ inputs.cache-prefix }}-

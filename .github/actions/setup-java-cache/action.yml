@@ -1,0 +1,85 @@
+name: "Setup Java and Maven/Node Cache"
+description: >
+  Installs JDK 23 (Temurin) and restores Maven + Node caches.
+  Use this composite action in any job that needs the Java toolchain and cached
+  Maven/npm dependencies.  The compile job writes the cache with actions/cache
+  (read-write); all subsequent jobs restore it with this action (read-only) via
+  actions/cache/restore.
+
+inputs:
+  cache-prefix:
+    description: >
+      Logical suffix that distinguishes cache key families between workflows.
+      Use "verify" for the push-test workflow and "main" for build-and-deploy.
+    required: true
+  cache-mode:
+    description: >
+      Set to "save" to use actions/cache (read-write, used by the compile job).
+      Set to "restore" for all other jobs (read-only).  Defaults to "restore".
+    required: false
+    default: "restore"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up JDK 23 (Temurin)
+      uses: actions/setup-java@v4
+      with:
+        java-version: '23'
+        distribution: 'temurin'
+
+    # ── Read-write cache (compile job only) ──────────────────────────────────
+    - name: Save+restore Maven repository cache (compile)
+      if: inputs.cache-mode == 'save'
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-m2-${{ inputs.cache-prefix }}-${{ hashFiles('pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-m2-${{ inputs.cache-prefix }}-
+
+    - name: Save+restore Node binary cache (compile)
+      if: inputs.cache-mode == 'save'
+      uses: actions/cache@v4
+      with:
+        path: frontend/node
+        key: ${{ runner.os }}-node-${{ inputs.cache-prefix }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-${{ inputs.cache-prefix }}-
+
+    - name: Save+restore node_modules cache (compile)
+      if: inputs.cache-mode == 'save'
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: ${{ runner.os }}-node_modules-${{ inputs.cache-prefix }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node_modules-${{ inputs.cache-prefix }}-
+
+    # ── Read-only cache restore (all other jobs) ─────────────────────────────
+    - name: Restore Maven repository cache
+      if: inputs.cache-mode != 'save'
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-m2-${{ inputs.cache-prefix }}-${{ hashFiles('pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-m2-${{ inputs.cache-prefix }}-
+
+    - name: Restore Node binary cache
+      if: inputs.cache-mode != 'save'
+      uses: actions/cache/restore@v4
+      with:
+        path: frontend/node
+        key: ${{ runner.os }}-node-${{ inputs.cache-prefix }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-${{ inputs.cache-prefix }}-
+
+    - name: Restore node_modules cache
+      if: inputs.cache-mode != 'save'
+      uses: actions/cache/restore@v4
+      with:
+        path: frontend/node_modules
+        key: ${{ runner.os }}-node_modules-${{ inputs.cache-prefix }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node_modules-${{ inputs.cache-prefix }}-

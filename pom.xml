@@ -624,6 +624,43 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
+                CycloneDX Maven Plugin: generates a Software Bill of Materials (SBOM) for the jar.
+                Runs during the `package` phase and produces target/bom.json + target/bom.xml in
+                CycloneDX format.  The output is informational — it does not block the build.
+                Attach the SBOM to releases so consumers can audit the dependency tree for CVEs.
+                https://github.com/CycloneDX/cyclonedx-maven-plugin
+            -->
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>2.9.1</version>
+                <executions>
+                    <execution>
+                        <id>generate-sbom</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeAggregateBom</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <projectType>application</projectType>
+                    <schemaVersion>1.5</schemaVersion>
+                    <includeBomSerialNumber>true</includeBomSerialNumber>
+                    <includeCompileScope>true</includeCompileScope>
+                    <includeProvidedScope>true</includeProvidedScope>
+                    <includeRuntimeScope>true</includeRuntimeScope>
+                    <includeSystemScope>true</includeSystemScope>
+                    <includeTestScope>false</includeTestScope>
+                    <includeLicenseText>false</includeLicenseText>
+                    <outputReactorProjects>true</outputReactorProjects>
+                    <outputFormat>all</outputFormat>
+                    <outputName>bom</outputName>
+                    <!-- Do not fail the build on SBOM generation errors — informational only -->
+                    <verbose>false</verbose>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
