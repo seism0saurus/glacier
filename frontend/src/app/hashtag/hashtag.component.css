@@ -10,6 +10,14 @@
 }
 
 .button {
+  /* Reset native button appearance so the element is styled consistently.
+     The button element is used instead of div for keyboard accessibility
+     (WCAG 2.1.1 / A11Y-F-02). */
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+
   margin-left: 8px;
   padding: 4px;
   display: flex;
@@ -24,6 +32,12 @@
 
 .button:hover {
   background-color: #3293a3;
+}
+
+/* Focus-visible: visible keyboard focus ring without removing mouse-click outline  */
+.button:focus-visible {
+  outline: 2px solid var(--mat-sys-primary, #6200ee);
+  outline-offset: 2px;
 }
 
 mat-form-field {

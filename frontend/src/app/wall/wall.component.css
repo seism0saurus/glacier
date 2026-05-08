@@ -39,6 +39,29 @@
 }
 
 /**
+ * Empty-wall call-to-action container (P2 D.3).
+ *
+ * Shown when the toot list is empty (no subscriptions yet, or all pruned).
+ * Centred both horizontally and vertically within the host flex column.
+ * Uses the Material palette secondary colour for the prompt text so it
+ * remains visible against both light and dark themes.
+ */
+.empty-wall-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  color: var(--mat-sys-on-surface-variant, #666);
+}
+
+.empty-wall-cta p {
+  font-size: 1.1rem;
+  max-width: 40ch;
+}
+
+/**
  * Keyframe for the toot removal fade-out animation (ADR-5 UX spec).
  *
  * Duration: 150 ms, ease-out — perceived as snappy but not jarring.

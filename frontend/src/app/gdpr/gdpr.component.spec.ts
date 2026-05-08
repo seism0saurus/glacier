@@ -69,4 +69,14 @@ describe('GdprComponent', () => {
     const contactNameElement = compiled.querySelector('.contact');
     expect(contactNameElement?.textContent).toBe('Phone: +123456789 Email: mail@example.com Website: example.com');
   });
+
+  // D.2 i18n: dialog title heading
+  it('should render the dialog title heading with the correct text', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    const heading = compiled.querySelector('h2#legal-notice');
+    expect(heading).withContext('h2#legal-notice must exist').toBeTruthy();
+    expect(heading?.textContent?.trim())
+      .withContext('dialog title must contain the legal notice text')
+      .toBe('Legal Notice and Privacy Policy');
+  });
 });

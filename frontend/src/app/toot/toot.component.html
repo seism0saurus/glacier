@@ -1,5 +1,6 @@
 <iframe *ngIf="url"
         #iframe id="{{uuid}}"
+        [title]="iframeTitle"
         (load)="configureIframe(iframe)"
         (error)="handleError(iframe)"
         class="toot mastodon-embed"

@@ -91,6 +91,50 @@ describe('TootComponent', () => {
     expect(iframe.src).toContain(testUrlString);
   });
 
+  /**
+   * A11Y-F-01 (WCAG 4.1.2 — Name, Role, Value):
+   * Every iframe must have a non-empty `title` attribute so screen readers
+   * can identify it and keyboard users know what the frame contains.
+   *
+   * Arrange: component rendered with a SafeResourceUrl and UUID.
+   * Act: query the rendered iframe.
+   * Assert: title attribute is present and non-empty.
+   */
+  it('should have a non-empty title attribute on the iframe (A11Y-F-01)', () => {
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
+    expect(iframe).toBeTruthy();
+    const title = iframe.getAttribute('title');
+    expect(title).toBeTruthy();
+    expect(title!.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * A11Y-F-01 — title falls back to UUID when no label is provided.
+   *
+   * The iframeTitle getter must always return something meaningful.
+   * When no @Input label is supplied, the UUID is used.
+   */
+  it('should use UUID in iframe title when no label is provided (A11Y-F-01)', () => {
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
+    expect(iframe).toBeTruthy();
+    // No label was set in beforeEach, so title should include the UUID
+    expect(iframe.getAttribute('title')).toContain(testUuid);
+  });
+
+  /**
+   * A11Y-F-01 — title reflects the label input when provided.
+   *
+   * When the wall passes a label (e.g. "Toot #glacier"), the iframe title
+   * must match that label so screen readers can announce it.
+   */
+  it('should use provided label as iframe title when label is set (A11Y-F-01)', () => {
+    component.label = 'Toot #glacier';
+    fixture.detectChanges();
+    const iframe = fixture.nativeElement.querySelector('iframe') as HTMLIFrameElement;
+    expect(iframe).toBeTruthy();
+    expect(iframe.getAttribute('title')).toBe('Toot #glacier');
+  });
+
   it('should register message event listener on the window when configuring iframe', () => {
     const spyAddEventListener = spyOn(window, 'addEventListener');
     const iframe = document.createElement('iframe');

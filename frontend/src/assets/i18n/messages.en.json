@@ -90,5 +90,16 @@
   "wall.migration.banner.body": "The wall was updated to a new format and cleared. New posts will appear as Mastodon delivers them.",
   "wall.migration.banner.dismiss.aria": "Dismiss notice",
   "chip.settling.aria": "Syncing, one moment",
-  "chip.settling.visual.tooltip": "Syncing…"
+  "chip.settling.visual.tooltip": "Syncing…",
+  "hashtag.cancel.all.aria": "Remove all hashtags",
+  "hashtag.cancel.all.label": "Cancel All",
+  "hashtag.clear.toots.aria": "Remove all toots",
+  "hashtag.clear.toots.label": "Clear Toots",
+  "footer.legal.button.aria": "Open legal notice and privacy policy",
+  "footer.legal.button.label": "Legal Notice & GDPR",
+  "skip.link.label": "Skip to main content",
+  "header.h1": "Glacier - The Mastodon Social Wall",
+  "header.share.button.aria": "Share wall",
+  "gdpr.dialog.title": "Legal Notice and Privacy Policy",
+  "wall.empty.cta": "No posts yet — type a hashtag in the search field to get started."
 }

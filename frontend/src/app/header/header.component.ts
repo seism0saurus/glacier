@@ -1,6 +1,8 @@
 import {Component, OnDestroy, OnInit} from '@angular/core';
 import {AnimationService} from "../animation.service";
 import {Subscription} from "rxjs";
+import {MatDialog} from "@angular/material/dialog";
+import {ShareDialogComponent} from "../share-dialog/share-dialog.component";
 
 /**
  * Represents the header component of the application.
@@ -15,6 +17,7 @@ import {Subscription} from "rxjs";
  *
  * Dependencies:
  * - AnimationService: Provides an observable to track the extended state of the header.
+ * - MatDialog: Opens the ShareDialogComponent (P1-17).
  */
 @Component({
     selector: 'app-header',
@@ -27,7 +30,10 @@ export class HeaderComponent implements OnInit, OnDestroy{
   public extended: boolean = true;
   private extendedSubscription?: Subscription;
 
-  constructor(private animationService: AnimationService) {}
+  constructor(
+    private animationService: AnimationService,
+    private dialog: MatDialog,
+  ) {}
 
   ngOnInit() {
     this.extendedSubscription = this.animationService.getHeaderExtended()
@@ -45,5 +51,17 @@ export class HeaderComponent implements OnInit, OnDestroy{
     if (this.extendedSubscription) {
       this.extendedSubscription.unsubscribe();
     }
+  }
+
+  /**
+   * Opens the ShareDialogComponent as a Material dialog (P1-17).
+   *
+   * The dialog is standalone and self-contained; it handles its own CSRF,
+   * link creation, and revoke flows via ShareLinkService.  Focus is
+   * automatically managed by MatDialog (moves to dialog title on open,
+   * returns to trigger element on close).
+   */
+  openShareDialog(): void {
+    this.dialog.open(ShareDialogComponent);
   }
 }

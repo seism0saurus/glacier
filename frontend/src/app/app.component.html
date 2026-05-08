@@ -1,3 +1,11 @@
+<!--
+  Skip link — visually hidden, becomes visible on keyboard focus.
+  Allows keyboard-only users to bypass the header and jump directly to the main
+  toot feed (#toots in wall.component.html).  The @@skip.link.label key is
+  defined in messages.en.json and sourced from the German-source runtime catalog
+  (angular-i18n-localize skill).
+-->
+<a class="skip-link" href="#toots" i18n="@@skip.link.label">Zum Hauptinhalt springen</a>
 <app-header></app-header>
 <app-hashtag></app-hashtag>
 <app-migration-banner></app-migration-banner>

@@ -15,7 +15,27 @@ export class TootComponent {
   @Input()
   uuid: string = "";
 
+  /**
+   * Human-readable label used as the iframe title attribute (WCAG 4.1.2 / A11Y-F-01).
+   *
+   * When the wall passes a list of hashtags associated with this toot, the label is
+   * built from them so screen readers can announce something meaningful instead of
+   * just "untitled frame".  Falls back to the UUID when no label is supplied.
+   */
+  @Input()
+  label: string = "";
+
   constructor() {}
+
+  /**
+   * Returns the accessible title for the iframe (WCAG 4.1.2 / A11Y-F-01).
+   *
+   * Uses the provided label when set, otherwise falls back to the status UUID
+   * so the attribute is always non-empty and screen readers can identify the frame.
+   */
+  get iframeTitle(): string {
+    return this.label || `Toot ${this.uuid}`;
+  }
 
   configureIframe(element: HTMLIFrameElement): void {
     if (element) {

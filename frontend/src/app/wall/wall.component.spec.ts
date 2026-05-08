@@ -86,7 +86,7 @@ describe('WallComponent', () => {
       expect(component.columns).toBe(3); // 1600 / 408 (floor)
     });
 
-    it('should handle edge cases when width is less than one column width', () => {
+    it('should ensure at least 1 column when width is less than one column width (P1-18 mobile fix)', () => {
       mockElementRef.nativeElement.offsetHeight = 700;
       mockElementRef.nativeElement.offsetWidth = 300;
 
@@ -94,7 +94,20 @@ describe('WallComponent', () => {
       fixture.detectChanges();
 
       expect(component.rowHeight).toBe(660); // 700 - 40
-      expect(component.columns).toBe(0); // 300 / 408 (floor)
+      // Math.max(1, floor(300 / 408)) = Math.max(1, 0) = 1 (P1-18: never 0 columns)
+      expect(component.columns).toBe(1);
+    });
+
+    it('should ensure at least 1 column when offsetWidth is 200 (P1-18 regression guard)', () => {
+      mockElementRef.nativeElement.offsetHeight = 600;
+      mockElementRef.nativeElement.offsetWidth = 200;
+
+      component.onResize();
+      fixture.detectChanges();
+
+      expect(component.columns)
+        .withContext('columns must be at least 1 on a 200px viewport')
+        .toBeGreaterThanOrEqual(1);
     });
 
     describe('should handle typical screen widths', () => {
@@ -375,6 +388,42 @@ describe('WallComponent', () => {
     // Assert: toot id '1' has been removed; only id '2' remains
     expect(component.toots.length).toBe(1);
     expect(component.toots[0].id).toBe('2');
+  });
+
+  // ---------------------------------------------------------------------------
+  // P1-18 mobile column reflow — already tested in onResize block above.
+  // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // P2 D.3 empty-wall CTA
+  // ---------------------------------------------------------------------------
+
+  describe('empty-wall CTA (P2 D.3)', () => {
+    it('should show the empty-wall CTA when there are no toots', () => {
+      // Re-wire the service to return an empty list
+      mockSubscriptionService.getCreatedEvents.and.returnValue(of([]));
+      component.ngOnInit();
+      fixture.detectChanges();
+
+      const cta = fixture.nativeElement.querySelector('.empty-wall-cta');
+      expect(cta).withContext('empty-wall CTA must be visible when toots list is empty').toBeTruthy();
+    });
+
+    it('should hide the empty-wall CTA when toots are present', () => {
+      // The beforeEach already sets up 2 toots, so CTA should be hidden.
+      fixture.detectChanges();
+      const cta = fixture.nativeElement.querySelector('.empty-wall-cta');
+      expect(cta).withContext('empty-wall CTA must not be visible when toots are present').toBeNull();
+    });
+
+    it('should have role="status" on the empty-wall CTA for screen-reader announce', () => {
+      mockSubscriptionService.getCreatedEvents.and.returnValue(of([]));
+      component.ngOnInit();
+      fixture.detectChanges();
+
+      const cta = fixture.nativeElement.querySelector('.empty-wall-cta');
+      expect(cta?.getAttribute('role')).toBe('status');
+    });
   });
 
   // ---------------------------------------------------------------------------

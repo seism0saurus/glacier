@@ -21,9 +21,24 @@ span.handle{
   font-weight: bold;
 }
 
-div.legal{
+button.legal{
+  /* Reset native button appearance — element changed from div to button
+     for keyboard accessibility (WCAG 2.1.1 / A11Y-F-02). */
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+
   display: flex;
   flex-direction: row;
   align-items: center;
   text-decoration: underline;
+}
+
+button.legal:focus-visible {
+  outline: 2px solid var(--mat-sys-primary, #6200ee);
+  outline-offset: 2px;
 }

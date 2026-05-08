@@ -3,3 +3,35 @@
   display: flex;
   flex-direction: column;
 }
+
+/**
+ * Skip link for keyboard accessibility (A11Y-F-04).
+ *
+ * Visually hidden off-screen by default. On focus (keyboard Tab key), it
+ * snaps to a visible position so keyboard-only users can bypass the header
+ * navigation and jump to the main content (#toots).
+ *
+ * Technique: left: -9999px removes it from the visual flow without using
+ * display:none or visibility:hidden, which would also remove it from the
+ * tab order.  On :focus-visible the element is repositioned to static so it
+ * appears at its natural position in the flex column — above the header.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.skip-link:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  outline: 2px solid var(--mat-sys-primary, #6200ee);
+  outline-offset: 2px;
+  padding: 4px 8px;
+  z-index: 1000;
+}

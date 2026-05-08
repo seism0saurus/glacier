@@ -4,16 +4,23 @@ import {NO_ERRORS_SCHEMA} from '@angular/core';
 import {HeaderComponent} from './header.component';
 import {AnimationService} from "../animation.service";
 import {Subscription} from "rxjs";
+import {MatDialog} from "@angular/material/dialog";
 
 describe('HeaderComponent', () => {
   let component: HeaderComponent;
   let fixture: ComponentFixture<HeaderComponent>;
   let service: AnimationService;
+  let mockDialog: jasmine.SpyObj<MatDialog>;
 
   beforeEach(() => {
+    mockDialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+
     TestBed.configureTestingModule({
       declarations: [HeaderComponent],
       schemas: [NO_ERRORS_SCHEMA],
+      providers: [
+        {provide: MatDialog, useValue: mockDialog},
+      ],
     });
     fixture = TestBed.createComponent(HeaderComponent);
     component = fixture.componentInstance;
@@ -104,5 +111,36 @@ describe('HeaderComponent', () => {
     } as any);
     component.ngOnInit();
     expect(consoleSpy).toHaveBeenCalledWith('Observable emitted the complete notification');
+  });
+
+  // D.2 i18n: h1 text and i18n attribute
+  it('should render the h1 with the application title', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    const h1 = compiled.querySelector('h1');
+    expect(h1).withContext('h1 must exist').toBeTruthy();
+    // In Karma (German source, no catalog loaded) the text is the source text.
+    expect(h1?.textContent?.trim())
+      .withContext('h1 must contain the application title')
+      .toBe('Glacier - The Mastodon Social Wall');
+  });
+
+  // D.3 P1-17: Share button
+  it('should render a share button with data-testid="share-button"', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    const btn = compiled.querySelector('[data-testid="share-button"]');
+    expect(btn).withContext('share button must exist').toBeTruthy();
+  });
+
+  it('should call openShareDialog when the share button is clicked', () => {
+    const spy = spyOn(component, 'openShareDialog');
+    const compiled = fixture.nativeElement as HTMLElement;
+    const btn = compiled.querySelector<HTMLButtonElement>('[data-testid="share-button"]');
+    btn?.click();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should open the share dialog via MatDialog when openShareDialog is called', () => {
+    component.openShareDialog();
+    expect(mockDialog.open).toHaveBeenCalledTimes(1);
   });
 });

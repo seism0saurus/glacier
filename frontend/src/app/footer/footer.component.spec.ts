@@ -124,7 +124,32 @@ describe('FooterComponent', () => {
     it('should contain the correct text', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.querySelector('.legal>span')?.innerHTML)
-        .toContain('Legal Notice &amp; GDPR');
+        .toContain('Legal Notice');
+    });
+
+    /**
+     * A11Y-F-02 (WCAG 2.1.1 — Keyboard):
+     * The legal notice trigger must be a <button> so keyboard users can
+     * activate it with Enter/Space, and screen readers announce it correctly.
+     */
+    it('should render the legal notice trigger as a <button> element (A11Y-F-02)', () => {
+      const compiled = fixture.nativeElement as HTMLElement;
+      const el = compiled.querySelector('.legal');
+      expect(el).toBeTruthy();
+      expect(el!.tagName.toLowerCase()).toBe('button');
+    });
+
+    /**
+     * A11Y-F-02 — the legal button must have a non-empty aria-label
+     * so icon-only or visually-identified buttons are announced correctly.
+     */
+    it('should have a non-empty aria-label on the legal button (A11Y-F-02)', () => {
+      const compiled = fixture.nativeElement as HTMLElement;
+      const btn = compiled.querySelector('button.legal') as HTMLButtonElement;
+      expect(btn).toBeTruthy();
+      const label = btn.getAttribute('aria-label');
+      expect(label).toBeTruthy();
+      expect(label!.length).toBeGreaterThan(0);
     });
   });
 
@@ -159,6 +184,31 @@ describe('FooterComponent', () => {
       expect(compiled.querySelector('.copyright > a')?.getAttribute('rel'))
         .toBe('noopener noreferrer')
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // i18n catalog completeness — A11Y-F-02 new keys
+  // -------------------------------------------------------------------------
+  describe('i18n catalog completeness (messages.en.json)', () => {
+    const REQUIRED_CATALOG_KEYS = [
+      'footer.legal.button.aria',   // A11Y-F-02: Legal button aria-label
+      'footer.legal.button.label',  // A11Y-F-02: Legal button visible text
+    ] as const;
+
+    for (const key of REQUIRED_CATALOG_KEYS) {
+      it(`messages.en.json must contain key '${key}'`, async () => {
+        const response = await fetch('/assets/i18n/messages.en.json');
+        expect(response.ok)
+          .withContext('messages.en.json must be fetchable by the Karma test runner')
+          .toBeTrue();
+        const catalog: Record<string, string> = await response.json();
+        expect(catalog[key])
+          .withContext(`messages.en.json is missing key '${key}'.`)
+          .toBeDefined();
+        expect(typeof catalog[key]).toBe('string');
+        expect(catalog[key].length).toBeGreaterThan(0);
+      });
+    }
   });
 
   describe('openLegal', () => {

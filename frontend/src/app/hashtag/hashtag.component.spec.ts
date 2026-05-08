@@ -168,6 +168,49 @@ describe('HashtagComponent', () => {
   });
 
   // -------------------------------------------------------------------------
+  // A11Y-F-02 — Cancel All and Clear Toots must be <button> elements (WCAG 2.1.1)
+  // -------------------------------------------------------------------------
+  describe('accessibility — keyboard-accessible action buttons (A11Y-F-02)', () => {
+    /**
+     * A11Y-F-02 (WCAG 2.1.1 — Keyboard):
+     * The "Cancel All" action must be rendered as a <button> element so keyboard
+     * users can activate it with Enter/Space and screen readers announce it correctly.
+     */
+    it('should render Cancel All as a <button> element', () => {
+      const btn = fixture.nativeElement.querySelector('#cancel-all') as HTMLElement;
+      expect(btn).toBeTruthy();
+      expect(btn.tagName.toLowerCase()).toBe('button');
+    });
+
+    it('should have a non-empty aria-label on the Cancel All button', () => {
+      const btn = fixture.nativeElement.querySelector('#cancel-all') as HTMLButtonElement;
+      expect(btn).toBeTruthy();
+      const label = btn.getAttribute('aria-label');
+      expect(label).toBeTruthy();
+      expect(label!.length).toBeGreaterThan(0);
+    });
+
+    /**
+     * A11Y-F-02 (WCAG 2.1.1 — Keyboard):
+     * The "Clear Toots" action must be rendered as a <button> element so keyboard
+     * users can activate it with Enter/Space and screen readers announce it correctly.
+     */
+    it('should render Clear Toots as a <button> element', () => {
+      const btn = fixture.nativeElement.querySelector('#clear-toots') as HTMLElement;
+      expect(btn).toBeTruthy();
+      expect(btn.tagName.toLowerCase()).toBe('button');
+    });
+
+    it('should have a non-empty aria-label on the Clear Toots button', () => {
+      const btn = fixture.nativeElement.querySelector('#clear-toots') as HTMLButtonElement;
+      expect(btn).toBeTruthy();
+      const label = btn.getAttribute('aria-label');
+      expect(label).toBeTruthy();
+      expect(label!.length).toBeGreaterThan(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // CAP_EXCEEDED rejection — optimistic rollback + snackbar (D-12, D-17)
   // -------------------------------------------------------------------------
   describe('CAP_EXCEEDED rejection', () => {
@@ -360,6 +403,10 @@ describe('HashtagComponent', () => {
       'gap.snackbar.dismiss',
       'chip.settling.aria',
       'chip.settling.visual.tooltip',
+      'hashtag.cancel.all.aria',        // A11Y-F-02: Cancel All button aria-label
+      'hashtag.cancel.all.label',       // A11Y-F-02: Cancel All button visible text
+      'hashtag.clear.toots.aria',       // A11Y-F-02: Clear Toots button aria-label
+      'hashtag.clear.toots.label',      // A11Y-F-02: Clear Toots button visible text
     ] as const;
 
     for (const key of REQUIRED_CATALOG_KEYS) {

@@ -116,4 +116,29 @@ describe('AppComponent', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('app-footer')).toBeTruthy();
   });
+
+  // A11Y-F-04: Skip link
+  it('should have a skip link as the first child pointing to #toots', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const skipLink = compiled.querySelector('.skip-link') as HTMLAnchorElement | null;
+    expect(skipLink).withContext('skip link element must exist').toBeTruthy();
+    expect(skipLink?.getAttribute('href'))
+      .withContext('skip link must point to the main toot feed')
+      .toBe('#toots');
+  });
+
+  it('should render the skip link before the header (first interactive element)', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    // The skip link must precede app-header in document order so keyboard
+    // users encounter it first when navigating with Tab.
+    const children = Array.from(compiled.children);
+    const skipLinkIndex = children.findIndex(el => el.classList.contains('skip-link'));
+    const headerIndex = children.findIndex(el => el.tagName.toLowerCase() === 'app-header');
+    expect(skipLinkIndex).withContext('skip link must be found').toBeGreaterThanOrEqual(0);
+    expect(skipLinkIndex).withContext('skip link must precede header').toBeLessThan(headerIndex);
+  });
 });

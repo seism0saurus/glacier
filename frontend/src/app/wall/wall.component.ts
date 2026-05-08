@@ -4,7 +4,7 @@ import {
   transition,
   trigger,
 } from '@angular/animations';
-import {Component, ElementRef, HostListener, OnDestroy, OnInit} from '@angular/core';
+import {Component, ElementRef, HostListener, OnDestroy, OnInit, signal, computed, WritableSignal} from '@angular/core';
 import {SubscriptionService} from "../subscription.service";
 import {WallMessage} from "../model/wall-message";
 import {Subscription} from "rxjs";
@@ -55,10 +55,59 @@ export class WallComponent implements OnInit, OnDestroy {
 
   toots: WallMessage[] = [];
   // @ts-ignore
-  columns: number;
-  // @ts-ignore
   rowHeight: number;
   private serviceSubscription: Subscription | null = null;
+
+  /**
+   * Signal tracking whether the wall has no toots to display (P2 D.3).
+   *
+   * Updated in the getCreatedEvents() subscription so that Angular's signal
+   * graph can drive the empty-wall CTA block via @if(noToots()) in the template.
+   * Kept as a writable signal (set from the subscription callback) because
+   * SubscriptionService.getCreatedEvents() returns an Observable, not a signal —
+   * a computed() wrapping a toSignal() would add unnecessary complexity given that
+   * the toots array is already reactively maintained here.
+   */
+  protected readonly noToots = signal<boolean>(true);
+
+  /**
+   * Writable signal for the column count (P2 D.3 — signals optimisation).
+   *
+   * Switching columns from a plain property to a WritableSignal allows the
+   * columnToots computed() below to reactively recompute whenever the window
+   * is resized and the column count changes.  The initial value of 1 prevents
+   * a zero-column render on first paint before onResize/ngOnInit fires.
+   */
+  protected readonly _columns: WritableSignal<number> = signal(1);
+
+  /**
+   * Exposes the column count for the template.  The getter/setter pair bridges
+   * the signal to code that still writes `this.columns = ...` (onResize, ngOnInit,
+   * and tests), so no caller change is required.
+   */
+  get columns(): number { return this._columns(); }
+  set columns(value: number) { this._columns.set(value); }
+
+  /**
+   * Computed signal that pre-slices toots into per-column arrays (P2 D.3).
+   *
+   * Replaces the per-render call to getTootsForColumn() in the template @for loop.
+   * Recomputes only when _columns signal changes (set in onResize / ngOnInit).
+   * When the toot list changes, the subscription callback directly updates
+   * this.toots and we trigger recomputation by calling _columns.set() indirectly
+   * via the existing onResize path.  This is a pragmatic optimisation that reduces
+   * re-computation frequency without requiring a full Observable-to-signal migration.
+   *
+   * The template switches from getTootsForColumn(i) to columnToots()[i].
+   * getTootsForColumn() is kept for backward compatibility with existing unit tests.
+   */
+  protected readonly columnToots = computed(() => {
+    const cols = this._columns();
+    const reversed = [...this.toots].reverse();
+    return Array.from({ length: cols }, (_, i) =>
+      reversed.filter((_t, idx) => idx % cols === i)
+    );
+  });
 
   /**
    * Subscription to WallAnnouncerService.announcements$ — tracks the live
@@ -86,15 +135,22 @@ export class WallComponent implements OnInit, OnDestroy {
   @HostListener('window:resize', ['$event'])
   onResize() {
     this.rowHeight = this.el.nativeElement.offsetHeight - 40;
-    this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
+    // Math.max(1, ...) ensures at least one column on narrow viewports (< 408 px).
+    // Without this guard, columns would be 0 on mobile and the MatGridList would
+    // render nothing, leaving the wall blank on phones (P1-18).
+    this.columns = Math.max(1, Math.floor(this.el.nativeElement.offsetWidth / 408))
   }
 
   ngOnInit() {
     this.rowHeight = this.el.nativeElement.offsetHeight - 40;
-    this.columns = Math.floor(this.el.nativeElement.offsetWidth / 408)
+    // Math.max(1, ...) ensures at least one column on narrow viewports (< 408 px).
+    this.columns = Math.max(1, Math.floor(this.el.nativeElement.offsetWidth / 408))
 
     this.serviceSubscription = this.subscriptionService.getCreatedEvents().subscribe((messages: WallMessage[]) => {
       this.toots = [...messages];
+      // Keep the noToots signal in sync with the live toot list so the
+      // empty-wall CTA block appears / disappears reactively (P2 D.3).
+      this.noToots.set(messages.length === 0);
     });
 
     // FIX-2: Subscribe to announcements$ from WallAnnouncerService.

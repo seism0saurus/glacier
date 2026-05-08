@@ -480,6 +480,17 @@
                             <arguments>install</arguments>
                         </configuration>
                     </execution>
+                    <!-- i18n key lint: verify all @@<id> used in templates exist in the catalog -->
+                    <execution>
+                        <id>check-i18n-keys</id>
+                        <goals>
+                            <goal>node</goal>
+                        </goals>
+                        <phase>generate-resources</phase>
+                        <configuration>
+                            <arguments>scripts/check-i18n-keys.mjs</arguments>
+                        </configuration>
+                    </execution>
                     <!-- Angular Build during generate-resources phase, so the files are in the resources folder-->
                     <execution>
                         <id>npm run build</id>

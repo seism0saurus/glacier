@@ -36,6 +36,22 @@
   The prefers-reduced-motion override in wall.component.css suppresses the
   animation for users who have requested reduced motion.
 -->
+<!--
+  Empty-wall call-to-action (P2 D.3).
+
+  Shown when the toot list is empty (no subscriptions yet, or all toots removed).
+  role="status" with aria-live="polite" lets screen readers announce the CTA when
+  it first appears without interrupting ongoing announcements.
+
+  Positioned before the feed grid so it is encountered first in document order.
+  Hidden by the @if guard as soon as the first toot arrives.
+-->
+@if (noToots()) {
+  <div class="empty-wall-cta" role="status">
+    <p i18n="@@wall.empty.cta">Noch keine Beiträge — tippe einen Hashtag in das Suchfeld ein, um loszulegen.</p>
+  </div>
+}
+
 <div
   id="toots"
   role="feed"
@@ -50,9 +66,14 @@
       id="column-{{i}}"
     >
       <div class="column-of-toots">
-        @for (toot of getTootsForColumn(i); track toot.id) {
+        <!--
+          columnToots() is a computed() signal — it recomputes only when _columns
+          changes, not on every change-detection cycle.  This replaces the previous
+          per-tick call to getTootsForColumn(i) (P2 D.3 signals optimisation).
+        -->
+        @for (toot of columnToots()[i]; track toot.id) {
           <article role="article" [@pruneLeave]>
-            <app-toot [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id"></app-toot>
+            <app-toot [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id" [label]="'Toot #' + toot.hashtags[0]"></app-toot>
           </article>
         }
       </div>

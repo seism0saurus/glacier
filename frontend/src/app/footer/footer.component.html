@@ -2,11 +2,14 @@
   <div class="howto">
     You want your toots to be shown here?&nbsp;Mention <span class="handle">&#64;{{mastodonHandle}}</span> in your toot and use one of the hashtags.
   </div>
-  <div class='legal' (click)="openLegal()">
+  <button class='legal' type="button"
+          i18n-aria-label="@@footer.legal.button.aria"
+          aria-label="Impressum und Datenschutzerklärung öffnen"
+          (click)="openLegal()">
     <!--suppress HtmlUnknownTag -->
-    <mat-icon [attr.aria-label]="'open legal notice and general data protection regulation disclaimer'" svgIcon="legal_notice_icon"></mat-icon>
-    <span>Legal Notice & GDPR</span>
-  </div>
+    <mat-icon aria-hidden="true" svgIcon="legal_notice_icon"></mat-icon>
+    <span i18n="@@footer.legal.button.label">Legal Notice &amp; GDPR</span>
+  </button>
   <div class="copyright">
     Glacier is Open Source: <a href='https://github.com/seism0saurus/glacier' rel='noopener noreferrer' target='_blank'>https://github.com/seism0saurus/glacier</a>
   </div>
