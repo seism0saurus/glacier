@@ -31,7 +31,8 @@ import org.springframework.stereotype.Component;
  *       {@code request.getRemoteAddr()}.</li>
  *   <li>Split the header value by comma and trim each part.</li>
  *   <li>The rightmost N entries are added by trusted proxies; the entry at position
- *       {@code len - trustedHops - 1} (0-indexed from the left) is the real client IP.
+ *       {@code len - trustedHops} (0-indexed from the left) is the real client IP —
+ *       it is the IP that the innermost trusted proxy observed connecting to it.
  *       If {@code trustedHops ≥ len}, fall back to index 0 (leftmost entry).</li>
  *   <li>If the result is blank or unresolvable, fall back to
  *       {@code request.getRemoteAddr()}.</li>
@@ -110,8 +111,13 @@ public class ClientIpResolver {
         }
 
         // The rightmost `trustedHops` entries were added by trusted proxies.
-        // The client IP is at index: len - trustedHops - 1
-        int clientIndex = hops.size() - trustedHops - 1;
+        // The last of those trusted entries (at index len - trustedHops) is the IP
+        // of the entity that connected to the innermost trusted proxy — i.e., the
+        // real client.  Using len - trustedHops - 1 would instead return the entry
+        // to the LEFT of the trusted chain, which is exactly what a spoofing client
+        // controls (they can inject arbitrary IPs before the trusted proxy appends
+        // the real IP).
+        int clientIndex = hops.size() - trustedHops;
 
         // Clamp to valid range
         if (clientIndex < 0) {

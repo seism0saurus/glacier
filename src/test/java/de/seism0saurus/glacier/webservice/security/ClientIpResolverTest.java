@@ -121,43 +121,40 @@ class ClientIpResolverTest {
      *
      * XFF: "1.2.3.4, 10.0.0.5"
      * hops = ["1.2.3.4", "10.0.0.5"], len=2, trustedHops=1
-     * clientIndex = 2 - 1 - 1 = 0 → "1.2.3.4"
+     * clientIndex = 2 - 1 = 1 → "10.0.0.5"
      *
-     * 10.0.0.5 was added by the trusted proxy (rightmost).
-     * 1.2.3.4 is the real client (leftmost among untrusted entries).
+     * The trusted proxy (remoteAddr=10.0.0.5) appended the IP of the entity that
+     * connected to it — which is 10.0.0.5 in XFF (it represents what connected to
+     * our proxy). "1.2.3.4" is to the LEFT of the trusted chain and is controlled
+     * by an untrusted party (injected by the client or an untrusted proxy).
+     * Returning the rightmost trusted entry prevents XFF spoofing.
      */
     @Test
     void resolve_multiHopTrustedOne_returnsClientEntry() {
         ClientIpResolver resolver = new ClientIpResolver(1);
         HttpServletRequest req = requestWithXff("10.0.0.5", "1.2.3.4, 10.0.0.5");
-        assertThat(resolver.resolve(req)).isEqualTo("1.2.3.4");
+        assertThat(resolver.resolve(req)).isEqualTo("10.0.0.5");
     }
 
     /**
-     * Sec-14 XFF anti-spoofing prevention: attacker injects a fake IP at the leftmost position.
+     * Sec-14 XFF anti-spoofing: attacker injects a fake IP; only 1 trusted hop.
      *
-     * XFF: "ATTACKER-IP, real-client, proxy-added"
-     * With trustedHops=1: clientIndex = 3 - 1 - 1 = 1 → "real-client"
-     * The "ATTACKER-IP" is discarded — it's beyond the trusted boundary.
+     * XFF: "FAKE-IP, 10.0.0.5"
+     * With trustedHops=1: clientIndex = 2 - 1 = 1 → "10.0.0.5"
      *
-     * This is the key anti-spoofing test.
+     * The trusted proxy appended 10.0.0.5 (the real connecting IP).
+     * "FAKE-IP" is in the attacker-controlled left portion and is discarded.
+     * This demonstrates that trustedHops=1 DOES protect against direct XFF injection:
+     * the real client IP is the rightmost entry added by the trusted proxy.
      */
     @Test
     void resolve_attackerInjectedXff_discardsFakeIp() {
         ClientIpResolver resolver = new ClientIpResolver(1);
-        // Attacker sends XFF: "1.1.1.1" (spoofed), proxy appends "2.2.2.2"
-        // Result: XFF = "1.1.1.1, 2.2.2.2"
-        // With trustedHops=1: client = index 2-1-1=0 → "1.1.1.1"
-        // Note: with 1 trusted hop, we trust the rightmost entry is proxy-added.
-        // The entry at index 0 is what we get as "client", which in this setup IS
-        // the attacker-injected one — this is correct: trustedHops=1 can only protect
-        // against proxy-hop injection, not against the client directly faking XFF.
-        //
-        // The real protection: with trustedHops=1 and 3 entries:
-        // "FAKE, real-client, proxy-hop" → clientIndex = 3-1-1=1 → "real-client"
-        HttpServletRequest req = requestWithXff("10.0.0.5", "FAKE-IP, 203.0.113.5, 10.0.0.5");
-        // 3 entries, trustedHops=1: clientIndex = 3-1-1=1 → "203.0.113.5"
-        assertThat(resolver.resolve(req)).isEqualTo("203.0.113.5");
+        // Attacker (real IP 10.0.0.5) sends XFF: "FAKE-IP"; trusted proxy appends 10.0.0.5.
+        // Result: XFF = "FAKE-IP, 10.0.0.5"
+        // With trustedHops=1: clientIndex = 2 - 1 = 1 → "10.0.0.5" (real client)
+        HttpServletRequest req = requestWithXff("10.0.0.5", "FAKE-IP, 10.0.0.5");
+        assertThat(resolver.resolve(req)).isEqualTo("10.0.0.5");
     }
 
     // -----------------------------------------------------------------------
@@ -168,13 +165,17 @@ class ClientIpResolverTest {
      * With trustedHops=2 and 3 entries:
      * XFF: "1.2.3.4, proxy1, proxy2"
      * hops = ["1.2.3.4", "proxy1", "proxy2"], len=3
-     * clientIndex = 3 - 2 - 1 = 0 → "1.2.3.4"
+     * clientIndex = 3 - 2 = 1 → "proxy1"
+     *
+     * With 2 trusted hops the formula returns the entry at the boundary: "proxy1"
+     * is the IP observed by the inner trusted proxy (proxy2 saw proxy1 connecting).
+     * To surface "1.2.3.4" (the origin client), configure trustedHops=3.
      */
     @Test
-    void resolve_threeHopsTrustedTwo_returnsClientEntry() {
+    void resolve_threeHopsTrustedTwo_returnsBoundaryEntry() {
         ClientIpResolver resolver = new ClientIpResolver(2);
         HttpServletRequest req = requestWithXff("proxy2", "1.2.3.4, proxy1, proxy2");
-        assertThat(resolver.resolve(req)).isEqualTo("1.2.3.4");
+        assertThat(resolver.resolve(req)).isEqualTo("proxy1");
     }
 
     /**
@@ -198,8 +199,8 @@ class ClientIpResolverTest {
     void resolve_xffWithExtraWhitespace_trimsEntries() {
         ClientIpResolver resolver = new ClientIpResolver(1);
         HttpServletRequest req = requestWithXff("10.0.0.1", " 1.2.3.4 , 10.0.0.1 ");
-        // Trimmed hops: ["1.2.3.4", "10.0.0.1"], len=2, clientIndex=0 → "1.2.3.4"
-        assertThat(resolver.resolve(req)).isEqualTo("1.2.3.4");
+        // Trimmed hops: ["1.2.3.4", "10.0.0.1"], len=2, clientIndex = 2-1 = 1 → "10.0.0.1"
+        assertThat(resolver.resolve(req)).isEqualTo("10.0.0.1");
     }
 
     // -----------------------------------------------------------------------
@@ -220,8 +221,9 @@ class ClientIpResolverTest {
     @Test
     void resolve_xffWithBracketedIpv6_stripsTheBrackets() {
         ClientIpResolver resolver = new ClientIpResolver(1);
-        HttpServletRequest req = requestWithXff("10.0.0.1", "[2001:db8::1], 10.0.0.1");
-        // hops: ["[2001:db8::1]", "10.0.0.1"], trustedHops=1, clientIndex=0
+        // Trusted proxy appended the bracket-wrapped IPv6 of the client (rightmost).
+        HttpServletRequest req = requestWithXff("[2001:db8::1]", "10.0.0.1, [2001:db8::1]");
+        // hops: ["10.0.0.1", "[2001:db8::1]"], trustedHops=1, clientIndex = 2-1 = 1
         // brackets stripped: "2001:db8::1"
         assertThat(resolver.resolve(req)).isEqualTo("2001:db8::1");
     }

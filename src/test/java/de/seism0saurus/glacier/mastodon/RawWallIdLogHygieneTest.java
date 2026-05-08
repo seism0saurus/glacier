@@ -30,6 +30,7 @@ import social.bigbone.api.entity.streaming.WebSocketEvent;
 
 import java.net.URI;
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -678,7 +679,9 @@ class RawWallIdLogHygieneTest {
         // when the SubscriptionListener is garbage-collected
         listener.onDisconnectEvent(event);
 
-        List<ILoggingEvent> events = subscriptionListenerAppender.list;
+        // Snapshot before asserting: the timer virtual-thread may append "Timer started"
+        // concurrently, causing ConcurrentModificationException during iteration.
+        List<ILoggingEvent> events = new ArrayList<>(subscriptionListenerAppender.list);
 
         // SR-F6-08: no raw UUID in the synchronous outer-method log lines
         assertNoRawUuid(events, "T6 SubscriptionListener.onDisconnectEvent outer method");
@@ -1017,7 +1020,10 @@ class RawWallIdLogHygieneTest {
      * @param context a human-readable context label used in assertion failure messages
      */
     private static void assertNoRawUuid(List<ILoggingEvent> events, String context) {
-        for (ILoggingEvent event : events) {
+        // Use a snapshot to prevent ConcurrentModificationException when background
+        // threads (e.g. SubscriptionListener timer virtual threads) append concurrently.
+        List<ILoggingEvent> snapshot = new ArrayList<>(events);
+        for (ILoggingEvent event : snapshot) {
             String msg = event.getFormattedMessage();
             assertThat(LogScrubber.containsRawUuid(msg))
                     .as("Log line from %s must not contain raw UUID.\nLine: %s", context, msg)
