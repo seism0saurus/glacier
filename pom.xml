@@ -484,11 +484,11 @@
                     <execution>
                         <id>check-i18n-keys</id>
                         <goals>
-                            <goal>node</goal>
+                            <goal>npm</goal>
                         </goals>
                         <phase>generate-resources</phase>
                         <configuration>
-                            <arguments>scripts/check-i18n-keys.mjs</arguments>
+                            <arguments>run check-i18n-keys</arguments>
                         </configuration>
                     </execution>
                     <!-- Angular Build during generate-resources phase, so the files are in the resources folder-->
