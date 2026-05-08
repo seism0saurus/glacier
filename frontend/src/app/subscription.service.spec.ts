@@ -1,6 +1,7 @@
 import {TestBed} from '@angular/core/testing';
 
 import {MessageQueue, SubscriptionService} from './subscription.service';
+import {SubscriptionPersistence} from './subscription-persistence.service';
 import {RxStompService} from './rx-stomp.service';
 import {Observable, of, BehaviorSubject} from 'rxjs';
 import {Message} from "@stomp/stompjs";
@@ -12,6 +13,7 @@ describe('SubscriptionService', () => {
   let service: SubscriptionService;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
   let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
+  let persistenceService: SubscriptionPersistence;
 
   beforeEach(() => {
     const stompSpy = jasmine.createSpyObj('RxStompService', ['publish', 'watch']);
@@ -21,6 +23,7 @@ describe('SubscriptionService', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionPersistence,
         {provide: RxStompService, useValue: stompSpy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
@@ -28,6 +31,7 @@ describe('SubscriptionService', () => {
     service = TestBed.inject(SubscriptionService);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
     wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
+    persistenceService = TestBed.inject(SubscriptionPersistence);
 
     // Reset spies to ensure no state carried over between tests
     rxStompServiceSpy.publish.calls.reset();
@@ -300,7 +304,7 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
     const hashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(hashtags).toContain('exampleHashtag');
@@ -321,7 +325,7 @@ describe('SubscriptionService', () => {
     }));
     const consoleErrorSpy = spyOn(console, 'error');
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
     expect(consoleErrorSpy).toHaveBeenCalledWith('Could not subscribe to topic', 'testHashtag');
   });
@@ -340,7 +344,7 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
     expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/creation');
     expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/modification');
@@ -467,7 +471,7 @@ describe('SubscriptionService', () => {
       destination: '',
     }));
 
-    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(storedHashtags).toContain('persistedHashtag');
@@ -502,7 +506,7 @@ describe('SubscriptionService', () => {
       destination: '',
     }));
 
-    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(storedHashtags).not.toContain('rejectedHashtag');
@@ -587,7 +591,7 @@ describe('SubscriptionService', () => {
         destination: '',
       }));
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
       // The service subscribes to /user/topic/subscriptions and
       // /user/topic/terminations first (constructor setup), then to the three
@@ -655,7 +659,7 @@ describe('SubscriptionService', () => {
       const ackSubject = new Subject();
       rxStompServiceSpy.watch.and.returnValue(ackSubject.asObservable());
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
       // Emit both acks after the service is constructed so the handlers are
       // already registered on /user/topic/subscriptions.
@@ -706,7 +710,7 @@ describe('SubscriptionService', () => {
       };
       rxStompServiceSpy.watch.and.returnValue(of(negativeAck));
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy);
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
 
       const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
       const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
@@ -732,6 +736,7 @@ describe('SubscriptionService: terminateAllSubscriptions', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionPersistence,
         {provide: RxStompService, useValue: spy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],

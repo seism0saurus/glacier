@@ -7,21 +7,31 @@ const noShareDangerousHtml = require('./eslint-rules/no-share-dangerous-html');
 /**
  * ESLint flat config for the Glacier Angular frontend.
  *
- * Primary purpose here: enforce the `no-share-dangerous-html` custom rule
- * across the share/ feature module to ensure the readonly view never uses
- * [innerHTML] or unsafe DomSanitizer bypass calls (ADR-SHARE-03).
+ * Three rule groups:
+ *
+ * 1. Share-module safety (ADR-SHARE-03):
+ *    `no-share-dangerous-html` custom rule for the share/ feature module.
+ *
+ * 2. localStorage key discipline (SR-SPLIT-01, AC-1, AC-16) — T1 rule:
+ *    `no-restricted-syntax` blocks direct localStorage calls for 'hashtags'
+ *    and 'messageQueue' keys in every production file except
+ *    `subscription-persistence.service.ts`.
+ *    Spec files (*.spec.ts) are exempted: they use raw localStorage access
+ *    to spy on or stub state without going through the service itself.
+ *
+ * 3. Dependency-direction lock (SR-SPLIT-02, AC-2, AC-17) — T2 rule:
+ *    `no-restricted-imports` in `subscription-persistence.service.ts`
+ *    forbids imports from state/stomp/facade.  The dependency arrow is:
+ *      SubscriptionPersistence ← SubscriptionStateService ← SubscriptionStompClient ← SubscriptionService
+ *    No back-edges are allowed (ADR-1).
  *
  * Run with: npm run lint
  * (which calls: npx eslint src/app/share/ src/app/subscription*.ts src/app/hashtag/hashtag.component.ts -c eslint.config.js)
- *
- * Note: Angular templates are TypeScript template literals in standalone
- * components; the rule inspects TemplateLiteral nodes for [innerHTML].
- * Full Angular template linting would require @angular-eslint, which is
- * a separate installation concern outside this scope — flag for DevOps.
  */
 
 /** @type {import('eslint').Linter.FlatConfig[]} */
 module.exports = [
+  // ── 1. Share module: no dangerous HTML ───────────────────────────────────
   {
     files: ['src/app/share/**/*.ts'],
     languageOptions: {
@@ -42,6 +52,73 @@ module.exports = [
     },
     rules: {
       'glacier-share/no-share-dangerous-html': 'error',
+    },
+  },
+
+  // ── 2. T1: localStorage key discipline ───────────────────────────────────
+  //
+  // Scope: subscription*.ts files and hashtag.component.ts — the files most
+  // likely to violate the persistence boundary.  Extended to the full
+  // src/app/**/*.ts scope here for future-proofing; *.spec.ts is exempted
+  // so test helpers can spy/stub localStorage without import ceremony.
+  //
+  // SR-SPLIT-01 / OWASP A03:2021 / CWE-20:
+  //   localStorage is attacker-controlled under XSS.  All reads of 'hashtags'
+  //   and 'messageQueue' must go through SubscriptionPersistence to benefit
+  //   from validateHashtagsList / validateMessageQueue call-site discipline.
+  {
+    files: [
+      'src/app/subscription.service.ts',
+      'src/app/subscription-state.service.ts',
+      'src/app/subscription-stomp-client.service.ts',
+      'src/app/hashtag/hashtag.component.ts',
+    ],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.object.name='localStorage'][callee.property.name=/^(getItem|setItem|removeItem)$/][arguments.0.value='hashtags']",
+          message: "Access to localStorage key 'hashtags' must go through SubscriptionPersistence.loadHashtags() / saveHashtags() (SR-SPLIT-01).",
+        },
+        {
+          selector: "CallExpression[callee.object.name='localStorage'][callee.property.name=/^(getItem|setItem|removeItem)$/][arguments.0.value='messageQueue']",
+          message: "Access to localStorage key 'messageQueue' must go through SubscriptionPersistence / MessageQueue (SR-SPLIT-01).",
+        },
+      ],
+    },
+  },
+
+  // ── 3. T2: Dependency-direction lock on SubscriptionPersistence ───────────
+  //
+  // Persistence must have zero intra-project imports to State, StompClient,
+  // or the Facade.  Enforced here at lint time (ADR-1, SR-SPLIT-02, AC-2).
+  {
+    files: ['src/app/subscription-persistence.service.ts'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            './subscription-state.service',
+            './subscription-stomp-client.service',
+            './subscription.service',
+          ],
+        },
+      ],
     },
   },
 ];

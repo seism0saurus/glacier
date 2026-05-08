@@ -1,6 +1,7 @@
 import {Component, ElementRef, OnDestroy, OnInit, ViewChild} from '@angular/core';
 import {COMMA, ENTER, SEMICOLON} from '@angular/cdk/keycodes';
 import {SubscriptionService} from "../subscription.service";
+import {SubscriptionPersistence} from "../subscription-persistence.service";
 import {MatChipEditedEvent, MatChipInputEvent} from "@angular/material/chips";
 import {MatIconRegistry} from "@angular/material/icon";
 import {DomSanitizer} from "@angular/platform-browser";
@@ -49,7 +50,11 @@ export class HashtagComponent implements OnInit, OnDestroy {
 
   addOnBlur = true;
   separatorKeysCodes: number[] = [ENTER, COMMA, SEMICOLON];
-  hashtags: string[] = JSON.parse(localStorage.getItem('hashtags') || '[]');
+  // SR-SPLIT-01b: use SubscriptionPersistence.loadHashtags() instead of reading
+  // localStorage directly.  Direct access bypassed validateHashtagsList (CWE-20,
+  // OWASP A03:2021, FIND-P3-SEC-4).  Initialised from the persistence service
+  // in the constructor once Angular DI has resolved SubscriptionPersistence.
+  hashtags: string[] = [];
   hashtag: string = "Enter a hashtag";
 
   // @ts-ignore
@@ -77,11 +82,17 @@ export class HashtagComponent implements OnInit, OnDestroy {
 
   constructor(
     private subscriptionService: SubscriptionService,
+    private persistence: SubscriptionPersistence,
     private matIconRegistry: MatIconRegistry,
     private domSanitizer: DomSanitizer,
     private snackBar: MatSnackBar,
     private rxStompService: RxStompService,
   ) {
+    // SR-SPLIT-01b: loadHashtags() applies validateHashtagsList, provides
+    // try/catch around JSON.parse, and emits console.warn on parse failure —
+    // none of which the prior direct localStorage call provided (CWE-20, AC-19).
+    this.hashtags = this.persistence.loadHashtags();
+
     this.matIconRegistry.addSvgIcon(
       `cancel_icon`,
       this.domSanitizer.bypassSecurityTrustResourceUrl("../assets/cancel.svg")
