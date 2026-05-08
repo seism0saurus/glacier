@@ -26,6 +26,9 @@ jobs:
         uses: ./.github/actions/setup-java-cache
         with:
           cache-prefix: verify
+      - name: Lint the frontend
+        working-directory: frontend
+        run: npm run lint
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results

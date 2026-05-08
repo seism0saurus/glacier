@@ -62,6 +62,9 @@ jobs:
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
+      - name: Lint the frontend
+        working-directory: frontend
+        run: npm run lint
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results

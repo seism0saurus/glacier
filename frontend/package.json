@@ -7,6 +7,7 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration watch",
     "test": "ng test",
+    "lint": "npx eslint src/app/share/ -c eslint.config.js",
     "check-i18n-keys": "node scripts/check-i18n-keys.mjs"
   },
   "private": true,
