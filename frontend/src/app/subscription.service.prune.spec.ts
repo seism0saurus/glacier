@@ -1,5 +1,7 @@
 import {TestBed, fakeAsync, tick} from '@angular/core/testing';
 import {MessageQueue, SubscriptionService} from './subscription.service';
+import {SubscriptionPersistence} from './subscription-persistence.service';
+import {SubscriptionStateService} from './subscription-state.service';
 import {RxStompService} from './rx-stomp.service';
 import {WallAnnouncerService} from './services/wall-announcer.service';
 import {Observable, of} from 'rxjs';
@@ -360,6 +362,8 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionPersistence,
+        SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
@@ -377,27 +381,27 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
     it('should evict stale entries from recentlyTerminated during seedRecentlyTerminated', () => {
       // Arrange: manually insert a stale entry (already expired)
       const now = Date.now();
-      service['recentlyTerminated'].set('stale', now - 1); // expired 1ms ago
+      service['state']['recentlyTerminated'].set('stale', now - 1); // expired 1ms ago
 
       // Act: seed a new entry, which triggers the sweep
-      (service as any).seedRecentlyTerminated('newhashtag');
+      service['state'].seedRecentlyTerminated('newhashtag');
 
       // Assert: stale entry was evicted
-      expect(service['recentlyTerminated'].has('stale')).toBeFalse();
+      expect(service['state']['recentlyTerminated'].has('stale')).toBeFalse();
       // New entry is present
-      expect(service['recentlyTerminated'].has('newhashtag')).toBeTrue();
+      expect(service['state']['recentlyTerminated'].has('newhashtag')).toBeTrue();
     });
 
     it('should retain active entries during the eviction sweep', () => {
       // Arrange: insert an active (not yet expired) entry
       const future = Date.now() + 60_000; // 60 s in the future
-      service['recentlyTerminated'].set('active', future);
+      service['state']['recentlyTerminated'].set('active', future);
 
       // Act: seed a new entry
-      (service as any).seedRecentlyTerminated('another');
+      service['state'].seedRecentlyTerminated('another');
 
       // Assert: active entry was NOT evicted
-      expect(service['recentlyTerminated'].has('active')).toBeTrue();
+      expect(service['state']['recentlyTerminated'].has('active')).toBeTrue();
     });
   });
 
@@ -407,11 +411,11 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
       const beforeSeed = Date.now();
 
       // Act
-      (service as any).seedRecentlyTerminated('glacier');
+      service['state'].seedRecentlyTerminated('glacier');
 
       // Assert: expiresAt is in the future relative to Date.now()
       const afterSeed = Date.now();
-      const expiresAt = service['recentlyTerminated'].get('glacier');
+      const expiresAt = service['state']['recentlyTerminated'].get('glacier');
       expect(expiresAt).toBeDefined();
       expect(expiresAt!).toBeGreaterThan(beforeSeed);
       // expiresAt should be roughly beforeSeed + guardTtlMs
@@ -430,10 +434,10 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
       };
 
       const callOrder: string[] = [];
-      const seedSpy = spyOn(service as any, 'seedRecentlyTerminated').and.callFake(() => {
+      const seedSpy = spyOn(service['state'], 'seedRecentlyTerminated').and.callFake(() => {
         callOrder.push('seed');
       });
-      const pruneSpy = spyOn(service['receivedMessages'], 'pruneByHashtag').and.callFake(() => {
+      const pruneSpy = spyOn(service['state']['receivedMessages'], 'pruneByHashtag').and.callFake(() => {
         callOrder.push('prune');
         return {removed: [], remaining: []};
       });
@@ -453,7 +457,7 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
   describe('U-SEC-08 — hashtags[] populated correctly on ingest', () => {
     it('should set hashtags to the normalised hashtag on CREATED ingest entry', () => {
       // Arrange
-      const enqueueSpy = spyOn(service['receivedMessages'], 'enqueueOrMergeHashtag').and.stub();
+      const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueueOrMergeHashtag').and.stub();
 
       const entries = [{
         id: 'abc',
@@ -483,7 +487,7 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
       // MessageQueueValidator to reject the entire queue on next restore.
       // The correct behavior is to skip the entry entirely — never call
       // enqueueOrMergeHashtag (SR-PRUNE-08, ADR-6 ingest contract).
-      const enqueueSpy = spyOn(service['receivedMessages'], 'enqueueOrMergeHashtag').and.stub();
+      const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueueOrMergeHashtag').and.stub();
       const entries = [{id: 'abc', type: 'CREATED' as const, url: 'u', sequence: 1}];
 
       // Act
@@ -504,18 +508,18 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
         '/topic/hashtags/u/glacier/deletion': jasmine.createSpyObj('Subscription', ['unsubscribe']),
       };
 
-      // Directly invoke seedRecentlyTerminated to schedule a timer
-      (service as any).seedRecentlyTerminated('glacier');
+      // Directly invoke seedRecentlyTerminated on the state delegate to schedule a timer
+      service['state'].seedRecentlyTerminated('glacier');
 
       // Assert: settling set is non-empty right after seeding
-      expect(service['_settlingHashtagsSubject'].value.size).toBeGreaterThan(0);
-      expect(service['_settlingTimerHandles'].size).toBeGreaterThan(0);
+      expect(service['state']['_settlingHashtagsSubject'].value.size).toBeGreaterThan(0);
+      expect(service['state']['_settlingTimerHandles'].size).toBeGreaterThan(0);
 
       // Act: tear down the service — all subscriptions and timers should be cancelled
       service.terminateAllSubscriptions();
 
       // Assert immediately: timer handle set must be empty (all cleared)
-      expect(service['_settlingTimerHandles'].size).toBe(0);
+      expect(service['state']['_settlingTimerHandles'].size).toBe(0);
 
       // Advance Jasmine's fake clock past the guard TTL to confirm no timer fires
       tick(15_000);
@@ -529,16 +533,16 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
 
     it('should clear the timer handle set when clearSettlingTimers is called', () => {
       // Arrange: seed two hashtags so two timers are scheduled
-      (service as any).seedRecentlyTerminated('glacier');
-      (service as any).seedRecentlyTerminated('foss');
+      service['state'].seedRecentlyTerminated('glacier');
+      service['state'].seedRecentlyTerminated('foss');
 
-      expect(service['_settlingTimerHandles'].size).toBe(2);
+      expect(service['state']['_settlingTimerHandles'].size).toBe(2);
 
       // Act
-      (service as any).clearSettlingTimers();
+      service['state'].clearSettlingTimers();
 
       // Assert: all handles cleared
-      expect(service['_settlingTimerHandles'].size).toBe(0);
+      expect(service['state']['_settlingTimerHandles'].size).toBe(0);
     });
   });
 
@@ -557,10 +561,10 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
       spyOn(service as any, 'terminateSubscriptionByDestination').and.callFake(() => {
         callOrder.push('terminate');
       });
-      spyOn(service as any, 'seedRecentlyTerminated').and.callFake(() => {
+      spyOn(service['state'], 'seedRecentlyTerminated').and.callFake(() => {
         callOrder.push('seed');
       });
-      spyOn(service['receivedMessages'], 'pruneByHashtag').and.callFake(() => {
+      spyOn(service['state']['receivedMessages'], 'pruneByHashtag').and.callFake(() => {
         callOrder.push('prune');
         return {removed: [], remaining: []};
       });
@@ -598,6 +602,8 @@ describe('SubscriptionService — isRecentlyTerminated', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionPersistence,
+        SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
@@ -614,21 +620,21 @@ describe('SubscriptionService — isRecentlyTerminated', () => {
 
   it('should return true when the hashtag is in the guard map and not expired', () => {
     // Arrange: set an expiry 10s in the future
-    service['recentlyTerminated'].set('glacier', Date.now() + 10_000);
+    service['state']['recentlyTerminated'].set('glacier', Date.now() + 10_000);
 
     expect(service.isRecentlyTerminated('glacier')).toBeTrue();
   });
 
   it('should return false when the guard entry has expired', () => {
     // Arrange: set an expiry 1ms in the past (already expired)
-    service['recentlyTerminated'].set('glacier', Date.now() - 1);
+    service['state']['recentlyTerminated'].set('glacier', Date.now() - 1);
 
     expect(service.isRecentlyTerminated('glacier')).toBeFalse();
   });
 
   it('should normalise the hashtag before checking the guard map', () => {
     // Arrange: stored under lowercase 'glacier'
-    service['recentlyTerminated'].set('glacier', Date.now() + 10_000);
+    service['state']['recentlyTerminated'].set('glacier', Date.now() + 10_000);
 
     // Act: check with '#Glacier' (mixed case, leading hash)
     expect(service.isRecentlyTerminated('#Glacier')).toBeTrue();
@@ -648,6 +654,8 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionPersistence,
+        SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
@@ -662,7 +670,7 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
 
   it('should drop an incoming STOMP delivery when the hashtag is in the recentlyTerminated guard', () => {
     // Arrange: add hashtag to guard
-    service['recentlyTerminated'].set('glacier', Date.now() + 10_000);
+    service['state']['recentlyTerminated'].set('glacier', Date.now() + 10_000);
 
     const testMessage = {body: JSON.stringify({id: '1', author: '', url: 'https://example.com'})};
     rxStompServiceSpy.watch.and.returnValue({
@@ -672,7 +680,7 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
       },
     } as any);
 
-    const enqueueSpy = spyOn(service['receivedMessages'], 'enqueue');
+    const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueue');
 
     // Act
     service.subscribeToStatusCreatedMessages('/topic/hashtags/u/glacier/creation', 'glacier');
@@ -691,7 +699,7 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
       },
     } as any);
 
-    const enqueueSpy = spyOn(service['receivedMessages'], 'enqueue');
+    const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueue');
 
     // Act
     service.subscribeToStatusCreatedMessages('/topic/hashtags/u/foss/creation', 'foss');

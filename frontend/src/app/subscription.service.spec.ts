@@ -2,6 +2,7 @@ import {TestBed} from '@angular/core/testing';
 
 import {MessageQueue, SubscriptionService} from './subscription.service';
 import {SubscriptionPersistence} from './subscription-persistence.service';
+import {SubscriptionStateService} from './subscription-state.service';
 import {RxStompService} from './rx-stomp.service';
 import {Observable, of, BehaviorSubject} from 'rxjs';
 import {Message} from "@stomp/stompjs";
@@ -14,6 +15,7 @@ describe('SubscriptionService', () => {
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
   let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
   let persistenceService: SubscriptionPersistence;
+  let stateService: SubscriptionStateService;
 
   beforeEach(() => {
     const stompSpy = jasmine.createSpyObj('RxStompService', ['publish', 'watch']);
@@ -24,6 +26,7 @@ describe('SubscriptionService', () => {
       providers: [
         SubscriptionService,
         SubscriptionPersistence,
+        SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
@@ -32,6 +35,7 @@ describe('SubscriptionService', () => {
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
     wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
     persistenceService = TestBed.inject(SubscriptionPersistence);
+    stateService = TestBed.inject(SubscriptionStateService);
 
     // Reset spies to ensure no state carried over between tests
     rxStompServiceSpy.publish.calls.reset();
@@ -130,7 +134,7 @@ describe('SubscriptionService', () => {
       const testMessage = {
         body: JSON.stringify({id: '5678'}),
       };
-      const dequeueSpy = spyOn(service['receivedMessages'], 'dequeue');
+      const dequeueSpy = spyOn(service['state']['receivedMessages'], 'dequeue');
       rxStompServiceSpy.watch.and.returnValue({
         subscribe: (callback: (message: any) => void) => {
           callback(testMessage);
@@ -152,7 +156,7 @@ describe('SubscriptionService', () => {
   });
 
   it('should call restore on receivedMessages when getCreatedEvents is called', () => {
-    const restoreSpy = spyOn(service['receivedMessages'], 'restore');
+    const restoreSpy = spyOn(service['state']['receivedMessages'], 'restore');
     service.getCreatedEvents();
     expect(restoreSpy).toHaveBeenCalled();
   });
@@ -189,7 +193,7 @@ describe('SubscriptionService', () => {
         return {unsubscribe: jasmine.createSpy('unsubscribe')};
       },
     } as any);
-    const updateSpy = spyOn(service['receivedMessages'], 'update');
+    const updateSpy = spyOn(service['state']['receivedMessages'], 'update');
 
     service.subscribeToStatusUpdatedMessages(destination);
 
@@ -213,7 +217,7 @@ describe('SubscriptionService', () => {
   });
 
   it('should clear all received messages when clearAllToots is called', () => {
-    const clearSpy = spyOn(service['receivedMessages'], 'clear');
+    const clearSpy = spyOn(service['state']['receivedMessages'], 'clear');
 
     service.clearAllToots();
 
@@ -266,7 +270,7 @@ describe('SubscriptionService', () => {
         return {unsubscribe: jasmine.createSpy('unsubscribe')};
       },
     } as any);
-    const enqueueSpy = spyOn(service['receivedMessages'], 'enqueue');
+    const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueue');
 
     service.subscribeToStatusCreatedMessages(destination, 'testHashtag');
 
@@ -304,7 +308,7 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
     const hashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(hashtags).toContain('exampleHashtag');
@@ -325,7 +329,7 @@ describe('SubscriptionService', () => {
     }));
     const consoleErrorSpy = spyOn(console, 'error');
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
     expect(consoleErrorSpy).toHaveBeenCalledWith('Could not subscribe to topic', 'testHashtag');
   });
@@ -344,7 +348,7 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
     expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/creation');
     expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/modification');
@@ -471,7 +475,7 @@ describe('SubscriptionService', () => {
       destination: '',
     }));
 
-    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(storedHashtags).toContain('persistedHashtag');
@@ -506,7 +510,7 @@ describe('SubscriptionService', () => {
       destination: '',
     }));
 
-    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(storedHashtags).not.toContain('rejectedHashtag');
@@ -591,7 +595,7 @@ describe('SubscriptionService', () => {
         destination: '',
       }));
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
       // The service subscribes to /user/topic/subscriptions and
       // /user/topic/terminations first (constructor setup), then to the three
@@ -659,7 +663,7 @@ describe('SubscriptionService', () => {
       const ackSubject = new Subject();
       rxStompServiceSpy.watch.and.returnValue(ackSubject.asObservable());
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
       // Emit both acks after the service is constructed so the handlers are
       // already registered on /user/topic/subscriptions.
@@ -710,7 +714,7 @@ describe('SubscriptionService', () => {
       };
       rxStompServiceSpy.watch.and.returnValue(of(negativeAck));
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService);
+      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
 
       const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
       const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
@@ -737,6 +741,7 @@ describe('SubscriptionService: terminateAllSubscriptions', () => {
       providers: [
         SubscriptionService,
         SubscriptionPersistence,
+        SubscriptionStateService,
         {provide: RxStompService, useValue: spy},
         {provide: WallAnnouncerService, useValue: announcerSpy},
       ],
@@ -946,4 +951,74 @@ describe('MessageQueue', () => {
     });
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// T4 — Ordering spy: clearSettlingTimers before terminateAll (AC-6, SR-SPLIT-06)
+// ---------------------------------------------------------------------------
+
+/**
+ * T4 — terminateAllSubscriptions() must cancel settling timers before
+ * tearing down STOMP (AC-6, SR-SPLIT-06, FIND-P3-SEC-5/6).
+ *
+ * Arrange: spy on state.clearSettlingTimers and the STOMP unsubscribe path.
+ * Act:     call facade.terminateAllSubscriptions().
+ * Assert:  clearSettlingTimers was called BEFORE any unsubscribeHashtag or
+ *          STOMP subscription teardown (captured via call-order array).
+ */
+describe('SubscriptionService: terminateAllSubscriptions ordering (T4)', () => {
+  let facade: SubscriptionService;
+  let stateService: SubscriptionStateService;
+  let rxStompSpy: jasmine.SpyObj<RxStompService>;
+  let announcerSpy: jasmine.SpyObj<WallAnnouncerService>;
+
+  beforeEach(() => {
+    rxStompSpy = jasmine.createSpyObj('RxStompService', ['publish', 'watch']);
+    rxStompSpy.watch.and.returnValue(new Observable<Message>());
+    announcerSpy = jasmine.createSpyObj('WallAnnouncerService', ['announce', 'setLiveRegion', 'setMessages']);
+
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        SubscriptionPersistence,
+        SubscriptionStateService,
+        {provide: RxStompService, useValue: rxStompSpy},
+        {provide: WallAnnouncerService, useValue: announcerSpy},
+      ],
+    });
+
+    facade = TestBed.inject(SubscriptionService);
+    stateService = TestBed.inject(SubscriptionStateService);
+    rxStompSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
+
+    // Set up facade with mock subscriptions and hashtags
+    facade['hashtags'] = ['glacier'];
+    facade['subscriptions'] = {
+      sub1: jasmine.createSpyObj('Subscription', ['unsubscribe']),
+    };
+    facade['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+    facade['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+  });
+
+  it('T4 — state.clearSettlingTimers() is called before STOMP teardown (unsubscribeHashtag)', () => {
+    const callOrder: string[] = [];
+
+    // Spy on state.clearSettlingTimers — step 1
+    spyOn(stateService, 'clearSettlingTimers').and.callFake(() => {
+      callOrder.push('clearSettlingTimers');
+    });
+
+    // Spy on facade.unsubscribeHashtag — step 2 (STOMP publish)
+    spyOn(facade, 'unsubscribeHashtag').and.callFake(() => {
+      callOrder.push('unsubscribeHashtag');
+    });
+
+    facade.terminateAllSubscriptions();
+
+    // clearSettlingTimers must appear before unsubscribeHashtag in the call order
+    expect(callOrder.indexOf('clearSettlingTimers'))
+      .toBeLessThan(callOrder.indexOf('unsubscribeHashtag'),
+        'clearSettlingTimers must be called before unsubscribeHashtag');
+    expect(callOrder[0]).toBe('clearSettlingTimers');
+  });
 });
