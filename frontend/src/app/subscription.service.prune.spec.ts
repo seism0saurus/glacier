@@ -2,6 +2,7 @@ import {TestBed, fakeAsync, tick} from '@angular/core/testing';
 import {MessageQueue, SubscriptionService} from './subscription.service';
 import {SubscriptionPersistence} from './subscription-persistence.service';
 import {SubscriptionStateService} from './subscription-state.service';
+import {SubscriptionStompClient} from './subscription-stomp-client.service';
 import {RxStompService} from './rx-stomp.service';
 import {WallAnnouncerService} from './services/wall-announcer.service';
 import {Observable, of} from 'rxjs';
@@ -351,6 +352,7 @@ describe('MessageQueue.restore', () => {
 
 describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
   let service: SubscriptionService;
+  let stompClient: SubscriptionStompClient;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
   let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
 
@@ -362,6 +364,7 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionStompClient,
         SubscriptionPersistence,
         SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
@@ -370,6 +373,7 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
     });
 
     service = TestBed.inject(SubscriptionService);
+    stompClient = TestBed.inject(SubscriptionStompClient);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
     wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
 
@@ -426,8 +430,8 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
   describe('U-SEC-06 — guard seeded at step 2 (before prune step 3)', () => {
     it('should seed recentlyTerminated before calling pruneByHashtag in the ack handler', () => {
       // Arrange
-      service['hashtags'] = ['glacier'];
-      service['subscriptions'] = {
+      stompClient['hashtags'] = ['glacier'];
+      stompClient['subscriptions'] = {
         '/topic/hashtags/u/glacier/creation': jasmine.createSpyObj('Subscription', ['unsubscribe']),
         '/topic/hashtags/u/glacier/modification': jasmine.createSpyObj('Subscription', ['unsubscribe']),
         '/topic/hashtags/u/glacier/deletion': jasmine.createSpyObj('Subscription', ['unsubscribe']),
@@ -443,7 +447,7 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
       });
 
       // Act
-      (service as any).handleTerminationAckMessage({
+      (stompClient as any).handleTerminationAck({
         principal: 'u',
         hashtag: 'glacier',
         terminated: true,
@@ -501,12 +505,14 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
   describe('FIND-P3-SEC-5/6 — settling timers are cancelled on terminateAllSubscriptions', () => {
     it('should not fire settling timers after terminateAllSubscriptions is called', fakeAsync(() => {
       // Arrange: seed a hashtag so a settling timer is scheduled
-      service['hashtags'] = ['glacier'];
-      service['subscriptions'] = {
+      stompClient['hashtags'] = ['glacier'];
+      stompClient['subscriptions'] = {
         '/topic/hashtags/u/glacier/creation': jasmine.createSpyObj('Subscription', ['unsubscribe']),
         '/topic/hashtags/u/glacier/modification': jasmine.createSpyObj('Subscription', ['unsubscribe']),
         '/topic/hashtags/u/glacier/deletion': jasmine.createSpyObj('Subscription', ['unsubscribe']),
       };
+      stompClient['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+      stompClient['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
 
       // Directly invoke seedRecentlyTerminated on the state delegate to schedule a timer
       service['state'].seedRecentlyTerminated('glacier');
@@ -549,8 +555,8 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
   describe('U-SEC-13 — 4-step ack sequence is synchronous', () => {
     it('should call terminate, seed, prune, and announce in order within the same tick', () => {
       // Arrange
-      service['hashtags'] = ['glacier'];
-      service['subscriptions'] = {
+      stompClient['hashtags'] = ['glacier'];
+      stompClient['subscriptions'] = {
         '/topic/hashtags/u/glacier/creation': jasmine.createSpyObj('Subscription', ['unsubscribe']),
         '/topic/hashtags/u/glacier/modification': jasmine.createSpyObj('Subscription', ['unsubscribe']),
         '/topic/hashtags/u/glacier/deletion': jasmine.createSpyObj('Subscription', ['unsubscribe']),
@@ -558,7 +564,7 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
 
       const callOrder: string[] = [];
 
-      spyOn(service as any, 'terminateSubscriptionByDestination').and.callFake(() => {
+      spyOn(stompClient as any, 'terminateByDest').and.callFake(() => {
         callOrder.push('terminate');
       });
       spyOn(service['state'], 'seedRecentlyTerminated').and.callFake(() => {
@@ -572,8 +578,8 @@ describe('SubscriptionService — recentlyTerminated guard (ADR-3)', () => {
         callOrder.push('announce');
       });
 
-      // Act: call handleTerminationAckMessage synchronously
-      (service as any).handleTerminationAckMessage({
+      // Act: call handleTerminationAck synchronously
+      (stompClient as any).handleTerminationAck({
         principal: 'u',
         hashtag: 'glacier',
         terminated: true,
@@ -602,6 +608,7 @@ describe('SubscriptionService — isRecentlyTerminated', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionStompClient,
         SubscriptionPersistence,
         SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
@@ -641,8 +648,9 @@ describe('SubscriptionService — isRecentlyTerminated', () => {
   });
 });
 
-describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages', () => {
-  let service: SubscriptionService;
+describe('SubscriptionStompClient — guard gate in subscribeToCreated (migrated from SubscriptionService prune spec)', () => {
+  let stompClient: SubscriptionStompClient;
+  let stateService: SubscriptionStateService;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
   let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
 
@@ -654,6 +662,7 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionStompClient,
         SubscriptionPersistence,
         SubscriptionStateService,
         {provide: RxStompService, useValue: stompSpy},
@@ -661,16 +670,21 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
       ],
     });
 
-    service = TestBed.inject(SubscriptionService);
+    stompClient = TestBed.inject(SubscriptionStompClient);
+    stateService = TestBed.inject(SubscriptionStateService);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
     wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
     spyOn(localStorage, 'setItem').and.stub();
     spyOn(localStorage, 'getItem').and.returnValue(null);
   });
 
+  afterEach(() => {
+    stateService.clearSettlingTimers();
+  });
+
   it('should drop an incoming STOMP delivery when the hashtag is in the recentlyTerminated guard', () => {
-    // Arrange: add hashtag to guard
-    service['state']['recentlyTerminated'].set('glacier', Date.now() + 10_000);
+    // Arrange: seed guard via public API — never via bracket-access (SR-SPLIT-04, AC-18)
+    stateService.seedRecentlyTerminated('glacier');
 
     const testMessage = {body: JSON.stringify({id: '1', author: '', url: 'https://example.com'})};
     rxStompServiceSpy.watch.and.returnValue({
@@ -680,10 +694,10 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
       },
     } as any);
 
-    const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueue');
+    const enqueueSpy = spyOn(stateService, 'enqueueWallMessage');
 
     // Act
-    service.subscribeToStatusCreatedMessages('/topic/hashtags/u/glacier/creation', 'glacier');
+    stompClient['subscribeToCreated']('/topic/hashtags/u/glacier/creation', 'glacier');
 
     // Assert: toot was dropped, enqueue was NOT called
     expect(enqueueSpy).not.toHaveBeenCalled();
@@ -699,10 +713,10 @@ describe('SubscriptionService — guard gate in subscribeToStatusCreatedMessages
       },
     } as any);
 
-    const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueue');
+    const enqueueSpy = spyOn(stateService, 'enqueueWallMessage');
 
     // Act
-    service.subscribeToStatusCreatedMessages('/topic/hashtags/u/foss/creation', 'foss');
+    stompClient['subscribeToCreated']('/topic/hashtags/u/foss/creation', 'foss');
 
     // Assert: toot was enqueued
     expect(enqueueSpy).toHaveBeenCalled();

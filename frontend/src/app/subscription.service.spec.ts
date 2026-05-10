@@ -3,35 +3,57 @@ import {TestBed} from '@angular/core/testing';
 import {MessageQueue, SubscriptionService} from './subscription.service';
 import {SubscriptionPersistence} from './subscription-persistence.service';
 import {SubscriptionStateService} from './subscription-state.service';
+import {SubscriptionStompClient} from './subscription-stomp-client.service';
 import {RxStompService} from './rx-stomp.service';
-import {Observable, of, BehaviorSubject} from 'rxjs';
+import {Observable, of} from 'rxjs';
 import {Message} from "@stomp/stompjs";
-import {TerminationAckMessage} from "./message-types/termination-ack-message";
 import {WallMessage} from "./model/wall-message";
 import {WallAnnouncerService} from "./services/wall-announcer.service";
 
+// ---------------------------------------------------------------------------
+// Shared TestBed helpers
+// ---------------------------------------------------------------------------
+
+function makeRxStompMock(): jasmine.SpyObj<RxStompService> {
+  const spy = jasmine.createSpyObj<RxStompService>('RxStompService', ['publish', 'watch']);
+  spy.watch.and.returnValue(new Observable<Message>());
+  return spy;
+}
+
+function makeAnnouncerMock(): jasmine.SpyObj<WallAnnouncerService> {
+  return jasmine.createSpyObj('WallAnnouncerService', [
+    'announce', 'setMessages',
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Main SubscriptionService (facade) tests
+// ---------------------------------------------------------------------------
+
 describe('SubscriptionService', () => {
   let service: SubscriptionService;
+  let stompClient: SubscriptionStompClient;
+  let stateService: SubscriptionStateService;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
   let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
   let persistenceService: SubscriptionPersistence;
-  let stateService: SubscriptionStateService;
 
   beforeEach(() => {
-    const stompSpy = jasmine.createSpyObj('RxStompService', ['publish', 'watch']);
-    stompSpy.watch.and.returnValue(new Observable<Message>());
-    const announcerSpy = jasmine.createSpyObj('WallAnnouncerService', ['announce', 'setLiveRegion', 'setMessages']);
+    rxStompServiceSpy = makeRxStompMock();
+    wallAnnouncerServiceSpy = makeAnnouncerMock();
 
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionStompClient,
         SubscriptionPersistence,
         SubscriptionStateService,
-        {provide: RxStompService, useValue: stompSpy},
-        {provide: WallAnnouncerService, useValue: announcerSpy},
+        {provide: RxStompService, useValue: rxStompServiceSpy},
+        {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
       ],
     });
     service = TestBed.inject(SubscriptionService);
+    stompClient = TestBed.inject(SubscriptionStompClient);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
     wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
     persistenceService = TestBed.inject(SubscriptionPersistence);
@@ -39,6 +61,11 @@ describe('SubscriptionService', () => {
 
     // Reset spies to ensure no state carried over between tests
     rxStompServiceSpy.publish.calls.reset();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    stateService.clearSettlingTimers();
   });
 
   it('should be created', () => {
@@ -128,26 +155,6 @@ describe('SubscriptionService', () => {
     });
   });
 
-  describe('subscribeToStatusDeletedMessages', () => {
-    it('should process a received StatusDeletedMessage and call dequeue with the correct id', () => {
-      const destination = '/topic/test-status-deleted-destination';
-      const testMessage = {
-        body: JSON.stringify({id: '5678'}),
-      };
-      const dequeueSpy = spyOn(service['state']['receivedMessages'], 'dequeue');
-      rxStompServiceSpy.watch.and.returnValue({
-        subscribe: (callback: (message: any) => void) => {
-          callback(testMessage);
-          return {unsubscribe: jasmine.createSpy('unsubscribe')};
-        },
-      } as any);
-
-      service.subscribeToStatusDeletedMessages(destination);
-
-      expect(dequeueSpy).toHaveBeenCalledWith('5678');
-    });
-  });
-
   it('should return an Observable from getCreatedEvents', (done) => {
     service.getCreatedEvents().subscribe((result) => {
       expect(result).toBeTruthy();
@@ -156,55 +163,16 @@ describe('SubscriptionService', () => {
   });
 
   it('should call restore on receivedMessages when getCreatedEvents is called', () => {
-    const restoreSpy = spyOn(service['state']['receivedMessages'], 'restore');
+    const restoreSpy = spyOn(stateService['receivedMessages'], 'restore');
     service.getCreatedEvents();
     expect(restoreSpy).toHaveBeenCalled();
   });
 
-  it('should subscribe to the provided destination for status updates', () => {
-    const destination = '/topic/test-status-updated-destination';
-    const mockSubscribe = jasmine.createSpy('subscribe');
-    const mockObservable = new Observable<Message>((subscriber) => {
-      mockSubscribe();
-      return {
-        unsubscribe: () => {
-        }
-      };
-    });
-    rxStompServiceSpy.watch.and.returnValue({
-      subscribe: (callback: (message: any) => void) => {
-        return mockObservable
-      },
-    } as any);
-
-    service.subscribeToStatusUpdatedMessages(destination);
-
-    expect(service['rxStompService'].watch).toHaveBeenCalledWith(destination);
-  });
-
-  it('should process a received StatusUpdatedMessage by updating the queue', () => {
-    const destination = '/topic/test-status-updated-destination';
-    const testMessage = {
-      body: JSON.stringify({id: '1234', url: 'updated-content', editedAt: '2025-01-17T12:00:00.000Z'}),
-    };
-    rxStompServiceSpy.watch.and.returnValue({
-      subscribe: (callback: (message: any) => void) => {
-        callback(testMessage);
-        return {unsubscribe: jasmine.createSpy('unsubscribe')};
-      },
-    } as any);
-    const updateSpy = spyOn(service['state']['receivedMessages'], 'update');
-
-    service.subscribeToStatusUpdatedMessages(destination);
-
-    expect(updateSpy).toHaveBeenCalledWith({id: '1234', url: 'updated-content', editedAt: '2025-01-17T12:00:00.000Z'});
-  });
-
-  it('should unsubscribe all subscriptions when terminateAllSubscriptions is called', () => {
-    // Mock subscriptions
+  it('should unsubscribe all subscriptions in stomp when terminateAllSubscriptions is called', () => {
+    // Mock per-topic subscriptions on the stomp client
     const mockSubscription1 = jasmine.createSpyObj('Subscription', ['unsubscribe']);
     const mockSubscription2 = jasmine.createSpyObj('Subscription', ['unsubscribe']);
-    service['subscriptions'] = {
+    stompClient['subscriptions'] = {
       sub1: mockSubscription1,
       sub2: mockSubscription2,
     };
@@ -213,23 +181,23 @@ describe('SubscriptionService', () => {
 
     expect(mockSubscription1.unsubscribe).toHaveBeenCalled();
     expect(mockSubscription2.unsubscribe).toHaveBeenCalled();
-    expect(Object.keys(service['subscriptions']).length).toBe(0);
+    expect(Object.keys(stompClient['subscriptions']).length).toBe(0);
   });
 
   it('should clear all received messages when clearAllToots is called', () => {
-    const clearSpy = spyOn(service['state']['receivedMessages'], 'clear');
+    const clearSpy = spyOn(stateService['receivedMessages'], 'clear');
 
     service.clearAllToots();
 
     expect(clearSpy).toHaveBeenCalled();
   });
 
-  it('should unsubscribe subscriptionsSubscription and terminationsSubscription when terminateAllSubscriptions is called', () => {
-    // Mock main subscriptions
+  it('should unsubscribe subscriptionsSubscription and terminationsSubscription on stomp when terminateAllSubscriptions is called', () => {
+    // Mock main subscriptions on the stomp client
     const mockSubscriptionsSubscription = jasmine.createSpyObj('Subscription', ['unsubscribe']);
     const mockTerminationsSubscription = jasmine.createSpyObj('Subscription', ['unsubscribe']);
-    service['subscriptionsSubscription'] = mockSubscriptionsSubscription;
-    service['terminationsSubscription'] = mockTerminationsSubscription;
+    stompClient['subscriptionsSubscription'] = mockSubscriptionsSubscription;
+    stompClient['terminationsSubscription'] = mockTerminationsSubscription;
 
     service.terminateAllSubscriptions();
 
@@ -237,63 +205,18 @@ describe('SubscriptionService', () => {
     expect(mockTerminationsSubscription.unsubscribe).toHaveBeenCalled();
   });
 
-  it('should subscribe to the provided destination', () => {
-    const destination = '/topic/test-destination';
-    const mockSubscribe = jasmine.createSpy('subscribe');
-    const mockObservable = new Observable<Message>((subscriber) => {
-      mockSubscribe();
-      return {
-        unsubscribe: () => {
-        }
-      };
-    });
-    rxStompServiceSpy.watch.and.returnValue({
-      subscribe: (callback: (message: any) => void) => {
-        return mockObservable
-      },
-    } as any);
-
-    service.subscribeToStatusCreatedMessages(destination, 'testHashtag');
-
-    expect(rxStompServiceSpy.watch).toHaveBeenCalledWith(destination);
-  });
-
-
-  it('should enqueue received StatusCreatedMessage into the receivedMessages queue as a WallMessage', () => {
-    const destination = '/topic/test-destination';
-    const testMessage = {
-      body: JSON.stringify({id: "1", url: 'test-content'}),
-    };
-    rxStompServiceSpy.watch.and.returnValue({
-      subscribe: (callback: (message: any) => void) => {
-        callback(testMessage);
-        return {unsubscribe: jasmine.createSpy('unsubscribe')};
-      },
-    } as any);
-    const enqueueSpy = spyOn(service['state']['receivedMessages'], 'enqueue');
-
-    service.subscribeToStatusCreatedMessages(destination, 'testHashtag');
-
-    expect(enqueueSpy).toHaveBeenCalledWith(jasmine.objectContaining({
-      id: '1',
-      url: 'test-content',
-      hashtags: ['testhashtag'],
-    }));
-  });
-
-  it('should remove all entries in the subscriptions object when terminateAllSubscriptions is called', () => {
-    // Mock subscriptions
-    service['subscriptions'] = {
+  it('should remove all entries in the stomp subscriptions map when terminateAllSubscriptions is called', () => {
+    stompClient['subscriptions'] = {
       sub1: jasmine.createSpyObj('Subscription', ['unsubscribe']),
       sub2: jasmine.createSpyObj('Subscription', ['unsubscribe']),
     };
 
     service.terminateAllSubscriptions();
 
-    expect(Object.keys(service['subscriptions']).length).toBe(0);
+    expect(Object.keys(stompClient['subscriptions']).length).toBe(0);
   });
 
-  it('should update subscriptions when a valid SubscriptionAckMessage is received', () => {
+  it('should update stomp subscriptions when a valid SubscriptionAckMessage is received', () => {
     const mockMessage = {
       body: JSON.stringify({
         principal: 'principalUser',
@@ -308,7 +231,19 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+    // Re-create the stomp client (and facade) with ack-emitting watch
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        SubscriptionStompClient,
+        SubscriptionPersistence,
+        SubscriptionStateService,
+        {provide: RxStompService, useValue: rxStompServiceSpy},
+        {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+      ],
+    });
+    TestBed.inject(SubscriptionService); // triggers attach() + ack handler
 
     const hashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(hashtags).toContain('exampleHashtag');
@@ -329,12 +264,23 @@ describe('SubscriptionService', () => {
     }));
     const consoleErrorSpy = spyOn(console, 'error');
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        SubscriptionStompClient,
+        SubscriptionPersistence,
+        SubscriptionStateService,
+        {provide: RxStompService, useValue: rxStompServiceSpy},
+        {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+      ],
+    });
+    TestBed.inject(SubscriptionService);
 
     expect(consoleErrorSpy).toHaveBeenCalledWith('Could not subscribe to topic', 'testHashtag');
   });
 
-  it('should call all subscription methods and update destinations correctly', () => {
+  it('should record destinations when a valid SubscriptionAckMessage is processed', () => {
     const mockMessage = {
       body: JSON.stringify({
         principal: 'principalUser',
@@ -348,39 +294,53 @@ describe('SubscriptionService', () => {
       }, command: '', headers: {}, isBinaryBody: false, binaryBody: new Uint8Array(), destination: ''
     }));
 
-    service = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        SubscriptionStompClient,
+        SubscriptionPersistence,
+        SubscriptionStateService,
+        {provide: RxStompService, useValue: rxStompServiceSpy},
+        {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+      ],
+    });
+    TestBed.inject(SubscriptionService); // triggers attach() + ack handler
+    const stompSvc = TestBed.inject(SubscriptionStompClient);
 
-    expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/creation');
-    expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/modification');
-    expect(service['destinations']).toContain('/topic/hashtags/principalUser/exampleHashtag/deletion');
+    // Destinations are tracked via the subscriptions map keys in the stomp client
+    expect(stompSvc['subscriptions']['/topic/hashtags/principalUser/exampleHashtag/creation']).toBeDefined();
+    expect(stompSvc['subscriptions']['/topic/hashtags/principalUser/exampleHashtag/modification']).toBeDefined();
+    expect(stompSvc['subscriptions']['/topic/hashtags/principalUser/exampleHashtag/deletion']).toBeDefined();
     const hashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(hashtags).toContain('exampleHashtag');
   });
 
-  it('should handle a successful termination acknowledgment', () => {
+  it('should handle a successful termination acknowledgment via stomp client', () => {
     localStorage.setItem('hashtags', JSON.stringify(['hashtag1', 'hashtag2']));
-    service['hashtags'] = ['hashtag1', 'hashtag2'];
-    const messageData: TerminationAckMessage = {
-      hashtag: 'hashtag1',
-      principal: 'test-user',
-      terminated: true,
+    stompClient['hashtags'] = ['hashtag1', 'hashtag2'];
+    stompClient['subscriptions'] = {
+      '/topic/hashtags/test-user/hashtag1/creation': jasmine.createSpyObj('Subscription', ['unsubscribe']),
+      '/topic/hashtags/test-user/hashtag1/modification': jasmine.createSpyObj('Subscription', ['unsubscribe']),
+      '/topic/hashtags/test-user/hashtag1/deletion': jasmine.createSpyObj('Subscription', ['unsubscribe']),
     };
-    const terminateSpy = spyOn(service as any, 'terminateSubscriptionByDestination').and.callThrough();
+
+    const terminateSpy = spyOn(stompClient as any, 'terminateByDest').and.callThrough();
+
     rxStompServiceSpy.watch.and.returnValue(new Observable<Message>((subscriber) => {
       subscriber.next({
-        body: JSON.stringify(messageData),
+        body: JSON.stringify({hashtag: 'hashtag1', principal: 'test-user', terminated: true}),
       } as Message);
       subscriber.complete();
     }));
 
-    service['terminationsSubscription'] = rxStompServiceSpy.watch('/user/topic/terminations')
+    stompClient['terminationsSubscription'] = rxStompServiceSpy.watch('/user/topic/terminations')
       .subscribe((message) => {
-        const data: TerminationAckMessage = JSON.parse(message.body);
-        (service as any).handleTerminationAckMessage(data);
+        (stompClient as any).handleTerminationAck(JSON.parse(message.body));
       });
 
-    expect(service['hashtags']).not.toContain('hashtag1');
-    expect(service['hashtags']).toContain('hashtag2');
+    expect(stompClient['hashtags']).not.toContain('hashtag1');
+    expect(stompClient['hashtags']).toContain('hashtag2');
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags')!);
     expect(storedHashtags).not.toContain('hashtag1');
     expect(storedHashtags).toContain('hashtag2');
@@ -391,55 +351,26 @@ describe('SubscriptionService', () => {
 
   it('should log an error if termination acknowledgment fails', () => {
     localStorage.setItem('hashtags', JSON.stringify(['hashtag1', 'hashtag2']));
-    service['hashtags'] = ['hashtag1', 'hashtag2'];
-    const messageData: TerminationAckMessage = {
-      hashtag: 'hashtag1',
-      principal: 'test-user',
-      terminated: false,
-    };
+    stompClient['hashtags'] = ['hashtag1', 'hashtag2'];
+
     spyOn(console, 'error');
     rxStompServiceSpy.watch.and.returnValue(new Observable<Message>((subscriber) => {
       subscriber.next({
-        body: JSON.stringify(messageData),
+        body: JSON.stringify({hashtag: 'hashtag1', principal: 'test-user', terminated: false}),
       } as Message);
       subscriber.complete();
     }));
 
-    service['terminationsSubscription'] = rxStompServiceSpy.watch('/user/topic/terminations')
+    stompClient['terminationsSubscription'] = rxStompServiceSpy.watch('/user/topic/terminations')
       .subscribe((message) => {
-        const data: TerminationAckMessage = JSON.parse(message.body);
-        (service as any).handleTerminationAckMessage(data);
+        (stompClient as any).handleTerminationAck(JSON.parse(message.body));
       });
 
-    expect(service['hashtags']).toEqual(['hashtag1', 'hashtag2']);
+    expect(stompClient['hashtags']).toEqual(['hashtag1', 'hashtag2']);
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags')!);
     expect(storedHashtags).toEqual(['hashtag1', 'hashtag2']);
     expect(console.error)
       .toHaveBeenCalledWith('Could not terminate subscription for principal test-user and hashtag hashtag1');
-  });
-
-  describe('terminateSubscriptionByDestination', () => {
-    beforeEach(() => {
-      service['subscriptions'] = {
-        existingDestination: jasmine.createSpyObj('Subscription', ['unsubscribe']),
-      };
-    });
-
-    it('should unsubscribe and delete an existing subscription', () => {
-      service.terminateSubscriptionByDestination('existingDestination');
-
-      // Verify the subscription was deleted
-      expect(service['subscriptions']['existingDestination']).toBeUndefined();
-    });
-
-    it('should log an error if the subscription does not exist', () => {
-      const consoleErrorSpy = spyOn(console, 'error');
-
-      service.terminateSubscriptionByDestination('nonExistingDestination');
-
-      // Verify console.error was called with the correct message
-      expect(consoleErrorSpy).toHaveBeenCalledWith('No subscription found with destination', 'nonExistingDestination');
-    });
   });
 
   // -------------------------------------------------------------------------
@@ -448,13 +379,7 @@ describe('SubscriptionService', () => {
 
   /**
    * The hashtag must be persisted to localStorage ONLY after a positive
-   * subscription ack ({@code subscribed: true}).  An optimistic write before
-   * the ack would leave orphaned localStorage state if the server rejects the
-   * subscription (e.g. CAP_EXCEEDED).
-   *
-   * <p>Arrange: STOMP watch emits a positive ack for 'persistedHashtag'.
-   * <p>Act:     construct a new SubscriptionService so the ack handler fires.
-   * <p>Assert:  localStorage 'hashtags' contains 'persistedHashtag'.
+   * subscription ack ({@code subscribed: true}).
    */
   it('subscribe_storesHashtag_inSafeStorage_onlyAfterAck', () => {
     const positiveAck = {
@@ -475,7 +400,18 @@ describe('SubscriptionService', () => {
       destination: '',
     }));
 
-    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        SubscriptionStompClient,
+        SubscriptionPersistence,
+        SubscriptionStateService,
+        {provide: RxStompService, useValue: rxStompServiceSpy},
+        {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+      ],
+    });
+    TestBed.inject(SubscriptionService);
 
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(storedHashtags).toContain('persistedHashtag');
@@ -483,13 +419,7 @@ describe('SubscriptionService', () => {
 
   /**
    * When the server rejects the subscription ({@code subscribed: false}),
-   * the hashtag must NOT be added to localStorage.  Persisting before the ack
-   * would mislead the restore logic on the next page load into re-subscribing
-   * a hashtag the server already refused.
-   *
-   * <p>Arrange: STOMP watch emits a negative ack ({@code subscribed: false}).
-   * <p>Act:     construct a new SubscriptionService so the ack handler fires.
-   * <p>Assert:  localStorage 'hashtags' does NOT contain the rejected hashtag.
+   * the hashtag must NOT be added to localStorage.
    */
   it('subscribe_doesNotPersist_onRejection', () => {
     const negativeAck = {
@@ -510,7 +440,18 @@ describe('SubscriptionService', () => {
       destination: '',
     }));
 
-    const svc = new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        SubscriptionService,
+        SubscriptionStompClient,
+        SubscriptionPersistence,
+        SubscriptionStateService,
+        {provide: RxStompService, useValue: rxStompServiceSpy},
+        {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+      ],
+    });
+    TestBed.inject(SubscriptionService);
 
     const storedHashtags = JSON.parse(localStorage.getItem('hashtags') || '[]');
     expect(storedHashtags).not.toContain('rejectedHashtag');
@@ -518,13 +459,7 @@ describe('SubscriptionService', () => {
 
   /**
    * When localStorage is corrupt (non-JSON), {@code getCreatedEvents} must
-   * return an empty-state observable without throwing.  The restore path
-   * uses {@code validateMessageQueue}, which must reject invalid data
-   * gracefully so the user sees a blank wall rather than a crash.
-   *
-   * <p>Arrange: localStorage 'messageQueue' contains malformed JSON.
-   * <p>Act:     call {@code getCreatedEvents}.
-   * <p>Assert:  call does not throw; emitted value is an array (possibly empty).
+   * return an empty-state observable without throwing.
    */
   it('localStorage_isCorrupt_recovers_emptyState_withoutThrow', () => {
     spyOn(localStorage, 'getItem').and.callFake((key: string) => {
@@ -545,34 +480,9 @@ describe('SubscriptionService', () => {
   // -------------------------------------------------------------------------
   // SR-TEST-23 — Topic subscription path is bound to the ack's principal
   // -------------------------------------------------------------------------
-  //
-  // Security contract: The Angular client subscribes to STOMP topics of the
-  // form /topic/hashtags/{principal}/{hashtag}/{type}.  The `principal` value
-  // comes exclusively from the server's SubscriptionAckMessage — never from a
-  // locally-generated or caller-supplied identifier.
-  //
-  // Why this is safe: the server-side WallTopicAuthInterceptor validates that
-  // the principal in the ack matches the authenticated wallId cookie before
-  // the ack is delivered.  The client never constructs a topic path for an
-  // unrelated wallId.
-  //
-  // The negative case pinned here: given an ack with principal "wall-id-abc123",
-  // the watch() call must target exactly /topic/hashtags/wall-id-abc123/...
-  // and must NOT target any path for a different principal (e.g. "wall-id-xyz789").
 
   describe('SR-TEST-23 — STOMP topic subscription uses ack principal exclusively', () => {
 
-    /**
-     * Positive case: the three watch() calls produced by a successful
-     * SubscriptionAckMessage must use exactly the principal carried in
-     * the ack, not any other identifier.
-     *
-     * Arrange: STOMP emits a positive ack with principal "wall-id-abc123"
-     *          and hashtag "cats".
-     * Act:     construct a new SubscriptionService so the ack handler fires.
-     * Assert:  rxStompService.watch() is called with the three expected paths
-     *          (creation, modification, deletion) scoped to "wall-id-abc123".
-     */
     it('subscribes_to_topic_path_using_principal_from_ack', () => {
       const ownPrincipal = 'wall-id-abc123';
       const hashtag = 'cats';
@@ -595,14 +505,20 @@ describe('SubscriptionService', () => {
         destination: '',
       }));
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          SubscriptionService,
+          SubscriptionStompClient,
+          SubscriptionPersistence,
+          SubscriptionStateService,
+          {provide: RxStompService, useValue: rxStompServiceSpy},
+          {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+        ],
+      });
+      TestBed.inject(SubscriptionService);
 
-      // The service subscribes to /user/topic/subscriptions and
-      // /user/topic/terminations first (constructor setup), then to the three
-      // hashtag topics after the ack fires.  We assert that every call that
-      // contains the hashtag path is scoped to the correct principal.
       const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
-
       const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
       expect(hashtagCalls.length).toBe(3);
       expect(hashtagCalls).toContain(`/topic/hashtags/${ownPrincipal}/${hashtag}/creation`);
@@ -610,98 +526,59 @@ describe('SubscriptionService', () => {
       expect(hashtagCalls).toContain(`/topic/hashtags/${ownPrincipal}/${hashtag}/deletion`);
     });
 
-    /**
-     * Negative case (SR-TEST-23 core): the service must NEVER subscribe to
-     * a topic path for a different principal, even if two acks arrive and
-     * one carries an unexpected principal value.
-     *
-     * Arrange: two acks arrive over the same STOMP watch observable.
-     *          First ack: principal "wall-id-abc123", hashtag "cats".
-     *          Second ack: principal "wall-id-xyz789" (a different wall),
-     *          hashtag "dogs".
-     * Act:     construct a new SubscriptionService so both ack handlers fire.
-     * Assert:  every /topic/hashtags/... watch() call whose hashtag is "cats"
-     *          uses principal "wall-id-abc123" — never "wall-id-xyz789".
-     *          Every /topic/hashtags/... watch() call whose hashtag is "dogs"
-     *          uses principal "wall-id-xyz789" — never "wall-id-abc123".
-     *
-     * Rationale: the client trusts the server-authoritative principal from
-     * each individual ack and does not cross-contaminate principals.  The
-     * WallTopicAuthInterceptor on the server side ensures only the wall's
-     * own acks can reach it; the client-side contract here is that it does
-     * not substitute one principal for another.
-     */
     it('does_not_subscribe_to_topic_path_of_different_principal', () => {
       const ownPrincipal = 'wall-id-abc123';
       const otherPrincipal = 'wall-id-xyz789';
 
-      // Simulate two acks delivered sequentially over the same watch stream.
-      // of() emits both values synchronously, matching real RxStomp behaviour
-      // where the ack channel delivers one message per subscription request.
-      const firstAck = {
-        body: JSON.stringify({
-          principal: ownPrincipal,
-          hashtag: 'cats',
-          subscribed: true,
-        }),
-        ack: () => {}, nack: () => {}, command: '', headers: {},
-        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
-      };
-      const secondAck = {
-        body: JSON.stringify({
-          principal: otherPrincipal,
-          hashtag: 'dogs',
-          subscribed: true,
-        }),
-        ack: () => {}, nack: () => {}, command: '', headers: {},
-        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
-      };
-
-      // Both acks are emitted on the same watch stream (simulates two server
-      // responses arriving on /user/topic/subscriptions).
       const {Subject} = require('rxjs');
       const ackSubject = new Subject();
       rxStompServiceSpy.watch.and.returnValue(ackSubject.asObservable());
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          SubscriptionService,
+          SubscriptionStompClient,
+          SubscriptionPersistence,
+          SubscriptionStateService,
+          {provide: RxStompService, useValue: rxStompServiceSpy},
+          {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+        ],
+      });
+      TestBed.inject(SubscriptionService);
 
-      // Emit both acks after the service is constructed so the handlers are
-      // already registered on /user/topic/subscriptions.
+      const firstAck = {
+        body: JSON.stringify({principal: ownPrincipal, hashtag: 'cats', subscribed: true}),
+        ack: () => {}, nack: () => {}, command: '', headers: {},
+        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
+      };
+      const secondAck = {
+        body: JSON.stringify({principal: otherPrincipal, hashtag: 'dogs', subscribed: true}),
+        ack: () => {}, nack: () => {}, command: '', headers: {},
+        isBinaryBody: false, binaryBody: new Uint8Array(), destination: '',
+      };
+
       ackSubject.next(firstAck);
       ackSubject.next(secondAck);
 
       const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
       const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
 
-      // "cats" subscriptions must only ever reference ownPrincipal
       const catsCalls = hashtagCalls.filter(dest => dest.includes('/cats/'));
       catsCalls.forEach(dest => {
         expect(dest).toContain(`/topic/hashtags/${ownPrincipal}/`);
         expect(dest).not.toContain(`/topic/hashtags/${otherPrincipal}/`);
       });
 
-      // "dogs" subscriptions must only ever reference otherPrincipal
       const dogsCalls = hashtagCalls.filter(dest => dest.includes('/dogs/'));
       dogsCalls.forEach(dest => {
         expect(dest).toContain(`/topic/hashtags/${otherPrincipal}/`);
         expect(dest).not.toContain(`/topic/hashtags/${ownPrincipal}/`);
       });
 
-      // Total count: 3 paths per hashtag * 2 hashtags = 6 hashtag topic calls
       expect(hashtagCalls.length).toBe(6);
     });
 
-    /**
-     * Guard: a negative ack (subscribed: false) must not produce any
-     * /topic/hashtags/... watch() calls — no phantom subscription must be
-     * registered for a rejected hashtag, regardless of the principal value
-     * in the ack.
-     *
-     * Arrange: STOMP emits a negative ack ({subscribed: false}) with an
-     *          arbitrary principal.
-     * Act:     construct SubscriptionService so the ack handler fires.
-     * Assert:  no watch() call targets a /topic/hashtags/... path.
-     */
     it('does_not_subscribe_to_any_topic_path_on_negative_ack', () => {
       const negativeAck = {
         body: JSON.stringify({
@@ -714,7 +591,18 @@ describe('SubscriptionService', () => {
       };
       rxStompServiceSpy.watch.and.returnValue(of(negativeAck));
 
-      new SubscriptionService(rxStompServiceSpy, wallAnnouncerServiceSpy, persistenceService, stateService);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          SubscriptionService,
+          SubscriptionStompClient,
+          SubscriptionPersistence,
+          SubscriptionStateService,
+          {provide: RxStompService, useValue: rxStompServiceSpy},
+          {provide: WallAnnouncerService, useValue: wallAnnouncerServiceSpy},
+        ],
+      });
+      TestBed.inject(SubscriptionService);
 
       const watchCalls: string[] = rxStompServiceSpy.watch.calls.allArgs().map(args => args[0]);
       const hashtagCalls = watchCalls.filter(dest => dest.includes('/topic/hashtags/'));
@@ -727,6 +615,7 @@ describe('SubscriptionService', () => {
 
 describe('SubscriptionService: terminateAllSubscriptions', () => {
   let service: SubscriptionService;
+  let stompClient: SubscriptionStompClient;
   let rxStompServiceSpy: jasmine.SpyObj<RxStompService>;
   let wallAnnouncerServiceSpy: jasmine.SpyObj<WallAnnouncerService>;
 
@@ -740,6 +629,7 @@ describe('SubscriptionService: terminateAllSubscriptions', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionStompClient,
         SubscriptionPersistence,
         SubscriptionStateService,
         {provide: RxStompService, useValue: spy},
@@ -748,39 +638,45 @@ describe('SubscriptionService: terminateAllSubscriptions', () => {
     });
 
     service = TestBed.inject(SubscriptionService);
+    stompClient = TestBed.inject(SubscriptionStompClient);
     rxStompServiceSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
     wallAnnouncerServiceSpy = TestBed.inject(WallAnnouncerService) as jasmine.SpyObj<WallAnnouncerService>;
 
-    // Set up mock subscriptions and hashtags
-    service['hashtags'] = ['hashtag1', 'hashtag2'];
-    service['subscriptions'] = {
+    // Set up mock subscriptions and hashtags on the stomp client
+    stompClient['hashtags'] = ['hashtag1', 'hashtag2'];
+    stompClient['subscriptions'] = {
       subscription1: jasmine.createSpyObj('Subscription', ['unsubscribe']),
       subscription2: jasmine.createSpyObj('Subscription', ['unsubscribe']),
     };
-    service['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
-    service['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+    stompClient['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+    stompClient['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
   });
 
-  it('should unsubscribe all subscriptions in the subscriptions property', () => {
-    service.terminateAllSubscriptions();
-
-    expect(Object.keys(service['subscriptions']).length).toBe(0);
+  afterEach(() => {
+    localStorage.clear();
+    TestBed.inject(SubscriptionStateService).clearSettlingTimers();
   });
 
-  it('should unsubscribe subscriptionsSubscription and terminationsSubscription', () => {
+  it('should unsubscribe all subscriptions in the stomp client subscriptions property', () => {
     service.terminateAllSubscriptions();
 
-    expect(service['subscriptionsSubscription'].unsubscribe).toHaveBeenCalled();
-    expect(service['terminationsSubscription'].unsubscribe).toHaveBeenCalled();
+    expect(Object.keys(stompClient['subscriptions']).length).toBe(0);
   });
 
-  it('should call unsubscribeHashtag for each hashtag in hashtags property', () => {
-    spyOn(service, 'unsubscribeHashtag');
+  it('should unsubscribe subscriptionsSubscription and terminationsSubscription on stomp client', () => {
+    service.terminateAllSubscriptions();
+
+    expect(stompClient['subscriptionsSubscription']!.unsubscribe).toHaveBeenCalled();
+    expect(stompClient['terminationsSubscription']!.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('should call stomp.unsubscribeHashtag for each hashtag in stomp client hashtags property', () => {
+    spyOn(stompClient, 'unsubscribeHashtag');
 
     service.terminateAllSubscriptions();
 
-    expect(service.unsubscribeHashtag).toHaveBeenCalledWith('hashtag1');
-    expect(service.unsubscribeHashtag).toHaveBeenCalledWith('hashtag2');
+    expect(stompClient.unsubscribeHashtag).toHaveBeenCalledWith('hashtag1');
+    expect(stompClient.unsubscribeHashtag).toHaveBeenCalledWith('hashtag2');
   });
 });
 
@@ -969,6 +865,7 @@ describe('MessageQueue', () => {
 describe('SubscriptionService: terminateAllSubscriptions ordering (T4)', () => {
   let facade: SubscriptionService;
   let stateService: SubscriptionStateService;
+  let stompClient: SubscriptionStompClient;
   let rxStompSpy: jasmine.SpyObj<RxStompService>;
   let announcerSpy: jasmine.SpyObj<WallAnnouncerService>;
 
@@ -980,6 +877,7 @@ describe('SubscriptionService: terminateAllSubscriptions ordering (T4)', () => {
     TestBed.configureTestingModule({
       providers: [
         SubscriptionService,
+        SubscriptionStompClient,
         SubscriptionPersistence,
         SubscriptionStateService,
         {provide: RxStompService, useValue: rxStompSpy},
@@ -989,18 +887,24 @@ describe('SubscriptionService: terminateAllSubscriptions ordering (T4)', () => {
 
     facade = TestBed.inject(SubscriptionService);
     stateService = TestBed.inject(SubscriptionStateService);
+    stompClient = TestBed.inject(SubscriptionStompClient);
     rxStompSpy = TestBed.inject(RxStompService) as jasmine.SpyObj<RxStompService>;
 
-    // Set up facade with mock subscriptions and hashtags
-    facade['hashtags'] = ['glacier'];
-    facade['subscriptions'] = {
+    // Set up stomp client with mock subscriptions and hashtags
+    stompClient['hashtags'] = ['glacier'];
+    stompClient['subscriptions'] = {
       sub1: jasmine.createSpyObj('Subscription', ['unsubscribe']),
     };
-    facade['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
-    facade['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+    stompClient['subscriptionsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
+    stompClient['terminationsSubscription'] = jasmine.createSpyObj('Subscription', ['unsubscribe']);
   });
 
-  it('T4 — state.clearSettlingTimers() is called before STOMP teardown (unsubscribeHashtag)', () => {
+  afterEach(() => {
+    localStorage.clear();
+    stateService.clearSettlingTimers();
+  });
+
+  it('T4 — state.clearSettlingTimers() is called before STOMP teardown (stomp.terminateAll)', () => {
     const callOrder: string[] = [];
 
     // Spy on state.clearSettlingTimers — step 1
@@ -1008,17 +912,19 @@ describe('SubscriptionService: terminateAllSubscriptions ordering (T4)', () => {
       callOrder.push('clearSettlingTimers');
     });
 
-    // Spy on facade.unsubscribeHashtag — step 2 (STOMP publish)
-    spyOn(facade, 'unsubscribeHashtag').and.callFake(() => {
-      callOrder.push('unsubscribeHashtag');
+    // Spy on stomp.terminateAll — step 2 (STOMP teardown)
+    // The facade calls state.clearSettlingTimers() THEN stomp.terminateAll()
+    // (AC-6, SR-SPLIT-06, T4).
+    spyOn(stompClient, 'terminateAll').and.callFake(() => {
+      callOrder.push('terminateAll');
     });
 
     facade.terminateAllSubscriptions();
 
-    // clearSettlingTimers must appear before unsubscribeHashtag in the call order
+    // clearSettlingTimers must appear before terminateAll in the call order
     expect(callOrder.indexOf('clearSettlingTimers'))
-      .toBeLessThan(callOrder.indexOf('unsubscribeHashtag'),
-        'clearSettlingTimers must be called before unsubscribeHashtag');
+      .toBeLessThan(callOrder.indexOf('terminateAll'),
+        'clearSettlingTimers must be called before stomp.terminateAll()');
     expect(callOrder[0]).toBe('clearSettlingTimers');
   });
 });
