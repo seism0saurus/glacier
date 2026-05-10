@@ -95,30 +95,60 @@ module.exports = [
     },
   },
 
-  // ── 3. T2: Dependency-direction lock on SubscriptionPersistence ───────────
+  // ── 3. T2: Dependency-direction lock — full DAG (ADR-1, SR-SPLIT-02, AC-2) ──
   //
-  // Persistence must have zero intra-project imports to State, StompClient,
-  // or the Facade.  Enforced here at lint time (ADR-1, SR-SPLIT-02, AC-2).
+  // The four-node DAG is:
+  //   SubscriptionPersistence ← SubscriptionStateService
+  //                           ← SubscriptionStompClient ← SubscriptionService
+  // No back-edges allowed.  Each of the three lower layers is locked by its
+  // own no-restricted-imports block so lint catches a back-edge in any layer.
+
+  // T2a: Persistence → nothing (bottom node)
   {
     files: ['src/app/subscription-persistence.service.ts'],
     languageOptions: {
       parser: tsParser,
-      parserOptions: {
-        ecmaVersion: 2022,
-        sourceType: 'module',
-      },
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
     },
     rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          paths: [
-            './subscription-state.service',
-            './subscription-stomp-client.service',
-            './subscription.service',
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', {
+        paths: [
+          './subscription-state.service',
+          './subscription-stomp-client.service',
+          './subscription.service',
+        ],
+      }],
+    },
+  },
+
+  // T2b: State → Persistence only (may not import StompClient or Facade)
+  {
+    files: ['src/app/subscription-state.service.ts'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+    },
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [
+          './subscription-stomp-client.service',
+          './subscription.service',
+        ],
+      }],
+    },
+  },
+
+  // T2c: StompClient → State + Persistence only (may not import Facade)
+  {
+    files: ['src/app/subscription-stomp-client.service.ts'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
+    },
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: ['./subscription.service'],
+      }],
     },
   },
 ];
