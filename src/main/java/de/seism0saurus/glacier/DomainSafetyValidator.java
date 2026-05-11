@@ -93,10 +93,13 @@ public @interface DomainSafetyValidator {
             String lower = trimmed.toLowerCase(java.util.Locale.ROOT);
             if (PROHIBITED_LITERALS.contains(lower)) {
                 context.disableDefaultConstraintViolation();
+                // ADR-P3B-4 (defense-in-depth, CWE-532): static literal only — no raw value echo.
+                // GlacierBindHandler already scrubs the violation chain for the @ConfigurationProperties
+                // bind path, but programmatic validator.validate(bean) calls, REST @Valid binding,
+                // and AOP method validation bypass that handler. The message must be safe on its own.
                 context.buildConstraintViolationWithTemplate(
                         "glacier.domain must not be a loopback or any-address literal "
-                        + "(CORS/CSP misconfiguration risk): '" + trimmed + "' is prohibited "
-                        + "— Sec-12, OWASP A05:2021")
+                        + "(CORS/CSP misconfiguration risk) — Sec-12, OWASP A05:2021")
                         .addConstraintViolation();
                 return false;
             }
