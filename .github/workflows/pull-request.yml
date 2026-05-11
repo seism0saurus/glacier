@@ -34,6 +34,15 @@ jobs:
           key: ${{ runner.os }}-node_modules-pull-${{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-pull-
+      - name: Verify sqlite-jdbc checksum
+        # SR-SQLITE-12: verify supply-chain pin before any Maven build.
+        # dependency:copy downloads the jar (or reuses the local repo cache),
+        # then sha256sum -c checks it against the committed pin.
+        run: |
+          ./mvnw --batch-mode -q dependency:copy \
+            -Dartifact=org.xerial:sqlite-jdbc:3.49.1.0:jar \
+            -DoutputDirectory=dependency-checksums
+          cd dependency-checksums && sha256sum -c sqlite-jdbc-3.49.1.0.sha256
       - name: Compile the webapp
         run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 

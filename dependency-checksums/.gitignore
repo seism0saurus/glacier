@@ -1,0 +1,3 @@
+# Ignore downloaded JARs used for local checksum verification.
+# Only the .sha256 pin files and README are committed.
+*.jar
