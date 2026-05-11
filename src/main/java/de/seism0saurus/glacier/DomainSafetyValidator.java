@@ -49,6 +49,31 @@ public @interface DomainSafetyValidator {
 
     /**
      * The actual constraint validator implementation.
+     *
+     * <h2>Constraint-violation message policy (ADR-P3B-4)</h2>
+     * <p>All {@code buildConstraintViolationWithTemplate()} calls in this class use
+     * <strong>static string literals only</strong> — no raw domain value is ever concatenated
+     * into a violation template. This is a defense-in-depth measure (CWE-532):
+     * <ul>
+     *   <li>{@code GlacierBindHandler.ScrubbingBindHandler} already drops the entire violation
+     *       chain for the {@code @ConfigurationProperties} bind path. However, programmatic
+     *       {@code validator.validate(bean)} calls, REST {@code @Valid} body binding
+     *       ({@code MethodArgumentNotValidException}), AOP method validation, JMX attribute
+     *       validation, and AOT introspection bypass that handler entirely.</li>
+     *   <li>Making every violation message a static literal closes the Jakarta EL injection
+     *       class entirely (EL template evaluation never receives the raw value), is trivially
+     *       auditable by grep, and is enforced structurally by
+     *       {@code ConstraintViolationMessageStaticOnlyStructureTest} (A4).</li>
+     * </ul>
+     *
+     * <h2>Forward reference</h2>
+     * <p><strong>TD-P3B-DOMAIN-UNICODE</strong> will add codepoint-class checks for
+     * U+202E (RIGHT-TO-LEFT OVERRIDE), U+200B (ZERO-WIDTH SPACE), U+FEFF (BOM),
+     * U+2028 (LINE SEPARATOR), and U+2029 (PARAGRAPH SEPARATOR) — these are out of scope
+     * for Bundle B, which targets the log-leak primitive only.
+     *
+     * <p>References: ADR-P3B-4; SR-P3B-01; CWE-532; ASVS V7.3.1 (L1);
+     * OWASP A05:2021; C3 (input validation); C5 (secure defaults).
      */
     class DomainSafetyConstraintValidator
             implements ConstraintValidator<DomainSafetyValidator, String> {
