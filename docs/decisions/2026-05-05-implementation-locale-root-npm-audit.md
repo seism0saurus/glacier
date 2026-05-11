@@ -96,9 +96,9 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-05-05-planning-locale-root-npm-audit.md` — Phase 1 planning
-- CWE-176 (Improper Handling of Unicode Encoding)
-- CWE-178 (Improper Handling of Case Sensitivity)
-- ASVS 5.0.0 V12.1.3 (L1)
-- OWASP Proactive Controls C3 (Input Validation), C6 (Components)
-- RFC 3986 §3.1 (URI scheme normalisation to lowercase)
+- [Phase 1 planning](2026-05-05-planning-locale-root-npm-audit.md)
+- [CWE-176: Improper Handling of Unicode Encoding](https://cwe.mitre.org/data/definitions/176.html)
+- [CWE-178: Improper Handling of Case Sensitivity](https://cwe.mitre.org/data/definitions/178.html)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V12.1.3 (L1)
+- [OWASP Top 10 Proactive Controls (2024)](https://top10proactive.owasp.org/) C3 (Input Validation), C6 (Components)
+- [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) §3.1 (URI scheme normalisation to lowercase)

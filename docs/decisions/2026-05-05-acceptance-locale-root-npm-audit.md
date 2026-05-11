@@ -103,8 +103,8 @@ Approval message (verbatim): "approve"
 - [Implementation doc](2026-05-05-implementation-locale-root-npm-audit.md)
 - `src/test/java/de/seism0saurus/glacier/architecture/LocaleRootDisciplineTest.java`
 - `src/test/java/de/seism0saurus/glacier/ci/WorkflowYamlInventoryTest.java`
-- CWE-176 (Improper Handling of Unicode Encoding)
-- CWE-178 (Improper Handling of Case Sensitivity)
-- ASVS 5.0.0 V12.1.3 (L1)
-- OWASP A06:2021 (Vulnerable and Outdated Components)
-- RFC 3986 §3.1 (URI scheme normalisation to lowercase)
+- [CWE-176: Improper Handling of Unicode Encoding](https://cwe.mitre.org/data/definitions/176.html)
+- [CWE-178: Improper Handling of Case Sensitivity](https://cwe.mitre.org/data/definitions/178.html)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V12.1.3 (L1)
+- [OWASP A06:2021 — Vulnerable and Outdated Components](https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/)
+- [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986) §3.1 (URI scheme normalisation to lowercase)

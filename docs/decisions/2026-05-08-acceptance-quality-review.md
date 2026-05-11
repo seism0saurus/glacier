@@ -48,7 +48,7 @@ All 38 P1 and P2 items across four implementation lanes (A Reliability, B Securi
 | Sec-16/P1-04 `ShareViewController` owner-scoped 401 | PASS | `ShareViewController.java:94-151` |
 | Sec-23 cookie.secure startup guard | PASS | `StartupSanityChecker.java:27-29` |
 | Sec-13/P2-15 `FallbackController` jitter + statistical IT | PASS | `FallbackController.java:82-86` |
-| Sec-17/P2-16 CORS allowlist audit + ADR | PASS | `docs/decisions/2026-05-07-cors-audit.md` |
+| Sec-17/P2-16 CORS allowlist audit + ADR | PASS | [CORS audit](2026-05-07-cors-audit.md) |
 | Sec-18/P2-17 PITest curated set expansion | PASS | `pom.xml:97-102` |
 | Sec-25 Rate-limit AUDIT naming convention test | PASS | `AuditEventNamingConventionTest.java` |
 | P2-11 PITest mutation regex lockstep test | PASS | `MutationRegexLockstepTest.java` |
@@ -89,7 +89,7 @@ All 38 P1 and P2 items across four implementation lanes (A Reliability, B Securi
 
 **Fix**: Changed to `len - trustedHops` (commit `732c47e`). Updated 5 test assertions and the Javadoc algorithm bullet. 14/14 `ClientIpResolverTest` pass.
 
-**OWASP**: A05:2021 Security Misconfiguration / API3:2023 Broken Object Property Level Authorisation.
+**OWASP**: [A05:2021 — Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) / [API3:2023 — Broken Object Property Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/).
 
 ### T6 log-hygiene test ConcurrentModificationException
 
@@ -131,8 +131,8 @@ d7f5380 fix(build): correct frontend-maven-plugin goal (node → npm)
 
 ## References
 
-- Planning: `docs/decisions/2026-05-07-planning-quality-review.md`
-- CORS audit: `docs/decisions/2026-05-07-cors-audit.md`
-- OWASP Top 10 (2025) — A05 Security Misconfiguration
-- OWASP API Security Top 10 (2023) — API3 Broken Object Property Level Authorization
-- WCAG 2.1 — SC 2.1.1 (Keyboard), SC 3.1.1 (Language of Page), SC 4.1.2 (Name, Role, Value)
+- [Planning](2026-05-07-planning-quality-review.md)
+- [CORS audit](2026-05-07-cors-audit.md)
+- [OWASP Top 10 (2025)](https://owasp.org/www-project-top-ten/) — [A05:2021 — Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/)
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API3:2023 — Broken Object Property Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/)
+- [WCAG 2.1](https://www.w3.org/TR/WCAG21/) — SC 2.1.1 (Keyboard), SC 3.1.1 (Language of Page), SC 4.1.2 (Name, Role, Value)

@@ -137,5 +137,5 @@ None. security-auditor and acceptance-test-auditor fully agreed across both doma
 - `src/test/java/de/seism0saurus/glacier/webservice/SubscriptionControllerSessionIdScrubbingTest.java`
 - `src/test/java/de/seism0saurus/glacier/mastodon/RawWallIdLogHygieneTest.java`
 - D-13 / SR-8 (opaque identifier log-hygiene)
-- OWASP A09:2021 (Security Logging and Monitoring Failures)
-- CWE-532 (Insertion of Sensitive Information into Log File)
+- [OWASP A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
+- [CWE-532: Insertion of Sensitive Information into Log File](https://cwe.mitre.org/data/definitions/532.html)

@@ -132,9 +132,9 @@ All security invariants from Phase 1 (`secure_final` verdict: **PASS-WITH-CONDIT
 | SR-TEST-23 | `destination()` uses `data.principal` exclusively; 3-case spec coverage | PASS |
 | CHK-CV-01..09 | All call-site checklist items satisfied | PASS |
 
-OWASP A03:2021 (Injection — localStorage trust boundary): SATISFIED
-OWASP A04:2021 (Insecure Design — single queue, dependency direction): SATISFIED
-OWASP A07:2021 (Auth Failures — principal binding): SATISFIED
+[OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/) (localStorage trust boundary): SATISFIED
+[OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/) (single queue, dependency direction): SATISFIED
+[OWASP A07:2021 — Identification and Authentication Failures](https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/) (principal binding): SATISFIED
 
 ---
 
@@ -170,10 +170,10 @@ Approval message (verbatim): "A1, B2, go ahead"
 
 ## References
 
-- Planning: `docs/decisions/2026-05-08-planning-subscription-service-split.md`
-- Quality Review acceptance: `docs/decisions/2026-05-08-acceptance-quality-review.md`
-- OWASP A03:2021 — Injection (localStorage trust boundary)
-- OWASP A04:2021 — Insecure Design (single queue, dependency DAG)
-- OWASP A07:2021 — Identification and Authentication Failures (principal binding)
-- CWE-20 — Improper Input Validation
-- CWE-117 — Improper Output Neutralisation for Logs
+- [Planning](2026-05-08-planning-subscription-service-split.md)
+- [Quality Review acceptance](2026-05-08-acceptance-quality-review.md)
+- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/) (localStorage trust boundary)
+- [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/) (single queue, dependency DAG)
+- [OWASP A07:2021 — Identification and Authentication Failures](https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/) (principal binding)
+- [CWE-20: Improper Input Validation](https://cwe.mitre.org/data/definitions/20.html)
+- [CWE-117: Improper Output Neutralisation for Logs](https://cwe.mitre.org/data/definitions/117.html)

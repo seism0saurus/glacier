@@ -39,7 +39,7 @@ public class MessageCacheImpl implements MessageCache {
     /**
      * The {@link Logger} for this class.
      *
-     * @see "src/main/ressources/logback.xml"
+     * @see "src/main/resources/logback.xml"
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageCacheImpl.class);
 

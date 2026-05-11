@@ -12,7 +12,7 @@ package de.seism0saurus.glacier.mastodon;
  * cache event lifecycle). Unifying them would couple the two contexts for incidental shape
  * similarity (ADR-F6-INFO-2-A).
  */
-enum StompEventType {
+public enum StompEventType {
     CREATION("creation"),
     MODIFICATION("modification"),
     DELETION("deletion");
@@ -24,7 +24,7 @@ enum StompEventType {
     }
 
     /** Returns the STOMP topic-path suffix and relay event-type string for this event. */
-    String suffix() {
+    public String suffix() {
         return suffix;
     }
 }

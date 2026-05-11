@@ -37,7 +37,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * The {@link org.slf4j.Logger Logger} for this class.
      * The logger is used for logging as configured for the application.
      *
-     * @see "src/main/ressources/logback.xml"
+     * @see "src/main/resources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(SubscriptionManagerImpl.class);
 
@@ -71,9 +71,12 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     private final String glacierDomain;
 
     /**
-     * The mastodon handle of this instance.
+     * The validated Mastodon handle of the bot account.
+     *
+     * <p>Passed to each {@link StompCallback} so that the opt-in check can compare the
+     * bot's local part against mention accounts (ADR-P3A-2, ADR-PT-A04-01).
      */
-    private final String handle;
+    private final MastodonShortHandle shortHandle;
 
     /**
      * The {@link RestTemplate RestTemplate} of this class.
@@ -99,9 +102,9 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * Constructs a SubscriptionManagerImpl instance with the specified configuration values,
      * client, message cache, REST template, share view relay, and SSRF validator.
      *
-     * @param instance            the Mastodon instance URL
+     * @param instance            the Mastodon instance URL (used for startup log only)
      * @param glacierDomain       the domain for Glacier integration
-     * @param handle              the Mastodon user handle
+     * @param shortHandle         the validated Mastodon handle of the bot account (ADR-P3A-2)
      * @param client              the Mastodon client used for API interactions
      * @param messageCache        the ring-buffer cache for event storage and STOMP fan-out
      * @param restTemplate        the REST template for making HTTP requests
@@ -111,14 +114,14 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     public SubscriptionManagerImpl(
             @Value(value = "${mastodon.instance}") String instance,
             @Value(value = "${glacier.domain}") String glacierDomain,
-            @Value(value = "${mastodon.handle}") String handle,
+            MastodonShortHandle shortHandle,
             MastodonClient client,
             MessageCache messageCache,
             RestTemplate restTemplate,
             ShareViewStompRelay shareViewStompRelay,
             SafeUrlValidator safeUrlValidator) {
         this.glacierDomain = glacierDomain;
-        this.handle = handle;
+        this.shortHandle = shortHandle;
         this.restTemplate = restTemplate;
         this.messageCache = messageCache;
         this.shareViewStompRelay = shareViewStompRelay;
@@ -163,7 +166,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
         Future<?> future = executorService.submit(() -> {
             StompCallback stompCallback = new StompCallback(
                     this, messageCache, shareViewStompRelay, restTemplate,
-                    safeUrlValidator, principal, hashtag, handle, glacierDomain);
+                    safeUrlValidator, principal, hashtag, shortHandle, glacierDomain);
             try (Closeable subscription = streaming.hashtag(hashtag, false, stompCallback)) {
                 // D-13/SR-8: log only hashed principal and hashtag length — never raw values
                 LOGGER.info("Asynchronous subscription for principal-hash={} with hashtag-len={} started",

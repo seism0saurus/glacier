@@ -112,4 +112,4 @@ Approval message (verbatim): "approve"
 - [TD-4 xFrameOptions Log Hygiene — Planning](2026-04-30-planning-td4-xframeoptions.md) (gate design pattern)
 - [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
 - [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
-- Glacier D-13 / SR-8 structured-logging discipline (`glacier-structured-logging-logback` skill)
+- Glacier D-13 / SR-8 structured-logging discipline ([`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill)

@@ -1,5 +1,8 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.GlacierOperatorProperties;
+import de.seism0saurus.glacier.MastodonProperties;
+import de.seism0saurus.glacier.mastodon.MastodonHandleFactory;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Nested;
@@ -7,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
@@ -34,7 +38,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ASVS V7.1.1 (L1); WSTG-SESS-02.
  */
 @WebMvcTest(InformationController.class)
+@Import({MastodonProperties.class, MastodonHandleFactory.class})
 @TestPropertySource(properties = {
+        "mastodon.handle=glacier@example.com",
         "glacier.cookie.secure=true",
         "glacier.fallback.ratelimit.perMinute=30",
         "glacier.fallback.ratelimit.perMinutePerIp=120",
@@ -47,6 +53,12 @@ class CookieEmissionIT {
 
     @MockBean
     private FallbackRateLimiter rateLimiter;
+
+    // GlacierOperatorProperties is a @Component @ConfigurationProperties bean not loaded by
+    // @WebMvcTest slice — mock it so InformationController's constructor can be satisfied.
+    @MockitoBean
+    @SuppressWarnings("unused")
+    private GlacierOperatorProperties glacierOperatorProperties;
 
     @org.junit.jupiter.api.BeforeEach
     void allowAll() {
@@ -303,7 +315,9 @@ class CookieEmissionIT {
      */
     @Nested
     @WebMvcTest(InformationController.class)
+    @Import({MastodonProperties.class, MastodonHandleFactory.class})
     @TestPropertySource(properties = {
+            "mastodon.handle=glacier@example.com",
             "glacier.cookie.secure=false",    // AC-13: insecure-transport mode (HTTP, dev/loopback)
             "glacier.fallback.ratelimit.perMinute=30",
             "glacier.fallback.ratelimit.perMinutePerIp=120",
@@ -316,6 +330,8 @@ class CookieEmissionIT {
 
         @MockitoBean
         private FallbackRateLimiter rateLimiter;
+
+        // Note: GlacierOperatorProperties mock is inherited from the outer class.
 
         @org.junit.jupiter.api.BeforeEach
         void allowAll() {

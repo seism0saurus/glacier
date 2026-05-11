@@ -11,7 +11,7 @@ Phase 3 acceptance audit validated the F-6-INFO-1 change: `"notifications_merged
 
 ## Acceptance Disposition: PASSED
 
-All requirements from Phase 1 planning (`docs/decisions/2026-04-30-planning-f6info1-known-stream-events.md`) are met. No Critical or High findings remain open.
+All requirements from [Phase 1 planning](2026-04-30-planning-f6info1-known-stream-events.md) are met. No Critical or High findings remain open.
 
 ## Security Requirements — Final Verification
 

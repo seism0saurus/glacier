@@ -61,8 +61,8 @@ The refactor **improves** the pre-split security posture in three areas:
 
 | Area | Before | After |
 |---|---|---|
-| OWASP A03:2021 / CWE-20 | `validateHashtagsList` present in Persistence; `hashtag.component.ts:52` bypassed it with direct `localStorage.getItem('hashtags')` | SR-SPLIT-01b fix: `hashtag.component.ts` now uses `persistence.loadHashtags()`, which applies `validateHashtagsList`, wraps `JSON.parse` in try/catch, and enforces CWE-117 in the catch |
-| OWASP A04:2021 (Insecure Design) | DAG implicit within a single 846-line class | Explicit 4-node DAG enforced by ESLint T2a/T2b/T2c — back-edge is now a CI build break |
+| [OWASP A03:2021](https://owasp.org/Top10/A03_2021-Injection/) / [CWE-20](https://cwe.mitre.org/data/definitions/20.html) | `validateHashtagsList` present in Persistence; `hashtag.component.ts:52` bypassed it with direct `localStorage.getItem('hashtags')` | SR-SPLIT-01b fix: `hashtag.component.ts` now uses `persistence.loadHashtags()`, which applies `validateHashtagsList`, wraps `JSON.parse` in try/catch, and enforces [CWE-117](https://cwe.mitre.org/data/definitions/117.html) in the catch |
+| [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/) | DAG implicit within a single 846-line class | Explicit 4-node DAG enforced by ESLint T2a/T2b/T2c — back-edge is now a CI build break |
 | Guard predicate integrity (SR-PRUNE-04/06) | Guard gate implicit; no structural canary against spy | T5 discipline check: `(state.isRecentlyTerminated as any).and === undefined` fails CI if a future spec installs a spy on the guard predicate |
 
 ### Informational observations (pre-existing, not regressions)
@@ -83,10 +83,10 @@ The refactor **improves** the pre-split security posture in three areas:
 
 | Category | Standard | Verdict |
 |---|---|---|
-| Injection (localStorage trust boundary) | OWASP A03:2021, CWE-20, CWE-117 | **Strengthened** — validator-at-the-edge enforced in all production paths; ESLint T1 blocks bypass at lint time |
-| Insecure Design (single queue, DAG) | OWASP A04:2021 | **Strengthened** — explicit DAG with static enforcement; `private readonly` factory pattern for single queue |
-| Auth / Principal Binding | OWASP A07:2021, API1:2023 (BOLA) | **Maintained** — SR-TEST-23 migrated; `destination()` uses server-ack principal exclusively; 3-case spec coverage |
-| Security Logging | OWASP A09:2021, CWE-117 | **Maintained** — `console.warn` in catch uses static string; never echoes attacker-controlled payload |
+| Injection (localStorage trust boundary) | [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/), [CWE-20](https://cwe.mitre.org/data/definitions/20.html), [CWE-117](https://cwe.mitre.org/data/definitions/117.html) | **Strengthened** — validator-at-the-edge enforced in all production paths; ESLint T1 blocks bypass at lint time |
+| Insecure Design (single queue, DAG) | [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/) | **Strengthened** — explicit DAG with static enforcement; `private readonly` factory pattern for single queue |
+| Auth / Principal Binding | [OWASP A07:2021 — Identification and Authentication Failures](https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/), [OWASP API1:2023 — BOLA](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) | **Maintained** — SR-TEST-23 migrated; `destination()` uses server-ack principal exclusively; 3-case spec coverage |
+| Security Logging | [OWASP A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/), [CWE-117](https://cwe.mitre.org/data/definitions/117.html) | **Maintained** — `console.warn` in catch uses static string; never echoes attacker-controlled payload |
 
 ## Commits in scope
 
@@ -108,7 +108,7 @@ Approval message (verbatim): "approve"
 
 ## Final sign-off
 
-The SubscriptionService split (deferred item D.3 from `docs/decisions/2026-05-07-planning-quality-review.md`)
+The SubscriptionService split (deferred item D.3 from [Quality Review Planning](2026-05-07-planning-quality-review.md))
 is hereby **CLOSED — PASSED**. The split is security-equivalent to the pre-split code with four
 strengthened structural controls. All three deferred items from the Comprehensive Quality Review are
 now resolved:
@@ -121,11 +121,11 @@ now resolved:
 
 ## References
 
-- Planning: `docs/decisions/2026-05-08-planning-subscription-service-split.md`
-- Implementation: `docs/decisions/2026-05-10-implementation-subscription-service-split.md`
-- Quality Review acceptance: `docs/decisions/2026-05-08-acceptance-quality-review.md`
-- OWASP Top 10 (2025) — A03 Injection, A04 Insecure Design, A07 Auth Failures
-- OWASP API Security Top 10 (2023) — API1 BOLA
-- CWE-20 — Improper Input Validation
-- CWE-117 — Improper Output Neutralisation for Logs
+- [Planning](2026-05-08-planning-subscription-service-split.md)
+- [Implementation](2026-05-10-implementation-subscription-service-split.md)
+- [Quality Review acceptance](2026-05-08-acceptance-quality-review.md)
+- [OWASP Top 10 (2025)](https://owasp.org/www-project-top-ten/) — A03 Injection, A04 Insecure Design, A07 Auth Failures
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — API1 BOLA
+- [CWE-20: Improper Input Validation](https://cwe.mitre.org/data/definitions/20.html)
+- [CWE-117: Improper Output Neutralisation for Logs](https://cwe.mitre.org/data/definitions/117.html)
 - ADR-1..6 — see planning decision record

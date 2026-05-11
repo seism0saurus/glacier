@@ -239,6 +239,29 @@ public final class LogScrubber {
     }
 
     /**
+     * Produces a log-safe representation of a value for use in error messages.
+     *
+     * <p>Raw configuration values (handles, access tokens, operator strings) must never appear
+     * verbatim in error messages or exception strings that may reach logs, stderr, or SIEM.
+     * This method replaces the value with a bounded summary: its SHA-256 hash prefix and length.
+     *
+     * <p>The format {@code "[scrubbed len=N hash=XXXXXXXX]"} gives enough context to match
+     * the error to a specific invalid value (via the hash) while revealing nothing about
+     * the value itself (D-13 / SR-8 / ADR-P3A-7).
+     *
+     * <p>Returns {@code "[scrubbed null]"} for {@code null} and {@code "[scrubbed blank]"}
+     * for blank strings.
+     *
+     * @param value the sensitive value to scrub; may be {@code null}
+     * @return a bounded, log-safe summary string safe for inclusion in exception messages
+     */
+    public static String forErrorMessage(final String value) {
+        if (value == null) return "[scrubbed null]";
+        if (value.isBlank()) return "[scrubbed blank]";
+        return "[scrubbed len=" + value.length() + " hash=" + hash8(value) + "]";
+    }
+
+    /**
      * Returns the streaming event name verbatim if it is on the Mastodon 4.3 allowlist;
      * otherwise returns a bounded fallback that prevents CWE-117 log injection.
      *

@@ -104,16 +104,16 @@ Five technical-debt items deferred from the 2026-04-30 OWASP Coverage Matrix Com
 
 | SR | Requirement | Standard | Status |
 |----|-------------|----------|--------|
-| SR-F5-01 | Negative log assertions use scalar-size stabilization, pollDelay ≥ 100ms, timeout ≤ 5s | OWASP A09:2021 | ACCEPTED |
+| SR-F5-01 | Negative log assertions use scalar-size stabilization, pollDelay ≥ 100ms, timeout ≤ 5s | [OWASP A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) | ACCEPTED |
 | SR-F5-02 | `LogStabilityTest` guards the helper against reference-equality regression | SAFECode test isolation | ACCEPTED |
-| SR-F6-01 | Matrix lockstep parses `### HTTP Endpoints` EP-NN table; loud AssertionError on missing anchor | OWASP API9:2023 | ACCEPTED |
-| SR-F6-02 | Bijection both directions: `matrix ⊇ allowlist` AND `allowlist ⊇ matrix` via SoftAssertions | OWASP API9:2023 | ACCEPTED |
-| SR-F7-01 | Fix both drifts in same commit; `AuditEventNameLockstepTest` scoped to matrix + SECURITY_TESTS + planning ADR | OWASP A09:2021 | ACCEPTED |
-| SR-F7-02 | UT-WS-RL-04 asserts `ws.handshake.rate_limited`; UT-SUBRL-05 asserts `ws.subscribe.rate_limited` | OWASP A09:2021 | ACCEPTED |
-| SR-F9-01 | Sentinel present in `.trivyignore-fs` with future expiry; `TrivyignoreExpiryTest` asserts it | OWASP A06:2021 | ACCEPTED |
-| SR-OBS1-01 | IT seeds share link via repository injection; asserts ip-hash= non-null in AUDIT log | OWASP API4:2023, API6:2023 | ACCEPTED |
-| SR-OBS1-02 | IT asserts AUDIT event literal token (not just `ip-hash=`) | OWASP A09:2021 | ACCEPTED |
-| SR-OBS1-03 | IT runs with production wiring; no manual session-attribute injection | OWASP API6:2023 | ACCEPTED |
+| SR-F6-01 | Matrix lockstep parses `### HTTP Endpoints` EP-NN table; loud AssertionError on missing anchor | [OWASP API9:2023](https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/) | ACCEPTED |
+| SR-F6-02 | Bijection both directions: `matrix ⊇ allowlist` AND `allowlist ⊇ matrix` via SoftAssertions | [OWASP API9:2023](https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/) | ACCEPTED |
+| SR-F7-01 | Fix both drifts in same commit; `AuditEventNameLockstepTest` scoped to matrix + SECURITY_TESTS + planning ADR | [OWASP A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) | ACCEPTED |
+| SR-F7-02 | UT-WS-RL-04 asserts `ws.handshake.rate_limited`; UT-SUBRL-05 asserts `ws.subscribe.rate_limited` | [OWASP A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) | ACCEPTED |
+| SR-F9-01 | Sentinel present in `.trivyignore-fs` with future expiry; `TrivyignoreExpiryTest` asserts it | [OWASP A06:2021](https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/) | ACCEPTED |
+| SR-OBS1-01 | IT seeds share link via repository injection; asserts ip-hash= non-null in AUDIT log | [OWASP API4:2023](https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/), [API6:2023](https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/) | ACCEPTED |
+| SR-OBS1-02 | IT asserts AUDIT event literal token (not just `ip-hash=`) | [OWASP A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) | ACCEPTED |
+| SR-OBS1-03 | IT runs with production wiring; no manual session-attribute injection | [OWASP API6:2023](https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/) | ACCEPTED |
 
 ## Phase 2 Lane Partition
 

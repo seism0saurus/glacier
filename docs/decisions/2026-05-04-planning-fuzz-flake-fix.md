@@ -175,12 +175,12 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-04-22-planning-share-link-qr.md` — ADR-SHARE-07 (HMAC image-proxy token design)
-- `docs/decisions/2026-05-01-planning-fuzz-mutation-testing.md` — SR-FUZZ-05 (PITest 70 % kill-rate gate)
-- `docs/decisions/2026-05-01-acceptance-fuzz-mutation-testing.md` — original jqwik flake noted as deferred
+- [Share Link QR — Planning](2026-04-22-planning-share-link-qr.md) — ADR-SHARE-07 (HMAC image-proxy token design)
+- [Fuzz Mutation Testing — Planning](2026-05-01-planning-fuzz-mutation-testing.md) — SR-FUZZ-05 (PITest 70 % kill-rate gate)
+- [Fuzz Mutation Testing — Acceptance](2026-05-01-acceptance-fuzz-mutation-testing.md) — original jqwik flake noted as deferred
 - `src/test/java/de/seism0saurus/glacier/share/web/ImageProxyUrlBuilderVerifyFuzzTest.java`
 - `src/main/java/de/seism0saurus/glacier/share/web/ShareImageProxyUrlBuilder.java`
-- OWASP A02:2021 (Cryptographic Failures), A09:2021 (Security Logging), A10:2021 (SSRF)
-- ASVS V2.9.1 (L1), V13.2.4 (L1), V8.3.4 (L1)
-- CWE-345 (Insufficient Verification of Data Authenticity), CWE-613 (Insufficient Session Expiration)
-- WSTG-CRYP-04
+- [OWASP A02:2021 — Cryptographic Failures](https://owasp.org/Top10/A02_2021-Cryptographic_Failures/), [A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/), [A10:2021 — Server-Side Request Forgery](https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_(SSRF)/)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V2.9.1 (L1), V13.2.4 (L1), V8.3.4 (L1)
+- [CWE-345: Insufficient Verification of Data Authenticity](https://cwe.mitre.org/data/definitions/345.html), [CWE-613: Insufficient Session Expiration](https://cwe.mitre.org/data/definitions/613.html)
+- [WSTG-CRYP — Weak Cryptography Testing](https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/09-Testing_for_Weak_Cryptography/) (WSTG-CRYP-04)

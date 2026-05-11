@@ -164,5 +164,6 @@ Events come in two shapes: strongly typed `MastodonApiEvent.StreamEvent` (`Statu
 
 - Java package root: `de.seism0saurus.glacier`; tests mirror main. `*Test` = unit (Surefire), `*IT` = integration (Failsafe).
 - Lombok is enabled via annotation processor in `pom.xml`; `lombok.config` lives at repo root. `@Builder` is used widely for the messaging DTOs under `webservice.messaging.messages`.
-- Logback config at `src/main/resources/logback.xml` emits JSON via `logback-jackson`. Several Javadocs reference it as `src/main/ressources/logback.xml` (typo in the sources) — do not "fix" paths in existing Javadoc without checking they are just comments.
+- Logback config at `src/main/resources/logback.xml` emits JSON via `logback-jackson`.
 - `push_version.sh <new-version> <new-branch>` bumps the version in `pom.xml`, `frontend/package.json`, and `.github/dependabot.yaml` together. Any version change must touch all three consistently (the jar filename in README and the `copy-and-rename-jar` goal both derive from it).
+- When writing a new ADR, add a row to `docs/decisions/README.md` in the acceptance commit.

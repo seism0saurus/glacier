@@ -198,7 +198,7 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-04-28-acceptance-pentest-findings.md` — origin of MED-02 finding
+- [Pentest Findings — Acceptance](2026-04-28-acceptance-pentest-findings.md) — origin of MED-02 finding
 - `src/main/java/de/seism0saurus/glacier/webservice/SubscriptionController.java`
 - `src/test/java/de/seism0saurus/glacier/security/SubscribeRateLimitProductionPathIT.java`
 - `src/test/java/de/seism0saurus/glacier/security/ShareViewRemoteAddrProductionPathIT.java`
@@ -206,6 +206,6 @@ Approval message (verbatim): "approve"
 - `src/test/java/de/seism0saurus/glacier/webservice/messaging/ShareLinkViewerCapIT.java`
 - `src/test/java/de/seism0saurus/glacier/mastodon/RawWallIdLogHygieneTest.java`
 - D-13 / SR-8: opaque identifier log-hygiene requirement
-- OWASP A09:2021 (Security Logging and Monitoring Failures)
-- Glacier structured-logging skill: `glacier-structured-logging-logback`
-- Spring testing skill: `spring-boot-testing-patterns`
+- [OWASP A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
+- Glacier structured-logging skill: [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md)
+- Spring testing skill: [`spring-boot-testing-patterns`](../../.claude/skills/spring-boot-testing-patterns.md)

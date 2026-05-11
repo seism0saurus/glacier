@@ -23,10 +23,10 @@
 ## Pipeline progress (what is DONE)
 
 - [x] **Step 0** — approved 2026-04-22.
-- [x] **Phase 1 (Planning)** — approved 2026-04-22; decision doc `docs/decisions/2026-04-22-planning-share-link-qr.md`.
+- [x] **Phase 1 (Planning)** — approved 2026-04-22; [decision doc](2026-04-22-planning-share-link-qr.md).
 - [x] **Phase 2 (Implementation) Round 1** — committed per lane. Two lanes (secure, frontend) completed by orchestrator β-path after 4 sub-agent dispatches hit permission-sandbox issues.
 - [x] **Phase 2 Round 2** — collapsed into `## FIX REQUEST` markers in the lane summaries (Round-2 sub-agents would have faced the same sandbox issue).
-- [x] **Phase 2 approval + decision doc** — approved "p3-c" 2026-04-23; `docs/decisions/2026-04-23-implementation-share-link-qr.md`.
+- [x] **Phase 2 approval + decision doc** — approved "p3-c" 2026-04-23; [decision doc](2026-04-23-implementation-share-link-qr.md).
 - [x] **P3-C consolidation** — all four lane branches merged onto `feature/share-link-qr` with 10 merge conflicts resolved (documented in the merge commits).
 
 ## What is NOT done (Phase 3 input list)

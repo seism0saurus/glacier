@@ -75,10 +75,10 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-05-04-planning-dirtiescontext-sessionid-hygiene.md` — Phase 1 planning
+- [Phase 1 planning](2026-05-04-planning-dirtiescontext-sessionid-hygiene.md)
 - `src/main/java/de/seism0saurus/glacier/webservice/SubscriptionController.java`
 - `src/test/java/de/seism0saurus/glacier/security/RateLimiterItIsolationStructureTest.java`
 - `src/test/java/de/seism0saurus/glacier/webservice/SubscriptionControllerSessionIdScrubbingTest.java`
 - `src/test/java/de/seism0saurus/glacier/mastodon/RawWallIdLogHygieneTest.java`
 - D-13 / SR-8: opaque identifier log-hygiene requirement
-- OWASP A09:2021 (Security Logging and Monitoring Failures)
+- [OWASP A09:2021 — Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)

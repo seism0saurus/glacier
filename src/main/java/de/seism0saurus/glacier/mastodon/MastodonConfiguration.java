@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.mastodon;
 
+import de.seism0saurus.glacier.MastodonProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,7 +29,7 @@ public class MastodonConfiguration {
      * The {@link Logger Logger} for this class.
      * The logger is used for logging as configured for the application.
      *
-     * @see "src/main/ressources/logback.xml"
+     * @see "src/main/resources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(MastodonConfiguration.class);
 
@@ -39,26 +40,26 @@ public class MastodonConfiguration {
      * flags.  All four combinations are handled by dedicated private builder methods to
      * keep the dispatch logic flat and readable (P2-09 — 4-way nesting refactor).
      *
-     * @param instance                    the Mastodon instance hostname
-     * @param https                       whether to use HTTPS ({@code mastodon.https})
-     * @param port                        the Mastodon API port
-     * @param accessToken                 the Mastodon access token
-     * @param readTimeout                 read timeout in seconds
-     * @param writeTimeout                write timeout in seconds
-     * @param connectTimeout              connect timeout in seconds
+     * <p>All mastodon.* properties are now injected via the validated
+     * {@link MastodonProperties} bean (ADR-P3A-1), which enforces Jakarta Validation
+     * constraints at startup and eliminates 8 individual {@code @Value} parameters.
+     *
+     * @param props                         validated Mastodon connection properties
      * @param developmentModeMastodonClient {@code true} enables unsafe dev-mode overrides
      * @return a fully configured {@link MastodonClient}
      */
     @Bean
     public MastodonClient mastodonClient(
-            @Value("${mastodon.instance}") final String instance,
-            @Value("${mastodon.https}") final boolean https,
-            @Value("${mastodon.port}") final int port,
-            @Value("${mastodon.accessToken}") final String accessToken,
-            @Value("${mastodon.readTimeout}") final int readTimeout,
-            @Value("${mastodon.writeTimeout}") final int writeTimeout,
-            @Value("${mastodon.connectTimeout}") final int connectTimeout,
+            final MastodonProperties props,
             @Value("${glacier.devmode}") final boolean developmentModeMastodonClient) {
+
+        String instance = props.getInstance();
+        boolean https = Boolean.TRUE.equals(props.getHttps());  // ADR-P3A-8: unbox safely
+        int port = props.getPort();
+        String accessToken = props.getAccessToken();
+        int readTimeout = props.getReadTimeout();
+        int writeTimeout = props.getWriteTimeout();
+        int connectTimeout = props.getConnectTimeout();
 
         if (developmentModeMastodonClient) {
             return https

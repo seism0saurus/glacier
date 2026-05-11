@@ -3,6 +3,7 @@ package de.seism0saurus.glacier.security;
 import de.seism0saurus.glacier.share.application.DefaultSafeUrlValidator;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
+import de.seism0saurus.glacier.mastodon.MastodonShortHandle;
 import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.webservice.cache.CacheEntry;
@@ -94,7 +95,7 @@ class StompCallbackEmbedSsrfFindingTest {
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate, validator,
                 UUID.randomUUID().toString(), "hashtag",
-                "glacier@example.com", "glacier.example.com");
+                MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(created, List.of());
@@ -163,7 +164,7 @@ class StompCallbackEmbedSsrfFindingTest {
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate, validator,
                 UUID.randomUUID().toString(), "hashtag",
-                "glacier@example.com", "glacier.example.com");
+                MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());

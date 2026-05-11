@@ -150,7 +150,7 @@ class StompCallbackEmbedSsrfIT {
         StompCallback callback = new StompCallback(
                 subscriptionManager, null, null, mockRestTemplate, defaultSafeUrlValidator,
                 UUID.randomUUID().toString(), "test",
-                "glacier@example.com", "glacier.example.com");
+                MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(created, List.of());
@@ -193,7 +193,7 @@ class StompCallbackEmbedSsrfIT {
         StompCallback callback = new StompCallback(
                 subscriptionManager, null, null, mockRestTemplate, defaultSafeUrlValidator,
                 UUID.randomUUID().toString(), "test",
-                "glacier@example.com", "glacier.example.com");
+                MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(created, List.of());
@@ -272,7 +272,7 @@ class StompCallbackEmbedSsrfIT {
         StompCallback callback = new StompCallback(
                 subscriptionManager, mockMessageCache, nullRelay, realRestTemplate, permissiveValidator,
                 UUID.randomUUID().toString(), "test",
-                "glacier@example.com", "glacier.example.com");
+                MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(created, List.of());

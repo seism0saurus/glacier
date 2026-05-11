@@ -31,7 +31,7 @@ with no production behaviour change and adds a new `LogScrubber.safeEventName()`
 
 ### ADR-F6-01: `sessionId` is a forbidden raw log surface (D-13/SR-8)
 **Decision**: WebSocket `simpSessionId` must be scrubbed via `LogScrubber.hash8()` before logging. Field name: `session-hash`.
-**Rationale**: The `glacier-structured-logging-logback` skill explicitly lists `sessionId` as a forbidden MDC field. The `simpSessionId` is a UUID-format identifier that, combined with timestamps and IP, supports session tracking — qualifies as a personal-data correlator under GDPR Recital 30.
+**Rationale**: The [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill explicitly lists `sessionId` as a forbidden MDC field. The `simpSessionId` is a UUID-format identifier that, combined with timestamps and IP, supports session tracking — qualifies as a personal-data correlator under GDPR Recital 30.
 **Alternatives considered**: Leave raw (violates skill); drop entirely (loses reconnect-storm diagnostics).
 **Source**: ddd-tdd-architect Round 1; secure-feature-planner Round 1.
 
@@ -62,16 +62,16 @@ with no production behaviour change and adds a new `LogScrubber.safeEventName()`
 
 | SR | Requirement | Lane | OWASP |
 |----|-------------|------|-------|
-| SR-F6-01 | No log line emits raw hashtag string | A | A09:2021 |
-| SR-F6-02 | `event.toString()` never at INFO or above | A | A09:2021 |
-| SR-F6-03 | No raw toot URL (scheme+host+path+query) at any log level | A | A09:2021, A02:2021 |
-| SR-F6-04 | `ex.getMessage()` on RestTemplate failure not logged — use `getSimpleName()` | A | A09:2021, NIST SI-11 |
-| SR-F6-05 | `genericMessageContent.getEvent()` validated via allowlist before logging | A | A03:2021 CWE-117 |
-| SR-F6-06 | `genericMessageContent.getStream()` not logged in full — `size()` only | A | A09:2021 |
-| SR-F6-07 | Raw STOMP destination string not logged verbatim | A | A09:2021 |
-| SR-F6-08 | Raw `sessionId` not logged at any level — `session-hash` only | A | A02:2021, GDPR |
-| SR-F6-09 | All replacements use canonical `LogScrubber` helpers | A | A09:2021 |
-| SR-F6-10 | Canary tests cover all 10 fix sites; harness checks both message and argument array | B | TSS-WEB §6.4 |
+| SR-F6-01 | No log line emits raw hashtag string | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) |
+| SR-F6-02 | `event.toString()` never at INFO or above | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) |
+| SR-F6-03 | No raw toot URL (scheme+host+path+query) at any log level | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/), [A02:2021](https://owasp.org/Top10/A02_2021-Cryptographic_Failures/) |
+| SR-F6-04 | `ex.getMessage()` on RestTemplate failure not logged — use `getSimpleName()` | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/), [NIST SP 800-53 SI-11](https://csrc.nist.gov/Projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_0/home?element=SI-11) |
+| SR-F6-05 | `genericMessageContent.getEvent()` validated via allowlist before logging | A | [A03:2021](https://owasp.org/Top10/A03_2021-Injection/) [CWE-117](https://cwe.mitre.org/data/definitions/117.html) |
+| SR-F6-06 | `genericMessageContent.getStream()` not logged in full — `size()` only | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) |
+| SR-F6-07 | Raw STOMP destination string not logged verbatim | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) |
+| SR-F6-08 | Raw `sessionId` not logged at any level — `session-hash` only | A | [A02:2021](https://owasp.org/Top10/A02_2021-Cryptographic_Failures/), [GDPR Recital 30](https://gdpr-info.eu/recitals/no-30/) |
+| SR-F6-09 | All replacements use canonical `LogScrubber` helpers | A | [A09:2021](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/) |
+| SR-F6-10 | Canary tests cover all 10 fix sites; harness checks both message and argument array | B | [TSS-WEB](https://www.secodis.com/tss-web/) §6.4 |
 
 ## Phase 2 Lane Partition
 
@@ -120,7 +120,7 @@ Approval message (verbatim): "approve"
 ## References
 
 - [Pentest Findings — Acceptance](2026-04-28-acceptance-pentest-findings.md) (F-6 deferred there)
-- CLAUDE.md: `glacier-structured-logging-logback` skill (authoritative D-13/SR-8 rules)
+- CLAUDE.md: [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill (authoritative D-13/SR-8 rules)
 - [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
 - [GDPR Recital 30](https://www.privacy-regulation.eu/en/recital-30-GDPR.htm) (session identifiers as personal data)

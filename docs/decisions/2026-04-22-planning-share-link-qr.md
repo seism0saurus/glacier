@@ -126,7 +126,7 @@ Per-response nonce via `CspNonceFilter`; Angular's `CSP_NONCE` token reads `<met
 - **killswitch** (`glacier.fallback.enabled=false`): catalog 200 with `initialToots: []`, live WS relay continues, polling returns 404 (mirroring existing `/rest/messages` kill-switch rule).
 - **insecure**: works end-to-end; `__Host-` prefix + `Secure` flag dropped.
 - Dedicated Playwright spec in each of the 5 projects (chromium / firefox / webkit / killswitch / insecure) asserts mode-specific behaviour without overlap.
-**Source**: `glacier-fallback-mode-discipline` skill (mandatory); `ddd-tdd-architect` Round 1 §8; Round 2 test pyramid.
+**Source**: [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md) skill (mandatory); `ddd-tdd-architect` Round 1 §8; Round 2 test pyramid.
 
 ### Decision: Structured-native accessibility semantics (WCAG 2.2 AA + EAA)
 
@@ -136,7 +136,7 @@ Per-response nonce via `CspNonceFilter`; Angular's `CSP_NONCE` token reads `<met
 ### Decision: i18n discipline (German source, EN catalog)
 
 **Decision**: Every new user-visible string carries an explicit `@@id` matching a catalog key in `messages.en.json` / `messages.de.json`. Expiry dates use `Intl.DateTimeFormat`; countdowns use ICU plural forms. Initial catalog sketch (`ux-ui-designer` §5) includes ~15 keys under `share.*`, `connection.share.*`, and `rate.limited.share.*`; `frontend-designer` finalises the complete list during Phase 2.
-**Source**: `angular-i18n-localize` skill (mandatory).
+**Source**: [`angular-i18n-localize`](../../.claude/skills/angular-i18n-localize.md) skill (mandatory).
 
 ### Decision: Test pyramid (non-negotiable per `CLAUDE.md`)
 
@@ -146,7 +146,7 @@ Per-response nonce via `CspNonceFilter`; Angular's `CSP_NONCE` token reads `<met
 
 **E2E (Playwright against dockerized Mastodon, per CLAUDE.md)**: `workflows/share-link.spec.ts` (chromium happy path), `share-link-a11y.spec.ts` (chromium, axe-core + zoom + keyboard), `share-link-qr.spec.ts` (chromium, QR decode + second context), `share-link-firefox.spec.ts` (firefox happy path), `share-link-webkit.spec.ts` (webkit happy path), `share-link-killswitch.spec.ts` (killswitch project), `share-link-insecure.spec.ts` (insecure project), `share-link-fallback.spec.ts` (chromium, WS forced off), `share-link-rate-limit.spec.ts` (chromium abuse path).
 
-**Source**: Combined `ddd-tdd-architect` §10 + `secure-feature-planner` test requirements + `ux-ui-designer` §10; `spring-boot-testing-patterns` + `playwright-e2e-patterns` + `playwright-angular-a11y` + `angular-karma-jasmine-testing` skills.
+**Source**: Combined `ddd-tdd-architect` §10 + `secure-feature-planner` test requirements + `ux-ui-designer` §10; [`spring-boot-testing-patterns`](../../.claude/skills/spring-boot-testing-patterns.md) + [`playwright-e2e-patterns`](../../.claude/skills/playwright-e2e-patterns.md) + [`playwright-angular-a11y`](../../.claude/skills/playwright-angular-a11y.md) + [`angular-karma-jasmine-testing`](../../.claude/skills/angular-karma-jasmine-testing.md) skills.
 
 ## Resolved Conflicts
 
@@ -285,13 +285,13 @@ Phase 1 Approval Gate:
 - **Image-proxy timing observability** — A viewer can indirectly observe which federation instances respond slowly via image-load latency. Accepted: viewer already knows the author's instance from the toot's URL. No mitigation planned.
 - **Cross-replica proxy-cache staleness** — Avatars updated upstream between cache-fill and cache-expiry show stale content for up to 1 h. Accepted: cache TTL is short enough that staleness windows are narrow and non-security.
 - **Sweeper race at expiry boundary** — A concurrent `resolve` call may observe stale status for microseconds at the expiry boundary. Mitigated: `status(now)` is always recomputed on each `resolve` call; the sweeper is an optimisation, not the source of truth.
-- **i18n drift** — German source + EN catalog must stay in sync across every new user-visible string. Mitigated: `angular-i18n-localize` skill enforced at implementation and acceptance gates; Phase 3 auditor checks catalog completeness.
+- **i18n drift** — German source + EN catalog must stay in sync across every new user-visible string. Mitigated: [`angular-i18n-localize`](../../.claude/skills/angular-i18n-localize.md) skill enforced at implementation and acceptance gates; Phase 3 auditor checks catalog completeness.
 - **HMAC secret rotation** — Rotating `glacier.share.imgproxy.hmacSecret` invalidates any outstanding proxy URLs. Accepted: URL lifetime is bounded by 7-day share-link TTL, so rotation can be paired with releases; documented in ops notes.
 
 ## References
 
 - Planning agent outputs (agent session — not persisted)
-- Skills: `glacier-fallback-mode-discipline`, `glacier-structured-logging-logback`, `angular-i18n-localize`, `spring-security-hardening`, `spring-input-validation-ssrf`, `angular-a11y-patterns`, `playwright-angular-a11y`, `spring-boot-testing-patterns`, `playwright-e2e-patterns`, `spring-websocket-performance`, `spring-virtual-threads`, `angular-material-theming`, `angular-karma-jasmine-testing`.
+- Skills: [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md), [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md), [`angular-i18n-localize`](../../.claude/skills/angular-i18n-localize.md), [`spring-security-hardening`](../../.claude/skills/spring-security-hardening.md), [`spring-input-validation-ssrf`](../../.claude/skills/spring-input-validation-ssrf.md), [`angular-a11y-patterns`](../../.claude/skills/angular-a11y-patterns.md), [`playwright-angular-a11y`](../../.claude/skills/playwright-angular-a11y.md), [`spring-boot-testing-patterns`](../../.claude/skills/spring-boot-testing-patterns.md), [`playwright-e2e-patterns`](../../.claude/skills/playwright-e2e-patterns.md), [`spring-websocket-performance`](../../.claude/skills/spring-websocket-performance.md), [`spring-virtual-threads`](../../.claude/skills/spring-virtual-threads.md), [`angular-material-theming`](../../.claude/skills/angular-material-theming.md), [`angular-karma-jasmine-testing`](../../.claude/skills/angular-karma-jasmine-testing.md).
 - [WS Fallback — Planning](2026-04-21-planning-ws-fallback.md)
 - [WS Fallback — Implementation](2026-04-21-implementation-ws-fallback.md)
 - [WS Fallback — Acceptance](2026-04-22-acceptance-ws-fallback.md)

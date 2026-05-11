@@ -49,7 +49,7 @@ security observability. The four bypass tests (T-PQ-A..D) assert only `isEmbedda
 **Rationale**: Coupling all bypass tests to `LOGGER.warn` invocation is a brittleness multiplier —
 every AUDIT-logger migration or log-level change breaks 5 tests for non-security reasons. A single
 dedicated observability test provides the structural protection without cross-cutting coupling.
-Aligns with `glacier-structured-logging-logback` skill: security-relevant blocks → AUDIT logger;
+Aligns with [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill: security-relevant blocks → AUDIT logger;
 dedicated test makes the future AUDIT-logger migration cheap (one test changes, not five).
 **Consequences**: Any refactor that removes the security AUDIT log fails T-PQ-G. Future AUDIT-logger
 migration touches 1 test, not 5.
@@ -159,11 +159,11 @@ Approval message (verbatim): "approve"
 - `src/main/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicy.java` (fix site: line 116)
 - `src/test/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicyTest.java` (T-PQ-A..G)
 - `src/test/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicyRegexInterpolationGateTest.java` (T-PQ-H, new)
-- CWE-1287 (Improper Validation of Specified Type of Input)
-- CWE-625 (Permissive Regular Expression)
-- OWASP A04:2021 (Insecure Design)
-- OWASP A03:2021 (Injection)
-- ASVS 5.0.0 V5.3.6 (escape metacharacters before regex use)
-- ASVS 5.0.0 V1.5.1 (server-side input validation)
-- `glacier-structured-logging-logback` skill (AUDIT logger convention for SR-PQ-10R2)
-- `spring-boot-testing-patterns` skill (test layer conventions)
+- [CWE-1287: Improper Validation of Specified Type of Input](https://cwe.mitre.org/data/definitions/1287.html)
+- [CWE-625: Permissive Regular Expression](https://cwe.mitre.org/data/definitions/625.html)
+- [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/)
+- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V5.3.6 (escape metacharacters before regex use)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V1.5.1 (server-side input validation)
+- [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill (AUDIT logger convention for SR-PQ-10R2)
+- [`spring-boot-testing-patterns`](../../.claude/skills/spring-boot-testing-patterns.md) skill (test layer conventions)

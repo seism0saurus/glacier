@@ -381,23 +381,43 @@ Use these URLs when citing standards in `**Standard**` fields and `## References
 | WSTG-BUSLOGIC | `WSTG-BUSLOGIC — Business Logic Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/10-Business_Logic_Testing/` |
 | WSTG-CLNT | `WSTG-CLNT — Client-Side Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/11-Client-Side_Testing/` |
 | WSTG-APIT | `WSTG-APIT — API Testing` | `https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/12-API_Testing/` |
+| OWASP Top 10 (2025) | `OWASP Top 10 (2025)` | `https://owasp.org/www-project-top-ten/` |
+| OWASP A01:2021 | `OWASP A01:2021 — Broken Access Control` | `https://owasp.org/Top10/A01_2021-Broken_Access_Control/` |
+| OWASP A02:2021 | `OWASP A02:2021 — Cryptographic Failures` | `https://owasp.org/Top10/A02_2021-Cryptographic_Failures/` |
+| OWASP A03:2021 | `OWASP A03:2021 — Injection` | `https://owasp.org/Top10/A03_2021-Injection/` |
+| OWASP A04:2021 | `OWASP A04:2021 — Insecure Design` | `https://owasp.org/Top10/A04_2021-Insecure_Design/` |
+| OWASP A05:2021 | `OWASP A05:2021 — Security Misconfiguration` | `https://owasp.org/Top10/A05_2021-Security_Misconfiguration/` |
+| OWASP A06:2021 | `OWASP A06:2021 — Vulnerable and Outdated Components` | `https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/` |
+| OWASP A07:2021 | `OWASP A07:2021 — Identification and Authentication Failures` | `https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/` |
+| OWASP A08:2021 | `OWASP A08:2021 — Software and Data Integrity Failures` | `https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/` |
 | OWASP A09:2021 | `OWASP A09:2021 — Security Logging and Monitoring Failures` | `https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/` |
 | OWASP A10:2021 | `OWASP A10:2021 — Server-Side Request Forgery` | `https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_(SSRF)/` |
-| OWASP A03:2021 | `OWASP A03:2021 — Injection` | `https://owasp.org/Top10/A03_2021-Injection/` |
-| OWASP A02:2021 | `OWASP A02:2021 — Cryptographic Failures` | `https://owasp.org/Top10/A02_2021-Cryptographic_Failures/` |
-| OWASP A01:2021 | `OWASP A01:2021 — Broken Access Control` | `https://owasp.org/Top10/A01_2021-Broken_Access_Control/` |
-| OWASP A06:2021 | `OWASP A06:2021 — Vulnerable and Outdated Components` | `https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/` |
-| OWASP Top 10 (2025) | `OWASP Top 10 (2025)` | `https://owasp.org/www-project-top-ten/` |
 | OWASP API Security Top 10 (2023) | `OWASP API Security Top 10 (2023)` | `https://owasp.org/API-Security/editions/2023/en/0x11-t10/` |
-| OWASP API1 BOLA | `OWASP API1 — Broken Object Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/` |
-| OWASP API3 | `OWASP API3 — Broken Object Property Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/` |
+| OWASP API1 BOLA | `OWASP API1:2023 — Broken Object Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/` |
+| OWASP API2 | `OWASP API2:2023 — Broken Authentication` | `https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/` |
+| OWASP API3 | `OWASP API3:2023 — Broken Object Property Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/` |
+| OWASP API4 | `OWASP API4:2023 — Unrestricted Resource Consumption` | `https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/` |
+| OWASP API5 | `OWASP API5:2023 — Broken Function Level Authorization` | `https://owasp.org/API-Security/editions/2023/en/0xa5-broken-function-level-authorization/` |
+| OWASP API6 | `OWASP API6:2023 — Unrestricted Access to Sensitive Business Flows` | `https://owasp.org/API-Security/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/` |
+| OWASP API7 SSRF | `OWASP API7:2023 — Server Side Request Forgery` | `https://owasp.org/API-Security/editions/2023/en/0xa7-server-side-request-forgery/` |
+| OWASP API8 | `OWASP API8:2023 — Security Misconfiguration` | `https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/` |
+| OWASP API9 | `OWASP API9:2023 — Improper Inventory Management` | `https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/` |
+| OWASP API10 | `OWASP API10:2023 — Unsafe Consumption of APIs` | `https://owasp.org/API-Security/editions/2023/en/0xaa-unsafe-consumption-of-apis/` |
+| CWE-20 | `CWE-20: Improper Input Validation` | `https://cwe.mitre.org/data/definitions/20.html` |
 | CWE-117 | `CWE-117: Improper Output Neutralization for Logs` | `https://cwe.mitre.org/data/definitions/117.html` |
 | CWE-532 | `CWE-532: Insertion of Sensitive Information into Log File` | `https://cwe.mitre.org/data/definitions/532.html` |
 | CWE-other | `CWE-NNN: [name]` | `https://cwe.mitre.org/data/definitions/NNN.html` |
+| NIST SP 800-53 | `NIST SP 800-53 — Security and Privacy Controls` | `https://csrc.nist.gov/Projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_0/home` |
 | NIST SP 800-53 SI-11 | `NIST SP 800-53 SI-11: Error Handling` | `https://csrc.nist.gov/Projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_0/home?element=SI-11` |
+| NIST SP 800-190 | `NIST SP 800-190 — Application Container Security Guide` | `https://csrc.nist.gov/publications/detail/sp/800-190/final` |
 | GDPR Recital 30 | `GDPR Recital 30 — Online Identifiers` | `https://gdpr-info.eu/recitals/no-30/` |
 | Secodis TSS-WEB | `Secodis TSS-WEB` | `https://www.secodis.com/tss-web/` |
+| RFC 3986 | `RFC 3986 — Uniform Resource Identifier (URI)` | `https://www.rfc-editor.org/rfc/rfc3986` |
+| RFC 6265 | `RFC 6265 — HTTP State Management Mechanism (Cookies)` | `https://www.rfc-editor.org/rfc/rfc6265` |
+| RFC 6265bis | `RFC 6265bis — Cookies: HTTP State Management Mechanism` | `https://www.rfc-editor.org/rfc/rfc6265bis` |
 | RFC 6455 | `RFC 6455 — WebSocket Protocol` | `https://www.rfc-editor.org/rfc/rfc6455` |
+| OWASP CSRF Cheat Sheet | `OWASP CSRF Prevention Cheat Sheet` | `https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html` |
+| WCAG 2.1 AA | `WCAG 2.1 AA` | `https://www.w3.org/TR/WCAG21/` |
 | WCAG 2.2 AA | `WCAG 2.2 AA` | `https://www.w3.org/TR/WCAG22/` |
 
 ### Decision Documentation
@@ -414,6 +434,16 @@ Structure your audit results for the orchestrator to write to `docs/decisions/`:
 ```
 
 When Disposition is `Deferred` **or** `Accepted` with a required follow-on action (e.g. "accepted — follow-up fix needed"), immediately append a `## Follow-Up Item:` block (see Follow-Up Item Format in `.claude/commands/feature.md`). The Phase 5 orchestrator scans for these blocks to drive automatic follow-up processing after the pipeline signs off.
+
+### Linking Rule — All References Must Be Hyperlinks
+
+Every reference in `## References`, `**Standard**`, and finding tables **must use Markdown hyperlink syntax — never plain text**. This applies to both external standards and internal cross-references.
+
+**Internal cross-references** (relative paths from `docs/decisions/`):
+- Skill files: `` [`spring-security-hardening`](../../.claude/skills/spring-security-hardening.md) skill ``
+- ADR headings: `[ADR-06](2026-04-21-planning-ws-fallback.md#adr-06---restmessages-is-cookie-only-same-origin-cache-control-headers)`
+- Planning codes: `[Sec-17/P2-16](2026-05-07-planning-quality-review.md)`
+- Cross-doc: `[Planning doc](2026-XX-XX-planning-feature-name.md)`
 
 ---
 

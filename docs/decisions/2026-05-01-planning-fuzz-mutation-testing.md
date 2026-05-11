@@ -128,5 +128,5 @@ Approval message (verbatim): "approve"
 - TD-4/ADR-TD4-01: `LogScrubber.xfoSummary(List<String>)` — CWE-117 guard decision record
 - D-13/SR-8: Log hygiene discipline (raw wallId/IP/hashtag must never reach JSON logs)
 - `src/test/java/de/seism0saurus/glacier/share/web/ImageProxyUrlBuilderVerifyFuzzTest.java` — existing jqwik template
-- `.claude/skills/spring-boot-testing-patterns` — Surefire/Failsafe conventions
-- `.claude/skills/glacier-structured-logging-logback` — D-13/SR-8 enforcement
+- [`spring-boot-testing-patterns`](../../.claude/skills/spring-boot-testing-patterns.md) — Surefire/Failsafe conventions
+- [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) — D-13/SR-8 enforcement

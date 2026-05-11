@@ -141,7 +141,7 @@ class RawWallIdLogHygieneTest {
 
         // Act — constructor triggers INFO log
         new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         List<ILoggingEvent> events = stompCallbackAppender.list;
 
@@ -187,7 +187,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         TechnicalEvent.Closed closed = mock(TechnicalEvent.Closed.class);
@@ -232,7 +232,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
@@ -286,7 +286,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         // CWE-117 log injection payload: CRLF attempt embedded in event name
@@ -356,7 +356,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         // Build a GenericMessage delete event whose serialized payload looks like a toot ID but whose
@@ -423,7 +423,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         // Use a canary stream name that should never appear in the log verbatim
@@ -760,7 +760,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         TechnicalEvent.Closed closed = mock(TechnicalEvent.Closed.class);
@@ -810,7 +810,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         // Arrange: use ParsedStreamEvent.UnknownType — a real type that does not match
@@ -887,7 +887,7 @@ class RawWallIdLogHygieneTest {
         ShareViewStompRelay shareViewStompRelay = mock(ShareViewStompRelay.class);
 
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
         // Arrange: mock a WebSocketEvent that also implements MastodonApiEvent.
@@ -946,7 +946,7 @@ class RawWallIdLogHygieneTest {
 
         // Act — any AUDIT events emitted during construction should be clean
         new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // AUDIT appender is up and not null (Gap 3 wiring verification)
         assertThat(auditAppender).isNotNull();

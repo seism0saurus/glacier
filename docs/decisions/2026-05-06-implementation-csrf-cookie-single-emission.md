@@ -150,13 +150,13 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-05-06-planning-csrf-cookie-single-emission.md` — Phase 1 planning
+- [Phase 1 planning](2026-05-06-planning-csrf-cookie-single-emission.md)
 - `src/main/java/de/seism0saurus/glacier/share/web/CsrfTokenCookieFactory.java` (fix site)
 - `src/main/java/de/seism0saurus/glacier/share/web/ShareViewerCookieFactory.java` (migrated)
 - `src/test/java/de/seism0saurus/glacier/share/web/CsrfTokenCookieFactoryTest.java`
 - `src/test/java/de/seism0saurus/glacier/share/web/CsrfCookieEmissionStructureTest.java`
 - `src/test/java/de/seism0saurus/glacier/share/web/CsrfTokenIssuanceIT.java`
 - `src/test/java/de/seism0saurus/glacier/security/OwaspMatrixCookieAttributesLockstepTest.java`
-- RFC 6265 §4, RFC 6265bis §4.1.3
-- OWASP CSRF Prevention Cheat Sheet, OWASP A05:2021
-- CWE-625, CWE-697, CWE-1004, CWE-1188
+- [RFC 6265](https://www.rfc-editor.org/rfc/rfc6265) §4, [RFC 6265bis](https://www.rfc-editor.org/rfc/rfc6265bis) §4.1.3
+- [OWASP CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html), [OWASP A05:2021 — Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/)
+- [CWE-625: Permissive Regular Expression](https://cwe.mitre.org/data/definitions/625.html), [CWE-697: Incorrect Comparison](https://cwe.mitre.org/data/definitions/697.html), [CWE-1004: Sensitive Cookie Without HttpOnly Flag](https://cwe.mitre.org/data/definitions/1004.html), [CWE-1188: Initialization of a Resource with an Insecure Default](https://cwe.mitre.org/data/definitions/1188.html)

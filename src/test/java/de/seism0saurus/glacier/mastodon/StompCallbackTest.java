@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.TextNode;
+import de.seism0saurus.glacier.eventtype.EventTypeMapping;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.webservice.cache.CacheEntry;
@@ -198,7 +199,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -214,83 +215,83 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if missing handle is handled with an exception, since we cannot work without one
+     * Tests that a null handle is rejected — validation now lives in {@link MastodonShortHandle#parse(String)}.
+     *
+     * <p>After migrating to the value-object constructor, StompCallback accepts
+     * {@link MastodonShortHandle} rather than a raw String. Null input is rejected by
+     * {@code MastodonShortHandle.parse(null)} with a {@link NullPointerException}
+     * (SR-P3A-06: parse rejection set is strict superset of the old getShortHandle).
      */
     @Test
     public void handle_isNotProvided_throwsException() {
-        // Setup
-        String handle = null;
-
-        // Execute
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                        PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
-        );
-
-        // Verify
-        assertEquals("A mastodon handle is needed", exception.getMessage());
+        // Validation moved to MastodonShortHandle.parse() — null throws NPE (SR-P3A-06)
+        assertThrows(NullPointerException.class, () -> MastodonShortHandle.parse(null));
     }
 
     /**
-     * Tests if partial handle is handled with an exception, since we cannot work without one
+     * Tests that a partial handle (no @ separator) is rejected — validation now lives in
+     * {@link MastodonShortHandle#parse(String)}.
+     *
+     * <p>After migrating to the value-object constructor, StompCallback accepts
+     * {@link MastodonShortHandle} rather than a raw String. A partial handle (no server part)
+     * is rejected by {@code MastodonShortHandle.parse()} with an {@link IllegalArgumentException}.
      */
     @Test
     public void handle_isPartiallyProvided_throwsException() {
-        // Setup
-        String handle = "peter.kropotkin";
-
-        // Execute
-        Exception exception = assertThrows(IllegalArgumentException.class, () ->
-                new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                        PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com")
-        );
-
-        // Verify
-        assertEquals("The mastodon handle does not contain an @ so either the name or the server is missing", exception.getMessage());
+        // Validation moved to MastodonShortHandle.parse() — partial handle throws IAE (SR-P3A-06)
+        assertThrows(IllegalArgumentException.class,
+                () -> MastodonShortHandle.parse("peter.kropotkin"));
     }
 
     /**
-     * Tests if complete handle is correctly parsed
+     * Tests if a complete handle is correctly parsed into the {@code localPart} field.
+     *
+     * <p>After migrating to the value-object constructor, the {@code shortHandle} field
+     * in {@link StompCallback} was renamed to {@code localPart} (it only stores the local
+     * part of the handle, not the full handle).
      */
     @Test
     public void handle_completeHandle_doesNotThrowException() throws NoSuchFieldException, IllegalAccessException {
         // Setup
-        String handle = "peter.kropotkin@localhost";
+        MastodonShortHandle handle = MastodonShortHandle.parse("peter.kropotkin@localhost");
 
         // Execute
         StompCallback stompCallback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
 
-        // Get the private field 'shortHandle' using reflection
-        Field shortHandleField = StompCallback.class.getDeclaredField("shortHandle");
-        shortHandleField.setAccessible(true); // Make the private field accessible
-        String shortHandle = (String) shortHandleField.get(stompCallback); // Read the value
+        // Get the private field 'localPart' using reflection (renamed from 'shortHandle' in ADR-P3A-2)
+        Field localPartField = StompCallback.class.getDeclaredField("localPart");
+        localPartField.setAccessible(true);
+        String localPart = (String) localPartField.get(stompCallback);
 
         // Assert
-        assertEquals("peter.kropotkin", shortHandle);
+        assertEquals("peter.kropotkin", localPart);
     }
 
     /**
-     * Tests if complete handle with leading @ is correctly parsed
+     * Tests if a complete handle with leading @ is correctly parsed — the leading @ is stripped.
+     *
+     * <p>After migrating to the value-object constructor, the {@code shortHandle} field
+     * in {@link StompCallback} was renamed to {@code localPart}.
      */
     @Test
     public void handle_completeHandleWithLeadingAt_doesNotThrowException() throws NoSuchFieldException, IllegalAccessException {
         // Setup
-        String handle = "@peter.kropotkin@localhost";
+        MastodonShortHandle handle = MastodonShortHandle.parse("@peter.kropotkin@localhost");
 
         // Execute
         StompCallback stompCallback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", handle, "glacier.example.com");
 
-        // Get the private field 'shortHandle' using reflection
-        Field shortHandleField = StompCallback.class.getDeclaredField("shortHandle");
-        shortHandleField.setAccessible(true); // Make the private field accessible
-        String shortHandle = (String) shortHandleField.get(stompCallback); // Read the value
+        // Get the private field 'localPart' using reflection (renamed from 'shortHandle' in ADR-P3A-2)
+        Field localPartField = StompCallback.class.getDeclaredField("localPart");
+        localPartField.setAccessible(true);
+        String localPart = (String) localPartField.get(stompCallback);
 
         // Assert
-        assertEquals("peter.kropotkin", shortHandle);
+        assertEquals("peter.kropotkin", localPart);
     }
 
     /**
@@ -320,7 +321,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // P2-13: prime publishedStatusIds by firing a StatusCreated first
         ParsedStreamEvent.StatusCreated createEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
@@ -362,7 +363,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusDeleted event = new ParsedStreamEvent.StatusDeleted("12345");
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -389,7 +390,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         Notification notification = new Notification();
         ParsedStreamEvent.NewNotification event = new ParsedStreamEvent.NewNotification(notification);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
@@ -421,7 +422,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -490,7 +491,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Open mockEvent = mock(TechnicalEvent.Open.class);
 
         // Execute
@@ -515,7 +516,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Closing mockEvent = mock(TechnicalEvent.Closing.class);
         when(mockEvent.getCode()).thenReturn(1000);
 
@@ -541,7 +542,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Closed mockEvent = mock(TechnicalEvent.Closed.class);
         when(mockEvent.getCode()).thenReturn(1000);
 
@@ -568,7 +569,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent mockEvent = mock(TechnicalEvent.class);
 
         // Execute
@@ -595,7 +596,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -631,7 +632,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -671,7 +672,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@peter.kropotkin").acct("glacier").build();
@@ -727,7 +728,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -763,7 +764,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -797,7 +798,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -833,7 +834,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -868,7 +869,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         when(mockEvent.getText()).thenReturn("not a json");
@@ -980,7 +981,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         // Truncated JSON — missing closing brace causes Jackson to throw with canary in source fragment
         when(mockGenericMessage.getText())
@@ -1010,7 +1011,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -1039,7 +1040,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -1070,7 +1071,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -1104,7 +1105,7 @@ public class StompCallbackTest {
         MDC.clear(); // ensure clean MDC state before the test
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         when(mockGenericMessage.getText())
                 .thenReturn("{\"broken\": \"" + CANARY_FRAGMENT_TD1 + "\"");
@@ -1180,7 +1181,7 @@ public class StompCallbackTest {
         TestLogAppender auditAppender = getAuditLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockGenericMessage = mock(MastodonApiEvent.GenericMessage.class);
         // Truncated JSON — missing closing brace causes Jackson to throw JsonParseException
         // with the fragment visible in the source context of the exception message.
@@ -1241,7 +1242,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         WebSocketEvent mockEvent = mock(WebSocketEvent.class);
 
         // Execute
@@ -1282,7 +1283,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
         when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
 
@@ -1311,7 +1312,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
         when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
 
@@ -1342,7 +1343,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
         when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
 
@@ -1375,7 +1376,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
         when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
 
@@ -1406,7 +1407,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
         when(failureEvent.getError()).thenReturn(new java.io.IOException(CANARY_FRAGMENT_TD2));
 
@@ -1443,7 +1444,7 @@ public class StompCallbackTest {
         String hashtag = "hashtag";
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Failure failureEvent = mock(TechnicalEvent.Failure.class);
         when(failureEvent.getError()).thenReturn(new java.io.IOException("any error"));
 
@@ -1471,7 +1472,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Closing closingEvent = mock(TechnicalEvent.Closing.class);
         when(closingEvent.getCode()).thenReturn(1006);
         when(closingEvent.getReason()).thenReturn(CANARY_FRAGMENT_TD2);
@@ -1503,7 +1504,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         TechnicalEvent.Closed closedEvent = mock(TechnicalEvent.Closed.class);
         when(closedEvent.getCode()).thenReturn(1011);
         when(closedEvent.getReason()).thenReturn(CANARY_FRAGMENT_TD2);
@@ -1602,7 +1603,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Use a real IOException (not mock) so getClass().getSimpleName() returns "IOException",
         // the exact string the production code logs. The fragment is the getMessage() content
@@ -1688,7 +1689,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                BLOCKING_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                BLOCKING_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -1719,7 +1720,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                BLOCKING_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                BLOCKING_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -1754,7 +1755,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                BLOCKING_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                BLOCKING_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -1781,7 +1782,7 @@ public class StompCallbackTest {
         // Setup
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                BLOCKING_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                BLOCKING_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -1809,7 +1810,7 @@ public class StompCallbackTest {
         // Setup
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                BLOCKING_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                BLOCKING_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -1853,7 +1854,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate, BLOCKING_VALIDATOR,
-                principal, hashtag, "glacier@example.com", "glacier.example.com");
+                principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
 
@@ -1884,7 +1885,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate, BLOCKING_VALIDATOR,
-                principal, hashtag, "glacier@example.com", "glacier.example.com");
+                principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
 
@@ -1922,7 +1923,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate, BLOCKING_VALIDATOR,
-                principal, hashtag, "glacier@example.com", "glacier.example.com");
+                principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // P2-13: inject "edit-1" directly into publishedStatusIds so the P2-13 guard passes
         // and the SSRF guard at the next layer can fire.  We use reflection because the callback
@@ -1971,7 +1972,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -2036,7 +2037,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         de.seism0saurus.glacier.webservice.messaging.messages.Mention mention =
@@ -2323,7 +2324,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -2347,7 +2348,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         de.seism0saurus.glacier.webservice.messaging.messages.Mention mention =
@@ -2401,7 +2402,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -2428,7 +2429,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         ParsedStreamEvent.StatusCreated event = new ParsedStreamEvent.StatusCreated(mockStatus);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(event, List.of());
 
@@ -2461,7 +2462,7 @@ public class StompCallbackTest {
 
         // Act — construction triggers the log
         new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Assert — Fix #1: structured fields present, raw values absent
         assertThat(logAppender.getLoggedMessages())
@@ -2489,7 +2490,7 @@ public class StompCallbackTest {
         LevelAwareTestLogAppender logAppender = getLevelAwareTestLogAppender();
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         Account account = mock(Account.class);
         when(account.getDisplayName()).thenReturn("user@example.com");
@@ -2524,7 +2525,7 @@ public class StompCallbackTest {
         // Arrange
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -2573,7 +2574,7 @@ public class StompCallbackTest {
         // Use a distinctive hashtag that won't accidentally match log key names like "hashtag-len"
         String hashtag = "glacier2025";
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         ObjectMapper mapper = new ObjectMapper();
@@ -2621,34 +2622,30 @@ public class StompCallbackTest {
     // -------------------------------------------------------------------------
 
     /**
-     * SR-F6INFO2-04: {@code eventTypeFor} must return {@code Optional.empty()} for an
-     * unknown {@link StatusMessage} subtype and must not throw any exception.
+     * SR-F6INFO2-04: {@link EventTypeMapping#stompFor(Class)} must return
+     * {@code Optional.empty()} for an unknown {@link StatusMessage} subtype and must not
+     * throw any exception.
      *
-     * <p>The guard in {@code sendMessage} then emits LOGGER.error with the key
+     * <p>The guard in {@code sendMessage} delegates to {@link EventTypeMapping#stompFor(Class)}
+     * (ADR-P3A-4) and, when empty is returned, emits LOGGER.error with the key
      * {@code stomp.message.unknown_status_class} before returning early — preventing
      * any exception from propagating up the Bigbone virtual-thread stack (ADR-F6-INFO-2-D).
      *
-     * <p>Implementation note: {@code eventTypeFor} is package-private static; we invoke it
-     * via reflection because a direct call requires a class in the same package. The
-     * reflection approach also serves as the authoritative structural probe — if the method
-     * signature changes the reflection lookup will fail, alerting us to re-check the guard.
+     * <p>Implementation note: {@code eventTypeFor} was previously a private static method
+     * in {@code StompCallback}. It has been removed in favour of the single-authority
+     * translator {@link EventTypeMapping#stompFor(Class)} (FIX-SEC-P3A-02). This test now
+     * calls {@code EventTypeMapping.stompFor} directly, which is the production code path
+     * invoked by {@code sendMessage}.
      */
     @Test
     public void sendMessage_unknownStatusMessageClass_doesNotThrow_andLogsError() throws Exception {
         // Arrange: a concrete but unknown StatusMessage subtype (not Created or Updated)
         class UnknownStatusMessage extends StatusMessage {}
 
-        // Probe eventTypeFor via reflection — it is package-private static; accessible from the test package
-        java.lang.reflect.Method eventTypeForMethod =
-                StompCallback.class.getDeclaredMethod("eventTypeFor", Class.class);
-        eventTypeForMethod.setAccessible(true);
+        // Act: call the single-authority translator with the unknown subtype — must not throw
+        Optional<StompEventType> result = EventTypeMapping.stompFor(UnknownStatusMessage.class);
 
-        // Act: invoke eventTypeFor with the unknown subtype — must not throw
-        @SuppressWarnings("unchecked")
-        Optional<StompEventType> result =
-                (Optional<StompEventType>) eventTypeForMethod.invoke(null, UnknownStatusMessage.class);
-
-        // Assert: returns empty — the caller (sendMessage) will log ERROR and return early
+        // Assert: returns empty — sendMessage will log ERROR and return early (ADR-F6-INFO-2-D)
         assertThat(result).isEmpty();
 
         // Now verify the full sendMessage path logs ERROR and does not throw.
@@ -2665,7 +2662,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
@@ -2759,7 +2756,7 @@ public class StompCallbackTest {
         String hashtagWithSlash = "a/b"; // deliberately contains '/' to probe old suffix extraction
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtagWithSlash, "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtagWithSlash, MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
@@ -2809,7 +2806,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         ObjectMapper mapper = new ObjectMapper();
         Mention mention = Mention.builder().id("4567").username("@glacier").acct("glacier").build();
@@ -2886,7 +2883,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Set X-Frame-Options to a canary value that triggers the "unknown or invalid" branch.
         // The branch fires because the value is not DENY, SAMEORIGIN, or ALLOWALL.
@@ -2956,7 +2953,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         HttpHeaders xfoHeaders = new HttpHeaders();
         xfoHeaders.addAll("X-Frame-Options", List.of("MAYBE", "ALSOMAYBE"));
@@ -3036,7 +3033,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Inject the adversarial codepoint as the XFO header value — wraps it in a minimal
         // unknown value so neither DENY/SAMEORIGIN nor ALLOWALL match.
@@ -3169,7 +3166,7 @@ public class StompCallbackTest {
         String principal = UUID.randomUUID().toString();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, principal, "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Set X-Frame-Options to the adversarial value — unknown value triggers the
         // "unknown or invalid" branch which calls LogScrubber.xfoSummary (TD-4 fix).
@@ -3371,7 +3368,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Mock a TechnicalEvent that is not one of the four named cases (Open/Closing/Closed/Failure).
         // Override toString() to return the canary so any %s-formatting leaks are detected.
@@ -3448,7 +3445,7 @@ public class StompCallbackTest {
         TestLogAppender logAppender = getTestLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Mock TechnicalEvent.Open and override toString() to return the canary.
         // This detects any %s-formatting that would expand open.toString() into the log message.
@@ -3584,7 +3581,7 @@ public class StompCallbackTest {
         TestLogAppender auditAppender = getAuditLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Mock a TechnicalEvent that routes to the default branch (not Open/Closing/Closed/Failure).
         // Override toString() with the adversarial value: if the fix regresses to %s-formatting,
@@ -3675,7 +3672,7 @@ public class StompCallbackTest {
         TestLogAppender auditAppender = getAuditLogAppender();
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
+                PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
         // Mock TechnicalEvent.Open and override toString() with the adversarial value.
         // If the fix regresses to %s-formatting (expanding open.toString()), the adversarial
@@ -4168,7 +4165,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // Step 1: fire StatusCreated to record the status
         ParsedStreamEvent.StatusCreated createdEvent = new ParsedStreamEvent.StatusCreated(mockStatus);
@@ -4210,7 +4207,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // Fire StatusEdited without a prior StatusCreated
         Status editedStatus = mock(Status.class);
@@ -4255,7 +4252,7 @@ public class StompCallbackTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, principal, hashtag, "glacier@example.com", "glacier.example.com");
+                PERMISSIVE_VALIDATOR, principal, hashtag, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // Step 1: StatusCreated is dropped due to non-loadable headers
         ParsedStreamEvent.StatusCreated createdEvent = new ParsedStreamEvent.StatusCreated(mockStatus);

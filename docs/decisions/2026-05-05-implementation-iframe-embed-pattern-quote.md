@@ -63,7 +63,7 @@ LOGGER.warn("iframe.embed.rejected reason=domain_mismatch");   // operator alert
 AUDIT.info("iframe.embed.rejected reason=domain_mismatch");    // SIEM/aggregator channel
 ```
 
-Dual-channel per `glacier-structured-logging-logback` skill: `LOGGER.warn` for operator-facing
+Dual-channel per [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill: `LOGGER.warn` for operator-facing
 alerting; `AUDIT.info` for log aggregators that filter on `"AUDIT"` logger name. The static
 `reason=domain_mismatch` message contains no raw peer-controlled values (CWE-117 defence).
 
@@ -139,14 +139,14 @@ Approval message (verbatim): "approve but implement T-PQ-H fragility now"
 
 ## References
 
-- `docs/decisions/2026-05-05-planning-iframe-embed-pattern-quote.md` — Phase 1 planning
+- [Phase 1 planning](2026-05-05-planning-iframe-embed-pattern-quote.md)
 - `src/main/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicy.java` (fix site)
 - `src/test/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicyTest.java` (T-PQ-A..G)
 - `src/test/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicyRegexInterpolationGateTest.java` (T-PQ-H)
-- CWE-1287 (Improper Validation of Specified Type of Input)
-- CWE-625 (Permissive Regular Expression)
-- CWE-117 (Log Injection — mitigated by static `reason=` message)
-- OWASP A04:2021 (Insecure Design)
-- OWASP A03:2021 (Injection)
-- ASVS 5.0.0 V5.3.6 (escape metacharacters before regex use)
-- `glacier-structured-logging-logback` skill (AUDIT logger convention)
+- [CWE-1287: Improper Validation of Specified Type of Input](https://cwe.mitre.org/data/definitions/1287.html)
+- [CWE-625: Permissive Regular Expression](https://cwe.mitre.org/data/definitions/625.html)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html) (Log Injection — mitigated by static `reason=` message)
+- [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/)
+- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V5.3.6 (escape metacharacters before regex use)
+- [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill (AUDIT logger convention)

@@ -144,8 +144,8 @@ Approval message (verbatim): "approve"
 ## References
 
 - [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API1 — Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) (R-1)
-- `glacier-fallback-mode-discipline` skill — three-mode invariant coverage
-- `glacier-structured-logging-logback` skill — D-13/SR-8 log hygiene
+- [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md) skill — three-mode invariant coverage
+- [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill — D-13/SR-8 log hygiene
 - [Share Link QR — Acceptance](2026-04-24-acceptance-share-link-qr.md)
 - [Hashtag Prune — Acceptance](2026-04-24-acceptance-hashtag-prune.md)
 - [New Testcases — Implementation](2026-04-27-implementation-new-testcases.md)

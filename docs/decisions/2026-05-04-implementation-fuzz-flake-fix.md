@@ -29,7 +29,7 @@ changed beyond relaxing `hmacSha256` to package-private for test-only HMAC forgi
 | `src/test/java/de/seism0saurus/glacier/share/web/ImageProxyUrlBuilderVerifyFuzzCanaryTest.java` | **Created** — 169 tests (168 × `@ParameterizedTest` positions + 1 sentinel) |
 | `src/test/java/de/seism0saurus/glacier/share/web/ImageProxyUrlBuilderVerifyFuzzTest.java` | **Modified** — property rewritten; 7 new methods added (`expiredTokenReturnsEmpty`, `dotSeparatorMutationReturnsEmpty`, `nonMacBranchesReturnEmpty` ×6, `hmacSha256IsPackagePrivateForTestingOnly`, `nonMacBranchRows`, `forgeSignedToken`) |
 | `src/main/java/de/seism0saurus/glacier/share/web/ShareImageProxyUrlBuilder.java` | **Modified** — `hmacSha256` relaxed from `private static` to package-private static + `@VisibleForTesting` comment (ADR-FUZZ-04) |
-| `docs/decisions/2026-05-04-planning-fuzz-flake-fix.md` | **Created** — Phase 1 planning decision record |
+| [Phase 1 planning](2026-05-04-planning-fuzz-flake-fix.md) | **Created** — Phase 1 planning decision record |
 
 ## Test Results
 
@@ -86,7 +86,7 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-05-04-planning-fuzz-flake-fix.md` — Phase 1 planning decision
+- [Phase 1 planning](2026-05-04-planning-fuzz-flake-fix.md)
 - `src/test/java/de/seism0saurus/glacier/share/web/ImageProxyUrlBuilderVerifyFuzzTest.java`
 - `src/test/java/de/seism0saurus/glacier/share/web/ImageProxyUrlBuilderVerifyFuzzCanaryTest.java`
 - `src/main/java/de/seism0saurus/glacier/share/web/ShareImageProxyUrlBuilder.java`

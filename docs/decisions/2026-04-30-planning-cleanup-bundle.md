@@ -13,9 +13,9 @@ Three deferred follow-up items from the 2026-04-30 acceptance round are bundled 
 
 | ID | Source | Severity | Type | Description |
 |----|--------|----------|------|-------------|
-| TD-5-FU-1 | `docs/decisions/2026-04-30-acceptance-td5-cwe117-cleanup.md` | Low | Cleanup | `StompCallback.java:218,223` — replace `.getClass()` with `.getClass().getSimpleName()` in two `logEvent(...)` default-branch format strings. |
+| TD-5-FU-1 | [TD-5 CWE-117 Cleanup — Acceptance](2026-04-30-acceptance-td5-cwe117-cleanup.md) | Low | Cleanup | `StompCallback.java:218,223` — replace `.getClass()` with `.getClass().getSimpleName()` in two `logEvent(...)` default-branch format strings. |
 | TD-5-FU-2 | same doc | Informational | Documentation | `LogScrubberTest.java:~655,~667` — fix stale numeric strings: comment says `2_147_483_648L`; correct value is `2_148_532_224L` (= 2049 × 1_048_576). Runtime assertion uses computed variable and is correct; only documentary strings wrong. |
-| F-6-INFO-2 R-1 | `docs/decisions/2026-04-30-acceptance-f6info2-event-type-constants.md` | Low | Security cleanup | Remove unused `destination` parameter from four private `StompCallback` methods (`processStatusCreatedEvent`, `processStatusEditedEvent`, `procesStatusDeletedEvent` [typo kept per ADR-4], `processGenericEvent`). Also remove the `baseDestination` local in `onEvent` (confirmed dead after signatures cleaned). The parameter carries D-13-sensitive bytes (`/{wallId}/{hashtag}`) but is never read inside these methods. |
+| F-6-INFO-2 R-1 | [F-6-INFO-2 event type constants — Acceptance](2026-04-30-acceptance-f6info2-event-type-constants.md) | Low | Security cleanup | Remove unused `destination` parameter from four private `StompCallback` methods (`processStatusCreatedEvent`, `processStatusEditedEvent`, `procesStatusDeletedEvent` [typo kept per ADR-4], `processGenericEvent`). Also remove the `baseDestination` local in `onEvent` (confirmed dead after signatures cleaned). The parameter carries D-13-sensitive bytes (`/{wallId}/{hashtag}`) but is never read inside these methods. |
 
 ## Security Requirements
 

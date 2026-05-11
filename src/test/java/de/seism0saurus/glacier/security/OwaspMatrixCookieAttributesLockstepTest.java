@@ -10,6 +10,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import de.seism0saurus.glacier.GlacierOperatorProperties;
+import de.seism0saurus.glacier.MastodonProperties;
+import de.seism0saurus.glacier.mastodon.MastodonHandleFactory;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.share.web.CsrfTokenCookieFactory;
@@ -66,7 +69,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Security reference: C5 — Secure By Default; ASVS V7.1.1 (L1); WSTG-SESS-02.
  */
 @WebMvcTest(controllers = {InformationController.class})
+@Import({MastodonProperties.class, MastodonHandleFactory.class})
 @TestPropertySource(properties = {
+        "mastodon.handle=glacier@example.com",
         "glacier.cookie.secure=true",
         "glacier.fallback.ratelimit.perMinute=30",
         "glacier.fallback.ratelimit.perMinutePerIp=120",
@@ -87,6 +92,12 @@ class OwaspMatrixCookieAttributesLockstepTest {
 
     @MockitoBean
     private FallbackRateLimiter fallbackRateLimiter;
+
+    // GlacierOperatorProperties is a @Component @ConfigurationProperties bean not loaded by
+    // @WebMvcTest slice — mock it so InformationController's constructor can be satisfied.
+    @MockitoBean
+    @SuppressWarnings("unused")
+    private GlacierOperatorProperties glacierOperatorProperties;
 
     // -------------------------------------------------------------------------
     // wallId cookie lockstep

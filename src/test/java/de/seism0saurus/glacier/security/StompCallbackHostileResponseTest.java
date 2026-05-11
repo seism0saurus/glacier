@@ -5,6 +5,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.TextNode;
+import de.seism0saurus.glacier.mastodon.MastodonShortHandle;
 import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
@@ -66,6 +67,8 @@ class StompCallbackHostileResponseTest {
     private static final String CANARY_URL     = "https://mastodon.example.com/users/evil/statuses/99999";
     private static final String BOT_SHORT_HANDLE = "glacier";
     private static final String BOT_FULL_HANDLE  = BOT_SHORT_HANDLE + "@glacier.events";
+    /** Parsed value object for the bot handle — injected into StompCallback (ADR-P3A-2). */
+    private static final MastodonShortHandle BOT_HANDLE_VO = MastodonShortHandle.parse(BOT_FULL_HANDLE);
 
     /**
      * Permissive {@link SafeUrlValidator}: always passes URLs through; used for tests where the
@@ -129,7 +132,7 @@ class StompCallbackHostileResponseTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
         callbackAppender.list.clear();
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
@@ -173,7 +176,7 @@ class StompCallbackHostileResponseTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
 
         ObjectMapper mapper = new ObjectMapper();
         Mention botMention = Mention.builder().id("77").username(BOT_SHORT_HANDLE).acct(BOT_SHORT_HANDLE).build();
@@ -223,7 +226,7 @@ class StompCallbackHostileResponseTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
         callbackAppender.list.clear();
 
         // Build raw JSON where "stream" is explicitly null — GenericMessageContent.stream will be null
@@ -275,7 +278,7 @@ class StompCallbackHostileResponseTest {
         // Blocking validator: empty string → Optional.empty()
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                BLOCKING_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                BLOCKING_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(created, List.of());
@@ -325,7 +328,7 @@ class StompCallbackHostileResponseTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
         callbackAppender.list.clear();
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);

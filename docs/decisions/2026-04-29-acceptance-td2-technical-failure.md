@@ -11,7 +11,7 @@ Phase 3 acceptance audit validated all 15 security requirements for TD-2. Three 
 
 ## Acceptance Disposition: PASSED
 
-All requirements from Phase 1 planning (`docs/decisions/2026-04-29-planning-td2-technical-failure.md`) are met. No Critical or High findings remain open.
+All requirements from [Phase 1 planning](2026-04-29-planning-td2-technical-failure.md) are met. No Critical or High findings remain open.
 
 ## Security Requirements — Final Verification
 

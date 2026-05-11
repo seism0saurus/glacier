@@ -35,7 +35,7 @@ TD-3 fixes the CWE-117 / D-13 / SR-8 violation in `StompCallback.normaliseEdited
 ### Finding: TD-4 pre-existing — `xFrameOptions` raw List<String> at StompCallback:411 (Deferred)
 
 **Severity**: Low
-**Standard**: CWE-117 / D-13 / SR-8
+**Standard**: [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html) / D-13 / SR-8
 **Finding**: `LOGGER.warn(... "{}", xFrameOptions)` passes a peer-controlled `List<String>` from a remote Mastodon `HEAD` response to the log encoder. Same class as TD-1/TD-2/TD-3 but at a different site.
 **Pre-existing**: Confirmed via `git log -L 411,411` — introduced in commit `6c92974` (substantially pre-dating TD-3); TD-3 diff does not touch line 411.
 **Disposition**: Deferred to TD-4 backlog item. Not blocking TD-3.

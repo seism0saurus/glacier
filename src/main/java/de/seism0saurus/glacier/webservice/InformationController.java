@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.GlacierOperatorProperties;
+import de.seism0saurus.glacier.mastodon.MastodonShortHandle;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 import de.seism0saurus.glacier.webservice.dto.Handle;
 import de.seism0saurus.glacier.webservice.dto.InstanceOperator;
@@ -41,7 +43,7 @@ public class InformationController {
      * The {@link Logger Logger} for this class.
      * The logger is used for logging as configured for the application.
      *
-     * @see "src/main/ressources/logback.xml"
+     * @see "src/main/resources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(InformationController.class);
 
@@ -52,23 +54,28 @@ public class InformationController {
     static final int COOKIE_MAX_AGE_SECONDS = 2_592_000;
 
     /**
-     * The mastodon handle of the account we use to connect to the fediverse.
-     * It can be used to opt-out of glacier through a block.
+     * The validated Mastodon handle of the bot account.
+     *
+     * <p>Injected as a validated value object rather than a raw string to ensure
+     * the handle is structurally correct before it is served to clients (ADR-P3A-2).
+     * {@link #getMastodonHandle()} returns {@link MastodonShortHandle#full()} — the canonical
+     * form without a leading {@code @}.
      */
-    private final String mastodonHandle;
+    private final MastodonShortHandle mastodonShortHandle;
     private final String domain;
-    private final String operatorName;
-    private final String operatorStreetAndNumber;
-    private final String operatorZipcode;
-    private final String operatorCity;
-    private final String operatorCountry;
-    private final String operatorPhone;
-    private final String operatorMail;
-    private final String operatorWebsite;
+
+    /**
+     * Validated operator properties (ADR-P3A-3 key migration, ADR-P3A-1 bean ownership).
+     * Replaces 8 individual {@code @Value} parameters for the {@code glacier.operator.*} keys.
+     */
+    private final GlacierOperatorProperties operatorProps;
 
     /**
      * Whether to set the {@code Secure} flag on the wallId cookie.
      * Defaults to {@code true}; set to {@code false} via {@code COOKIE_SECURE=false} in dev.
+     *
+     * <p>Remains on {@code @Value} — migration to a typed properties bean is
+     * deferred to Bundle B (ADR-P3A-1; SR-P3A-05: partial wiring is forbidden).
      */
     private final boolean cookieSecure;
 
@@ -77,32 +84,22 @@ public class InformationController {
 
     /**
      * The sole constructor for this class.
-     * The needed variables are injected as {@link Value Value} by Spring.
+     *
+     * <p>The {@link MastodonShortHandle} is injected as a Spring bean produced by
+     * {@link de.seism0saurus.glacier.mastodon.MastodonHandleFactory} (ADR-P3A-2).
+     * Operator properties are injected via {@link GlacierOperatorProperties} (ADR-P3A-3).
+     * Cookie-secure remains on {@code @Value} until Bundle B (ADR-P3A-1).
      */
     public InformationController(
-            @Value("${mastodon.handle}") final String mastodonHandle,
+            final MastodonShortHandle mastodonShortHandle,
             @Value("${glacier.domain}") final String domain,
-            @Value("${glacier.operatorName}") final String operatorName,
-            @Value("${glacier.operatorStreetAndNumber}") final String operatorStreetAndNumber,
-            @Value("${glacier.operatorZipcode}") final String operatorZipcode,
-            @Value("${glacier.operatorCity}") final String operatorCity,
-            @Value("${glacier.operatorCountry}") final String operatorCountry,
-            @Value("${glacier.operatorPhone}") final String operatorPhone,
-            @Value("${glacier.operatorMail}") final String operatorMail,
-            @Value("${glacier.operatorWebsite}") final String operatorWebsite,
+            final GlacierOperatorProperties operatorProps,
             @Value("${glacier.cookie.secure:true}") final boolean cookieSecure,
             final FallbackRateLimiter rateLimiter
     ) {
-        this.mastodonHandle = mastodonHandle;
+        this.mastodonShortHandle = mastodonShortHandle;
         this.domain = domain;
-        this.operatorName = operatorName;
-        this.operatorStreetAndNumber = operatorStreetAndNumber;
-        this.operatorZipcode = operatorZipcode;
-        this.operatorCity = operatorCity;
-        this.operatorCountry = operatorCountry;
-        this.operatorPhone = operatorPhone;
-        this.operatorMail = operatorMail;
-        this.operatorWebsite = operatorWebsite;
+        this.operatorProps = operatorProps;
         this.cookieSecure = cookieSecure;
         this.rateLimiter = rateLimiter;
     }
@@ -171,26 +168,27 @@ public class InformationController {
     @GetMapping(value = "/rest/mastodon-handle", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public Handle getMastodonHandle() {
-        LOGGER.debug("Mastodon Handle requested. Sending {} ", this.mastodonHandle);
+        // Returns full() — canonical form without leading @ (ADR-P3A-2)
+        LOGGER.debug("Mastodon Handle requested");
         Handle handle = new Handle();
-        handle.setName(this.mastodonHandle);
+        handle.setName(this.mastodonShortHandle.full());
         return handle;
     }
 
     @GetMapping(value = "/rest/operator", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public InstanceOperator getInstanceOperator() {
-        LOGGER.debug("Instance operator requested. Sending {}", this.mastodonHandle);
+        LOGGER.debug("Instance operator requested");
         InstanceOperator instanceOperator = new InstanceOperator();
         instanceOperator.setDomain(this.domain);
-        instanceOperator.setOperatorName(this.operatorName);
-        instanceOperator.setOperatorStreetAndNumber(this.operatorStreetAndNumber);
-        instanceOperator.setOperatorZipcode(this.operatorZipcode);
-        instanceOperator.setOperatorCity(this.operatorCity);
-        instanceOperator.setOperatorCountry(this.operatorCountry);
-        instanceOperator.setOperatorPhone(this.operatorPhone);
-        instanceOperator.setOperatorMail(this.operatorMail);
-        instanceOperator.setOperatorWebsite(this.operatorWebsite);
+        instanceOperator.setOperatorName(this.operatorProps.getName());
+        instanceOperator.setOperatorStreetAndNumber(this.operatorProps.getStreetAndNumber());
+        instanceOperator.setOperatorZipcode(this.operatorProps.getZipcode());
+        instanceOperator.setOperatorCity(this.operatorProps.getCity());
+        instanceOperator.setOperatorCountry(this.operatorProps.getCountry());
+        instanceOperator.setOperatorPhone(this.operatorProps.getPhone());
+        instanceOperator.setOperatorMail(this.operatorProps.getMail());
+        instanceOperator.setOperatorWebsite(this.operatorProps.getWebsite());
         return instanceOperator;
     }
 

@@ -68,7 +68,7 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- Phase 1 planning: `docs/decisions/2026-04-30-planning-td5-cwe117-cleanup.md`
-- TD-4 predecessor: `docs/decisions/2026-04-30-acceptance-td4-xframeoptions.md` (SA-TD4-I1, SA-TD4-I3, SA-TD4-I4 source findings)
-- CWE-117: Improper Output Neutralization for Logs
+- [Phase 1 planning](2026-04-30-planning-td5-cwe117-cleanup.md)
+- [TD-4 predecessor](2026-04-30-acceptance-td4-xframeoptions.md) (SA-TD4-I1, SA-TD4-I3, SA-TD4-I4 source findings)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
 - Glacier D-13 / SR-8 structured-logging discipline

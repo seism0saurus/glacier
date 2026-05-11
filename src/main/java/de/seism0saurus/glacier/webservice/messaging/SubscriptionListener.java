@@ -49,7 +49,7 @@ public class SubscriptionListener {
      * The {@link Logger Logger} for this class.
      * The logger is used for logging as configured for the application.
      *
-     * @see "src/main/ressources/logback.xml"
+     * @see "src/main/resources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(SubscriptionListener.class);
 

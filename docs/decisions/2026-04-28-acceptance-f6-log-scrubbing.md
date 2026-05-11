@@ -11,7 +11,7 @@ Phase 3 acceptance audit validated all 10 security requirements for F-6 (D-13/SR
 
 ## Acceptance Disposition: PASSED
 
-All requirements from Phase 1 planning (`docs/decisions/2026-04-28-planning-f6-log-scrubbing.md`) are met. No Critical or High findings remain open.
+All requirements from [Phase 1 planning](2026-04-28-planning-f6-log-scrubbing.md) are met. No Critical or High findings remain open.
 
 ## Security Requirements — Final Verification
 

@@ -3,6 +3,7 @@ package de.seism0saurus.glacier.util;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import de.seism0saurus.glacier.mastodon.MastodonShortHandle;
 import de.seism0saurus.glacier.mastodon.StompCallback;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.mastodon.SubscriptionManagerImpl;
@@ -104,7 +105,7 @@ class RawWallIdLogHygieneTest {
 
         // Act — constructor emits the INFO line
         new StompCallback(subscriptionManager, messageCache, null, restTemplate, PERMISSIVE_VALIDATOR,
-                CANARY_UUID, "java", "glacier@example.com", "glacier.example.com");
+                CANARY_UUID, "java", MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
 
         // Assert — no raw UUID in any log line
         assertNoRawUuid(stompCallbackAppender.list, "StompCallback constructor");
@@ -121,7 +122,7 @@ class RawWallIdLogHygieneTest {
 
         // Trigger logEvent via a TechnicalEvent.Closed
         StompCallback callback = new StompCallback(subscriptionManager, messageCache, null, restTemplate, PERMISSIVE_VALIDATOR,
-                CANARY_UUID, "java", "glacier@example.com", "glacier.example.com");
+                CANARY_UUID, "java", MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         // Reset appender after constructor — focus on logEvent logs
         stompCallbackAppender.list.clear();
 
@@ -146,7 +147,8 @@ class RawWallIdLogHygieneTest {
         RestTemplate restTemplate = mock(RestTemplate.class);
 
         SubscriptionManagerImpl manager = new SubscriptionManagerImpl(
-                "example.com", "glacier.example.com", "glacier@example.com",
+                "example.com", "glacier.example.com",
+                MastodonShortHandle.parse("glacier@example.com"),
                 client, messageCache, restTemplate, null, PERMISSIVE_VALIDATOR);
 
         // Act

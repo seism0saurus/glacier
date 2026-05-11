@@ -74,14 +74,14 @@ The fuzz mutation testing acceptance cycle (2026-05-01) left SR-FUZZ-07 as PARTI
 
 | SR | Requirement | Standard |
 |----|-------------|----------|
-| SR-LR-01 | All 11 sites use `Locale.ROOT`; structural gate enforces zero bare/ENGLISH calls | CWE-176, CWE-178, ASVS V12.1.3 |
-| SR-LR-02 | `IframeEmbedPolicyTurkishLocaleTest` — 4 methods, RED-before-GREEN | OWASP C3, C8 |
-| SR-LR-03 | `HttpMethodRejectFilterTurkishLocaleTest` — 3 methods, RED-before-GREEN | OWASP C1, C3 |
-| SR-LR-04 | `LocaleRootDisciplineTest` structural gate — regex over src/main | CWE-176, CWE-178 |
-| SR-LR-05 | `DefaultSafeUrlValidatorLocaleTest` — 4 methods, Turkish-locale scheme allowlist | OWASP C3, SSRF, A10:2021 |
+| SR-LR-01 | All 11 sites use `Locale.ROOT`; structural gate enforces zero bare/ENGLISH calls | [CWE-176](https://cwe.mitre.org/data/definitions/176.html), [CWE-178](https://cwe.mitre.org/data/definitions/178.html), [ASVS V12.1.3](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) |
+| SR-LR-02 | `IframeEmbedPolicyTurkishLocaleTest` — 4 methods, RED-before-GREEN | [OWASP Proactive C3](https://top10proactive.owasp.org/), C8 |
+| SR-LR-03 | `HttpMethodRejectFilterTurkishLocaleTest` — 3 methods, RED-before-GREEN | [OWASP Proactive C1](https://top10proactive.owasp.org/), C3 |
+| SR-LR-04 | `LocaleRootDisciplineTest` structural gate — regex over src/main | [CWE-176](https://cwe.mitre.org/data/definitions/176.html), [CWE-178](https://cwe.mitre.org/data/definitions/178.html) |
+| SR-LR-05 | `DefaultSafeUrlValidatorLocaleTest` — 4 methods, Turkish-locale scheme allowlist | [OWASP Proactive C3](https://top10proactive.owasp.org/), SSRF, [A10:2021](https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_(SSRF)/) |
 | SR-LR-06 | `@BeforeEach`/`@AfterEach` locale restore in all Turkish-locale test classes | Test hygiene |
 | SR-LR-07 | Structural gate excludes its own source file (path-suffix check) | Self-consistency |
-| SR-NA-01 | `npm audit --audit-level=high` step in `security.yml` | OWASP C6, SR-FUZZ-07 |
+| SR-NA-01 | `npm audit --audit-level=high` step in `security.yml` | [OWASP Proactive C6](https://top10proactive.owasp.org/), SR-FUZZ-07 |
 | SR-NA-02 | `pull_request` trigger present in `security.yml` | Supply-chain gate |
 | SR-NA-03 | Weekly `schedule` trigger present | Post-commit CVE detection |
 | SR-NA-04 | `continue-on-error: false` (or absent) on the audit step | Gate integrity |
@@ -132,12 +132,12 @@ Approval message (verbatim): "approve"
 
 ## References
 
-- `docs/decisions/2026-05-01-acceptance-fuzz-mutation-testing.md` — SR-FUZZ-07 PARTIAL source
-- `docs/decisions/2026-05-04-acceptance-owasp-standards-integration.md` — Locale.ROOT deferred minor
+- [Fuzz Mutation Testing — Acceptance](2026-05-01-acceptance-fuzz-mutation-testing.md) — SR-FUZZ-07 PARTIAL source
+- [OWASP Standards Integration — Acceptance](2026-05-04-acceptance-owasp-standards-integration.md) — Locale.ROOT deferred minor
 - `src/main/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicy.java`
 - `src/main/java/de/seism0saurus/glacier/webservice/HttpMethodRejectFilter.java`
 - `src/main/java/de/seism0saurus/glacier/share/application/DefaultSafeUrlValidator.java`
-- CWE-176 (Improper Handling of Unicode Encoding)
-- CWE-178 (Improper Handling of Case Sensitivity)
-- ASVS 5.0.0 V12.1.3 (L1)
-- OWASP Proactive Controls C3 (Input Validation), C6 (Components)
+- [CWE-176: Improper Handling of Unicode Encoding](https://cwe.mitre.org/data/definitions/176.html)
+- [CWE-178: Improper Handling of Case Sensitivity](https://cwe.mitre.org/data/definitions/178.html)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V12.1.3 (L1)
+- [OWASP Top 10 Proactive Controls (2024)](https://top10proactive.owasp.org/) C3 (Input Validation), C6 (Components)

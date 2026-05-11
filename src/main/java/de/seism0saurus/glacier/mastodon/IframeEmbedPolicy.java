@@ -55,7 +55,7 @@ public final class IframeEmbedPolicy {
 
     /**
      * Logger for this class.
-     * Structured JSON log output is configured in {@code src/main/ressources/logback.xml}.
+     * Structured JSON log output is configured in {@code src/main/resources/logback.xml}.
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(IframeEmbedPolicy.class);
 

@@ -86,9 +86,9 @@ Approval message (verbatim): "approve"
 
 | Item | Source | Status |
 |------|--------|--------|
-| TD-5-FU-1 | `docs/decisions/2026-04-30-acceptance-td5-cwe117-cleanup.md` | **Closed** — fixed at commits `65a6b72`, `2f11053`, `f42f4fd` |
+| TD-5-FU-1 | [TD-5 CWE-117 Cleanup — Acceptance](2026-04-30-acceptance-td5-cwe117-cleanup.md) | **Closed** — fixed at commits `65a6b72`, `2f11053`, `f42f4fd` |
 | TD-5-FU-2 | same doc | **Closed** — fixed at commit `b268b37` |
-| F-6-INFO-2 R-1 | `docs/decisions/2026-04-30-acceptance-f6info2-event-type-constants.md` | **Closed** — fixed at commit `d0ebe26` |
+| F-6-INFO-2 R-1 | [F-6-INFO-2 event type constants — Acceptance](2026-04-30-acceptance-f6info2-event-type-constants.md) | **Closed** — fixed at commit `d0ebe26` |
 
 ## Open Risks
 

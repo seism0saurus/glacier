@@ -152,4 +152,4 @@ Approval message (verbatim): "accept"
 - CLAUDE.md — authoritative conventions and testing policy.
 - [Hashtag Prune — Implementation](2026-04-24-implementation-hashtag-prune.md)
 - [Hashtag Prune — Acceptance](2026-04-24-acceptance-hashtag-prune.md)
-- Applicable skills: `angular-i18n-localize`, `angular-karma-jasmine-testing`, `playwright-e2e-patterns`, `angular-a11y-patterns`, `angular-material-theming`, `glacier-fallback-mode-discipline`
+- Applicable skills: [`angular-i18n-localize`](../../.claude/skills/angular-i18n-localize.md), [`angular-karma-jasmine-testing`](../../.claude/skills/angular-karma-jasmine-testing.md), [`playwright-e2e-patterns`](../../.claude/skills/playwright-e2e-patterns.md), [`angular-a11y-patterns`](../../.claude/skills/angular-a11y-patterns.md), [`angular-material-theming`](../../.claude/skills/angular-material-theming.md), [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md)

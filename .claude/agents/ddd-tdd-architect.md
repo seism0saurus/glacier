@@ -182,6 +182,17 @@ Include all significant architectural decisions in your plan output under an "Ar
 **Consequences**: [trade-offs and follow-on effects]
 ```
 
+### Linking Rule — All References Must Be Hyperlinks
+
+Every reference in `## References` sections and throughout decision documents **must use Markdown hyperlink syntax — never plain text**. This applies to both external standards and internal cross-references.
+
+**Internal cross-references** (relative paths from `docs/decisions/`):
+- Skill files: `` [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md) skill ``
+- ADR headings in same doc: `[ADR-06](#adr-06---restmessages-is-cookie-only-same-origin-cache-control-headers)`
+- ADR headings in another doc: `[ADR-06](2026-04-21-planning-ws-fallback.md#adr-06---restmessages-is-cookie-only-same-origin-cache-control-headers)`
+- Planning codes: `[Sec-17/P2-16](2026-05-07-planning-quality-review.md)`
+- Cross-doc: `[Planning doc](2026-XX-XX-planning-feature-name.md)`
+
 ---
 
 ## Preferred Claude Code Skills

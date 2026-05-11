@@ -11,7 +11,7 @@ Phase 3 acceptance audit validated the F-6-FU-3 test-only change. T5 (`onConnect
 
 ## Acceptance Disposition: PASSED
 
-All requirements from Phase 1 planning (`docs/decisions/2026-04-29-planning-f6fu3-t5b-canary.md`) are met. No Critical or High findings remain open. F-6 acceptance finding R1 is fully closed.
+All requirements from [Phase 1 planning](2026-04-29-planning-f6fu3-t5b-canary.md) are met. No Critical or High findings remain open. F-6 acceptance finding R1 is fully closed.
 
 ## Security Requirements — Final Verification
 

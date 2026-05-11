@@ -170,6 +170,10 @@ nerdctl run -ti \
   ghcr.io/seism0saurus/glacier:main
 ```
 
+## Configuration property key migration
+
+If you set operator fields via `-D` JVM system properties rather than the `MY_*` environment variables, the property keys are now `glacier.operator.name`, `glacier.operator.mail`, etc. (previously `glacier.operatorName`, `glacier.operatorMail`). Environment-variable-based configuration (`MY_NAME`, `MY_MAIL`, …) is unchanged.
+
 ## Operational modes
 
 Glacier has three modes controlled by configuration:

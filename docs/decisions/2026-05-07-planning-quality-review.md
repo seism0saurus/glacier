@@ -96,6 +96,6 @@ P3-01: `ShortHandle` + `EventTypeMapping` value objects; P3-02: Angular signals 
 - arch_review: ddd-tdd-architect Round 2 output (2026-05-07)
 - security_final: secure-feature-planner Round 2 output (2026-05-07)
 - ux_plan: ux-ui-designer Round 1 output (2026-05-07)
-- docs/decisions/2026-05-06-acceptance-csrf-cookie-single-emission.md
-- docs/decisions/2026-05-04-acceptance-owasp-standards-integration.md
-- docs/decisions/2026-05-01-acceptance-fuzz-mutation-testing.md
+- [CSRF Cookie Single Emission — Acceptance](2026-05-06-acceptance-csrf-cookie-single-emission.md)
+- [OWASP Standards Integration — Acceptance](2026-05-04-acceptance-owasp-standards-integration.md)
+- [Fuzz Mutation Testing — Acceptance](2026-05-01-acceptance-fuzz-mutation-testing.md)

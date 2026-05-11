@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import de.seism0saurus.glacier.MastodonProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,7 +29,7 @@ public class MastodonConfigurationIT {
 
     @Test
     void shouldReturnMastodonClientWithCorrectInstance() {
-        // Arange: WireMock
+        // Arrange: WireMock
         stubFor(get(urlPathMatching("/.well-known/nodeinfo"))
             .willReturn(aResponse()
                     .withStatus(200)
@@ -53,10 +54,19 @@ public class MastodonConfigurationIT {
 
         MastodonConfiguration mastodonConfiguration = new MastodonConfiguration();
 
-        // Act: Create MastodonClient against WireMock server
-        MastodonClient client = mastodonConfiguration.mastodonClient(
-                "localhost", false, port, accessToken, readTimeout, writeTimeout, connectTimeout, true
-        );
+        // Build MastodonProperties with dev-mode settings (HTTP, localhost)
+        MastodonProperties props = new MastodonProperties();
+        props.setInstance("localhost");
+        props.setHttps(Boolean.FALSE);
+        props.setPort(port);
+        props.setAccessToken(accessToken);
+        props.setReadTimeout(readTimeout);
+        props.setWriteTimeout(writeTimeout);
+        props.setConnectTimeout(connectTimeout);
+        props.setHandle("glacier@localhost");
+
+        // Act: Create MastodonClient against WireMock server using new MastodonProperties API
+        MastodonClient client = mastodonConfiguration.mastodonClient(props, true);
 
         // Assert: Client properties
         assertThat(client.getInstanceName()).isEqualTo("localhost");

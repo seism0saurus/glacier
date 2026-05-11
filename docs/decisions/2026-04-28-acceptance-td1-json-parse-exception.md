@@ -11,7 +11,7 @@ Phase 3 acceptance audit validated all 12 security requirements for TD-1. The on
 
 ## Acceptance Disposition: PASSED
 
-All requirements from Phase 1 planning (`docs/decisions/2026-04-28-planning-td1-json-parse-exception.md`) are met. No Critical or High findings remain open.
+All requirements from [Phase 1 planning](2026-04-28-planning-td1-json-parse-exception.md) are met. No Critical or High findings remain open.
 
 ## Security Requirements — Final Verification
 

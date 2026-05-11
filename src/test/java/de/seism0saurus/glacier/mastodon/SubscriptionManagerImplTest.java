@@ -64,9 +64,10 @@ class SubscriptionManagerImplTest {
                 .thenReturn(new CacheEntry(EventType.CREATED, "stub", "https://stub.example.com/embed", null, 1L));
         String instance = "test-instance";
         String glacierDomain = "test-domain";
-        String handle = "test-handle@test-instance";
+        // ADR-P3A-2: SubscriptionManagerImpl now accepts MastodonShortHandle instead of raw String
+        MastodonShortHandle shortHandle = MastodonShortHandle.parse("test-handle@test-instance");
         subscriptionManager = new SubscriptionManagerImpl(
-                instance, glacierDomain, handle, mastodonClient,
+                instance, glacierDomain, shortHandle, mastodonClient,
                 messageCache, restTemplate, shareViewStompRelay, PERMISSIVE_VALIDATOR);
     }
 

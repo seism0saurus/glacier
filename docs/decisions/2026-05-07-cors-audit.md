@@ -11,7 +11,7 @@ The CORS configuration in `GlacierApplication.corsConfigurer()` (in
 against the following invariants from OWASP and the project security requirements:
 
 1. **No `*` wildcard combined with `allowCredentials(true)`**
-   — browsers reject this combination (OWASP A05:2021)
+   — browsers reject this combination ([OWASP A05:2021 — Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/))
 2. **Origins are explicitly listed** — no patterns like `https://*.example.com`
 3. **Origin list matches `glacier.domain`** and the Angular dev server only
 4. **`allowCredentials(true)` is never set** unless actually needed
@@ -63,7 +63,7 @@ defence-in-depth measure.
 No CORS misconfiguration found. No code changes required.
 
 The CORS configuration meets all required invariants:
-- No wildcard origins (OWASP A05:2021 — C5)
+- No wildcard origins ([OWASP A05:2021 — Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) — C5)
 - No `allowCredentials(true)` (preventing cookie exfiltration via cross-origin)
 - Explicit, narrow origin list derived from startup-validated property
 - WebSocket origin enforcement independent and correct
@@ -83,6 +83,6 @@ The CORS configuration meets all required invariants:
 
 - `src/main/java/de/seism0saurus/glacier/GlacierApplication.java` (corsConfigurer)
 - `src/main/java/de/seism0saurus/glacier/webservice/messaging/WebSocketConfiguration.java`
-- OWASP A05:2021 Security Misconfiguration
-- spring-security-hardening skill §CORS
-- Sec-17/P2-16; ADR-06 (original CORS decision)
+- [OWASP A05:2021 — Security Misconfiguration](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/)
+- [`spring-security-hardening`](../../.claude/skills/spring-security-hardening.md) skill §CORS
+- [Sec-17/P2-16](2026-05-07-planning-quality-review.md); [ADR-06](2026-04-21-planning-ws-fallback.md#adr-06---restmessages-is-cookie-only-same-origin-cache-control-headers) (original CORS decision)

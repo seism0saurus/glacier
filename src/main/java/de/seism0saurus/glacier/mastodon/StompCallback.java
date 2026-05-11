@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.mastodon;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.seism0saurus.glacier.eventtype.EventTypeMapping;
 import de.seism0saurus.glacier.share.application.SafeUrlValidator;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.util.LogScrubber;
@@ -56,7 +57,7 @@ public class StompCallback implements WebSocketCallback {
      * The {@link Logger Logger} for this class.
      * The logger is used for logging as configured for the application.
      *
-     * @see "src/main/ressources/logback.xml"
+     * @see "src/main/resources/logback.xml"
      */
     private final static Logger LOGGER = LoggerFactory.getLogger(StompCallback.class);
 
@@ -65,17 +66,6 @@ public class StompCallback implements WebSocketCallback {
      * Messages sent here must use scrubbed values only — never raw URLs, principals, or tokens.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
-
-    /**
-     * Maps a {@link StatusMessage} subtype to its {@link StompEventType} (F-6-INFO-2).
-     * Returns empty for unknown subtypes — callers must log and return early to preserve
-     * the Bigbone virtual-thread stream (ADR-F6-INFO-2-D).
-     */
-    private static Optional<StompEventType> eventTypeFor(Class<? extends StatusMessage> clazz) {
-        if (StatusCreatedMessage.class.equals(clazz)) return Optional.of(StompEventType.CREATION);
-        if (StatusUpdatedMessage.class.equals(clazz)) return Optional.of(StompEventType.MODIFICATION);
-        return Optional.empty();
-    }
 
     /**
      * Represents a callback for handling WebSocket events related to subscriptions.
@@ -126,7 +116,14 @@ public class StompCallback implements WebSocketCallback {
      */
     private final String hashtag;
 
-    private final String shortHandle;
+    /**
+     * The local part of the bot's Mastodon handle (e.g. {@code "glacier"}).
+     *
+     * <p>Only the local part is needed for opt-in checks: the bot's short name is compared
+     * against {@code mention.getAcct()} in the toot's mentions list. The full handle and
+     * server part are not needed here (ADR-P3A-2).
+     */
+    private final String localPart;
 
     /**
      * The glacierDomain variable represents the domain used for this instance of glacier.
@@ -173,7 +170,8 @@ public class StompCallback implements WebSocketCallback {
      *                             or cache write (ADR-PT-01 / SR-PT-10)
      * @param principal            the wallId associated with the subscription
      * @param hashtag              the hashtag to subscribe to
-     * @param handle               the bot's full Mastodon handle, used for the opt-in check
+     * @param shortHandle          the bot's validated Mastodon handle; only the local part is
+     *                             used for opt-in checks (ADR-P3A-2)
      * @param glacierDomain        the glacier domain for iframe-loadability checks
      */
     public StompCallback(final SubscriptionManager subscriptionManager,
@@ -183,7 +181,7 @@ public class StompCallback implements WebSocketCallback {
                          final SafeUrlValidator safeUrlValidator,
                          final String principal,
                          final String hashtag,
-                         final String handle,
+                         final MastodonShortHandle shortHandle,
                          final String glacierDomain) {
         this.subscriptionManager = subscriptionManager;
         this.messageCache = messageCache;
@@ -195,30 +193,11 @@ public class StompCallback implements WebSocketCallback {
         // collision in MessageCache lookups. StompCallback is always called for a wall principal.
         this.principalKey = new PrincipalKey(PrincipalKind.WALL, principal);
         this.hashtag = hashtag;
-        this.shortHandle = getShortHandle(handle);
+        this.localPart = shortHandle.localPart();
         this.glacierDomain = glacierDomain;
         // D-13/SR-8: never log raw principal (UUID wallId) or raw hashtag
         LOGGER.info("StompCallback for principal-hash={} with hashtag-len={} created",
                 LogScrubber.hash8(principal), LogScrubber.hashtagLen(hashtag));
-    }
-
-    private static @NotNull String getShortHandle(String handle) {
-        String tmpHandle = handle;
-        if (null == tmpHandle) {
-            throw new IllegalArgumentException("A mastodon handle is needed");
-        }
-        if (tmpHandle.startsWith("@")) {
-            // remove initial @
-            tmpHandle = tmpHandle.substring(1);
-        }
-        if (!tmpHandle.contains("@")) {
-            throw new IllegalArgumentException("The mastodon handle does not contain an @ so either the name or the server is missing");
-        }
-        String shortHandle = tmpHandle.substring(0, tmpHandle.indexOf('@'));
-        if (shortHandle.isBlank()) {
-            throw new IllegalArgumentException("The mastodon handle has an empty local part");
-        }
-        return shortHandle;
     }
 
     /**
@@ -309,14 +288,16 @@ public class StompCallback implements WebSocketCallback {
      *
      * @param mapper                Jackson mapper for deserialising the payload
      * @param statusMessageClass    the concrete {@link StatusMessage} subtype to build;
-     *                              determines the {@link StompEventType} via {@link #eventTypeFor}
+     *                              determines the {@link StompEventType} via
+     *                              {@link EventTypeMapping#stompFor(Class)} (ADR-P3A-4)
      * @param genericMessageContent the envelope containing the raw payload JSON
      * @throws JsonProcessingException if the payload JSON cannot be parsed
      */
     private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass,
                              GenericMessageContent genericMessageContent) throws JsonProcessingException {
-        // Resolve type from message class — safe; never derived from destination or wire bytes (F-6-INFO-2)
-        Optional<StompEventType> typeOpt = eventTypeFor(statusMessageClass);
+        // Resolve type from message class via the single-authority translator (ADR-P3A-4, F-6-INFO-2).
+        // EventTypeMapping is the ONLY class permitted to map StatusMessage subtypes to StompEventType.
+        Optional<StompEventType> typeOpt = EventTypeMapping.stompFor(statusMessageClass);
         if (typeOpt.isEmpty()) {
             LOGGER.error("stomp.message.unknown_status_class class={}", statusMessageClass.getSimpleName());
             return;
@@ -350,7 +331,7 @@ public class StompCallback implements WebSocketCallback {
         // 3. Frame-ancestor / X-Frame-Options gate
         if (isLoadable(httpHeaders, glacierDomain)) {
             // 4. Bot opt-in gate (ADR-PT-A04-01 — enforced on all paths via isOptedIn helper)
-            if (isOptedIn(payload, shortHandle)) {
+            if (isOptedIn(payload, localPart)) {
                 // 5. Cache write (D-03)
                 CacheEntry partial;
                 if (StatusCreatedMessage.class.equals(statusMessageClass)) {
@@ -492,7 +473,7 @@ public class StompCallback implements WebSocketCallback {
         logEvent("got a StatusCreated event");
 
         // 0. Bot opt-in gate (ADR-PT-A04-01 — defence-in-depth: checked on ALL typed paths)
-        if (!isOptedIn(status, shortHandle)) {
+        if (!isOptedIn(status, localPart)) {
             LOGGER.debug("opt-in.check.failed hashtag-len={} — dropping StatusCreated",
                     LogScrubber.hashtagLen(hashtag));
             return;
@@ -558,7 +539,7 @@ public class StompCallback implements WebSocketCallback {
         logEvent("got a StatusEdited event");
 
         // 0. Bot opt-in gate (ADR-PT-A04-01 — defence-in-depth: checked on ALL typed paths)
-        if (!isOptedIn(status, shortHandle)) {
+        if (!isOptedIn(status, localPart)) {
             LOGGER.debug("opt-in.check.failed hashtag-len={} — dropping StatusEdited",
                     LogScrubber.hashtagLen(hashtag));
             return;

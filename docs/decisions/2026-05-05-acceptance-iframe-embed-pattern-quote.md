@@ -95,11 +95,11 @@ Approval message (verbatim): "approve"
 - `src/main/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicy.java`
 - `src/test/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicyTest.java`
 - `src/test/java/de/seism0saurus/glacier/mastodon/IframeEmbedPolicyRegexInterpolationGateTest.java`
-- CWE-625 (Permissive Regular Expression)
-- CWE-1287 (Improper Validation of Specified Type of Input)
-- CWE-117 (Log Injection — mitigated by static `reason=` message)
-- OWASP A04:2021 (Insecure Design)
-- OWASP A03:2021 (Injection)
-- ASVS 5.0.0 V5.3.6 (escape metacharacters before regex use)
-- `glacier-structured-logging-logback` skill (AUDIT logger convention)
-- `spring-boot-testing-patterns` skill (test layer conventions)
+- [CWE-625: Permissive Regular Expression](https://cwe.mitre.org/data/definitions/625.html)
+- [CWE-1287: Improper Validation of Specified Type of Input](https://cwe.mitre.org/data/definitions/1287.html)
+- [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html) (Log Injection — mitigated by static `reason=` message)
+- [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/)
+- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/)
+- [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V5.3.6 (escape metacharacters before regex use)
+- [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill (AUDIT logger convention)
+- [`spring-boot-testing-patterns`](../../.claude/skills/spring-boot-testing-patterns.md) skill (test layer conventions)

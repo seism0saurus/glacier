@@ -7,7 +7,7 @@ Status: Accepted
 
 ## Summary
 
-The full WebSocket → HTTP short-poll fallback feature was implemented against the frozen Phase 1 plan (`docs/decisions/2026-04-21-planning-ws-fallback.md`, 21 decisions + 8 ADRs + clarifications C-01/C-02/C-03). Four specialist agents delivered Round 1, followed by cross-review (Round 2) that surfaced five FIX REQUESTs (two correctness bugs, three defense-in-depth tests). All five were resolved. The final clean `./mvnw verify` run reports Surefire **264/264**, Failsafe **62/62**, Karma **187/187**, Jacoco ≈ 93% instruction / 85% branch, BUILD SUCCESS.
+The full WebSocket → HTTP short-poll fallback feature was implemented against the frozen [Phase 1 plan](2026-04-21-planning-ws-fallback.md) (21 decisions + 8 ADRs + clarifications C-01/C-02/C-03). Four specialist agents delivered Round 1, followed by cross-review (Round 2) that surfaced five FIX REQUESTs (two correctness bugs, three defense-in-depth tests). All five were resolved. The final clean `./mvnw verify` run reports Surefire **264/264**, Failsafe **62/62**, Karma **187/187**, Jacoco ≈ 93% instruction / 85% branch, BUILD SUCCESS.
 
 ## Files touched (summary)
 
@@ -67,7 +67,7 @@ The full WebSocket → HTTP short-poll fallback feature was implemented against 
 
 ## Clarifications (Phase 1 plan amendments)
 
-All three Phase 1 clarifications remain as recorded in `docs/decisions/2026-04-21-planning-ws-fallback.md`:
+All three Phase 1 clarifications remain as recorded in [Phase 1 planning](2026-04-21-planning-ws-fallback.md):
 
 - **C-01** — CI trigger scope stays at `push: branches: ["*.*.*"]`; expansion to `main` deferred.
 - **C-02** — `playwright.extra_hosts: ["host.docker.internal:host-gateway"]`; `fallback-insecure.spec.ts` navigates to `http://host.docker.internal:8081`.

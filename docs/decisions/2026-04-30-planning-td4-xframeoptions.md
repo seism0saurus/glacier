@@ -123,6 +123,6 @@ Approval message (verbatim): "approve"
 - [OWASP Top 10 (2025) — A09: Security Logging & Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
 - Glacier D-13 / SR-8 structured-logging discipline
-- CLAUDE.md: `glacier-structured-logging-logback` skill
+- CLAUDE.md: [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill
 - [TD-4 xFrameOptions Log Hygiene — Implementation](2026-04-30-implementation-td4-xframeoptions.md)
 - [TD-4 xFrameOptions Log Hygiene — Acceptance](2026-04-30-acceptance-td4-xframeoptions.md)

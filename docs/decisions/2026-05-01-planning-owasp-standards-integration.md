@@ -157,7 +157,7 @@ Three standards — OWASP WSTG 4.2, OWASP ASVS 5.0, and OWASP Proactive Controls
 |----|------|-----------|
 | R-OR-01 | ASVS 5.0 V50 chapter shortcodes from late-draft; published final may differ | Implementers must verify against live JSON before citing |
 | R-OR-02 | `OwaspMatrixCookieAttributesLockstepTest` parses Markdown; brittle to table format changes | Parse only well-anchored tokens; fail explicitly on ambiguity |
-| R-OR-03 | Insecure-transport mode test fixture may not exist for `CookieEmissionIT` | Verify `glacier-fallback-mode-discipline` skill; create fixture if needed |
+| R-OR-03 | Insecure-transport mode test fixture may not exist for `CookieEmissionIT` | Verify [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md) skill; create fixture if needed |
 | R-OR-04 | Canary `00000000-0000-0000-0000-000000000001` could collide with deterministic UUID generation | Document canary in SECURITY_TESTS.md; probability vanishingly small |
 | R-OR-05 | Standards version drift (WSTG, ASVS, Proactive) requires quarterly review | AC-18 documents procedure; not automated |
 

@@ -73,6 +73,9 @@ class StompCallbackOptInEnforcementTest {
     private static final String CANARY_URL     = "https://mastodon.example.com/users/alice/statuses/12345";
     private static final String BOT_SHORT_HANDLE = "glacier";
     private static final String BOT_FULL_HANDLE  = BOT_SHORT_HANDLE + "@glacier.events";
+    /** Parsed value object for the bot handle — injected into StompCallback (ADR-P3A-2). */
+    private static final de.seism0saurus.glacier.mastodon.MastodonShortHandle BOT_HANDLE_VO =
+            de.seism0saurus.glacier.mastodon.MastodonShortHandle.parse(BOT_FULL_HANDLE);
 
     /**
      * Permissive {@link SafeUrlValidator}: always passes the URL through so SSRF guard
@@ -129,7 +132,7 @@ class StompCallbackOptInEnforcementTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
         callbackAppender.list.clear();
 
         // GenericMessage whose payload mentions someone OTHER than the bot
@@ -191,7 +194,7 @@ class StompCallbackOptInEnforcementTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
 
         // GenericMessage whose payload mentions the bot
         ObjectMapper mapper = new ObjectMapper();
@@ -245,7 +248,7 @@ class StompCallbackOptInEnforcementTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
 
         ObjectMapper mapper = new ObjectMapper();
         // acct = "glacier@otherinstance.social" — different instance from the configured bot
@@ -307,7 +310,7 @@ class StompCallbackOptInEnforcementTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
         callbackAppender.list.clear();
 
         ParsedStreamEvent.StatusCreated created = new ParsedStreamEvent.StatusCreated(status);
@@ -357,7 +360,7 @@ class StompCallbackOptInEnforcementTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
 
         ParsedStreamEvent.StatusEdited edited = new ParsedStreamEvent.StatusEdited(status);
         MastodonApiEvent.StreamEvent streamEvent = new MastodonApiEvent.StreamEvent(edited, List.of());
@@ -402,7 +405,7 @@ class StompCallbackOptInEnforcementTest {
 
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
-                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_FULL_HANDLE, "glacier.events");
+                PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, BOT_HANDLE_VO, "glacier.events");
 
         // --- GenericMessage path: mention is non-bot ---
         ObjectMapper mapper = new ObjectMapper();
@@ -512,107 +515,71 @@ class StompCallbackOptInEnforcementTest {
     // -------------------------------------------------------------------------
 
     /**
-     * T-empty-shorthandle-01: {@code getShortHandle("@@server.example")} must throw
+     * T-empty-shorthandle-01: {@code MastodonShortHandle.parse("@@server.example")} must throw
      * {@link IllegalArgumentException}.
      *
      * <p>After stripping the leading {@code @}, the remaining string is {@code "@server.example"}.
-     * {@code indexOf('@')} returns {@code 0}, so {@code substring(0, 0)} produces an empty string.
-     * The downstream opt-in check uses {@code shortHandle.equals(mention.getAcct())} — an empty
-     * shortHandle never equals any real Mastodon acct, so opt-in defaults to {@code false} (fail-
-     * closed). However, the empty shortHandle is still invalid as an operator-configured identity
-     * and must be rejected early (C3, ASVS V2.1, WSTG-INPV-01, SR-NEW-02).
+     * The local part before the internal {@code @} is empty — rejected by {@code parse()}
+     * (SR-P3A-06, SR-NEW-02). Validation moved from {@code getShortHandle} to
+     * {@link de.seism0saurus.glacier.mastodon.MastodonShortHandle#parse(String)} in ADR-P3A-2.
      */
     @Test
     void getShortHandle_doubleAtPrefix_throwsIllegalArgumentException() {
-        // Arrange & Act & Assert — constructor exercises getShortHandle via this.shortHandle = getShortHandle(handle)
+        // Validation now lives in MastodonShortHandle.parse() (ADR-P3A-2)
         org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> new StompCallback(
-                        mock(SubscriptionManager.class),
-                        mock(MessageCache.class),
-                        mock(ShareViewStompRelay.class),
-                        mock(RestTemplate.class),
-                        PERMISSIVE_VALIDATOR,
-                        CANARY_UUID, CANARY_HASHTAG,
-                        "@@server.example",   // T-empty-shorthandle-01: double-@ handle
-                        "glacier.events"),
-                "T-empty-shorthandle-01: handle '@@server.example' must cause getShortHandle to throw "
-                        + "because stripping the leading @ leaves '@server.example', "
-                        + "whose indexOf('@') == 0 produces an empty short handle (SR-NEW-02)");
+                () -> de.seism0saurus.glacier.mastodon.MastodonShortHandle.parse("@@server.example"),
+                "T-empty-shorthandle-01: '@@server.example' must be rejected by parse() "
+                        + "because the local part is empty (SR-NEW-02)");
     }
 
     /**
-     * T-empty-shorthandle-02: {@code getShortHandle("@@")} must throw
+     * T-empty-shorthandle-02: {@code MastodonShortHandle.parse("@@")} must throw
      * {@link IllegalArgumentException}.
      *
      * <p>Minimal double-@ edge case: after stripping the leading {@code @}, the remaining
-     * string is {@code "@"} — {@code indexOf('@')} returns {@code 0}, yielding an empty
-     * short handle (SR-NEW-02, C3, ASVS V2.1).
+     * string is {@code "@"} — local part is empty (SR-NEW-02, C3, ASVS V2.1).
+     * Validation moved to {@link de.seism0saurus.glacier.mastodon.MastodonShortHandle#parse(String)}
+     * in ADR-P3A-2.
      */
     @Test
     void getShortHandle_doubleAtOnly_throwsIllegalArgumentException() {
         org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> new StompCallback(
-                        mock(SubscriptionManager.class),
-                        mock(MessageCache.class),
-                        mock(ShareViewStompRelay.class),
-                        mock(RestTemplate.class),
-                        PERMISSIVE_VALIDATOR,
-                        CANARY_UUID, CANARY_HASHTAG,
-                        "@@",                 // T-empty-shorthandle-02: bare double-@
-                        "glacier.events"),
-                "T-empty-shorthandle-02: handle '@@' must throw because the short-handle part is empty");
+                () -> de.seism0saurus.glacier.mastodon.MastodonShortHandle.parse("@@"),
+                "T-empty-shorthandle-02: '@@' must be rejected by parse() (empty local part)");
     }
 
     /**
-     * T-empty-shorthandle-03: {@code getShortHandle("@")} must throw
+     * T-empty-shorthandle-03: {@code MastodonShortHandle.parse("@")} must throw
      * {@link IllegalArgumentException}.
      *
-     * <p>A single {@code @} contains no server part. The existing guard for
-     * {@code !tmpHandle.contains("@")} fires AFTER stripping the leading {@code @},
-     * meaning the stripped result {@code ""} does not contain {@code @} at all —
-     * so the existing guard already fires here. This test confirms that invariant
-     * is preserved by the SR-NEW-02 implementation (SR-NEW-02, ASVS V2.1).
+     * <p>A single {@code @} contains no server part and the stripped result is empty
+     * (SR-NEW-02, ASVS V2.1). Validation moved to
+     * {@link de.seism0saurus.glacier.mastodon.MastodonShortHandle#parse(String)} in ADR-P3A-2.
      */
     @Test
     void getShortHandle_singleAt_throwsIllegalArgumentException() {
         org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> new StompCallback(
-                        mock(SubscriptionManager.class),
-                        mock(MessageCache.class),
-                        mock(ShareViewStompRelay.class),
-                        mock(RestTemplate.class),
-                        PERMISSIVE_VALIDATOR,
-                        CANARY_UUID, CANARY_HASHTAG,
-                        "@",                  // T-empty-shorthandle-03: single @ (no server part)
-                        "glacier.events"),
-                "T-empty-shorthandle-03: handle '@' must throw (no server part at all)");
+                () -> de.seism0saurus.glacier.mastodon.MastodonShortHandle.parse("@"),
+                "T-empty-shorthandle-03: '@' must be rejected by parse() (no server part)");
     }
 
     /**
-     * T-empty-shorthandle-04: {@code getShortHandle("")} must throw
+     * T-empty-shorthandle-04: {@code MastodonShortHandle.parse("")} must throw
      * {@link IllegalArgumentException}.
      *
-     * <p>Empty string is not a valid Mastodon handle — it has no leading {@code @},
-     * no name part, and no server part. Must be rejected at boundary validation
-     * (SR-NEW-02, C3, ASVS V2.1, fail-fast principle).
+     * <p>Empty string is not a valid Mastodon handle. Validation moved to
+     * {@link de.seism0saurus.glacier.mastodon.MastodonShortHandle#parse(String)} in ADR-P3A-2
+     * (SR-NEW-02, C3, ASVS V2.1).
      */
     @Test
     void getShortHandle_emptyString_throwsIllegalArgumentException() {
         org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> new StompCallback(
-                        mock(SubscriptionManager.class),
-                        mock(MessageCache.class),
-                        mock(ShareViewStompRelay.class),
-                        mock(RestTemplate.class),
-                        PERMISSIVE_VALIDATOR,
-                        CANARY_UUID, CANARY_HASHTAG,
-                        "",                   // T-empty-shorthandle-04: blank handle
-                        "glacier.events"),
-                "T-empty-shorthandle-04: empty handle must throw (not a valid Mastodon handle)");
+                () -> de.seism0saurus.glacier.mastodon.MastodonShortHandle.parse(""),
+                "T-empty-shorthandle-04: empty string must be rejected by parse()");
     }
 
     /**
@@ -621,10 +588,10 @@ class StompCallbackOptInEnforcementTest {
      *
      * <p>Echoing attacker-controlled input into exception messages creates a log injection
      * vector when the exception is caught and logged (D-13 / SR-8 / CWE-117). The message
-     * must be a static, developer-authored string.
+     * must describe the error without repeating the raw input value.
      *
-     * <p>Uses the {@code "@@server.example"} input because it is the canonical empty-short-handle
-     * edge case that SR-NEW-02 was designed to guard against.
+     * <p>Validation moved to {@link de.seism0saurus.glacier.mastodon.MastodonShortHandle#parse(String)}
+     * in ADR-P3A-2.
      */
     @Test
     void getShortHandle_exceptionMessage_doesNotContainInputString() {
@@ -634,15 +601,7 @@ class StompCallbackOptInEnforcementTest {
         // Act
         IllegalArgumentException caught = null;
         try {
-            new StompCallback(
-                    mock(SubscriptionManager.class),
-                    mock(MessageCache.class),
-                    mock(ShareViewStompRelay.class),
-                    mock(RestTemplate.class),
-                    PERMISSIVE_VALIDATOR,
-                    CANARY_UUID, CANARY_HASHTAG,
-                    maliciousHandle,
-                    "glacier.events");
+            de.seism0saurus.glacier.mastodon.MastodonShortHandle.parse(maliciousHandle);
         } catch (IllegalArgumentException ex) {
             caught = ex;
         }

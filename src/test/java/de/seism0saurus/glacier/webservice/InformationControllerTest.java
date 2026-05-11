@@ -83,7 +83,7 @@ class InformationControllerTest {
         mockMvc.perform(MockMvcRequestBuilders.get("/rest/mastodon-handle"))
                 .andExpect(MockMvcResultMatchers.status().isOk())
                 .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.name").value("the_handle_of_the_account_from_my_acces_key@my_instance"));
+                .andExpect(MockMvcResultMatchers.jsonPath("$.name").value("bot-account@my-instance.social"));
     }
 
     @Test
