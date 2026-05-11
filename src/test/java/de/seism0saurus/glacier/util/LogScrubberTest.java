@@ -378,33 +378,33 @@ class LogScrubberTest {
     @Test
     void safeEventName_notificationsMerged_caseAndPaddingVariants_returnFallback() {
         assertThat(LogScrubber.safeEventName("Notifications_Merged"))
-                .startsWith("unknown(len=");
+                .startsWith("unknown-len-");
         assertThat(LogScrubber.safeEventName("notifications_merged "))
-                .startsWith("unknown(len=");
+                .startsWith("unknown-len-");
         assertThat(LogScrubber.safeEventName("notifications_merged\r\n"))
-                .startsWith("unknown(len=");
+                .startsWith("unknown-len-");
         assertThat(LogScrubber.safeEventName("notifications_merged‮"))
-                .startsWith("unknown(len=");
+                .startsWith("unknown-len-");
     }
 
     /**
      * Arrange: an event name not in the Mastodon 4.x allowlist.
      * Act: call safeEventName("injected_event").
-     * Assert: returns bounded fallback "unknown(len=14)" — the raw value never reaches the logger.
+     * Assert: returns bounded fallback "unknown-len-14" — the raw value never reaches the logger.
      */
     @Test
     void safeEventName_unknownEvent_returnsBoundedFallback() {
-        assertThat(LogScrubber.safeEventName("injected_event")).isEqualTo("unknown(len=14)");
+        assertThat(LogScrubber.safeEventName("injected_event")).isEqualTo("unknown-len-14");
     }
 
     /**
      * Arrange: single-character unknown event.
      * Act: call safeEventName("x").
-     * Assert: returns "unknown(len=1)" — bounded and controlled.
+     * Assert: returns "unknown-len-1" — bounded and controlled.
      */
     @Test
     void safeEventName_singleCharUnknownEvent_returnsBoundedFallback() {
-        assertThat(LogScrubber.safeEventName("x")).isEqualTo("unknown(len=1)");
+        assertThat(LogScrubber.safeEventName("x")).isEqualTo("unknown-len-1");
     }
 
     /**
@@ -418,7 +418,7 @@ class LogScrubberTest {
         String result = LogScrubber.safeEventName(injected);
         assertThat(result).doesNotContain("\r");
         assertThat(result).doesNotContain("\n");
-        assertThat(result).startsWith("unknown(len=");
+        assertThat(result).startsWith("unknown-len-");
     }
 
     /**
@@ -431,7 +431,7 @@ class LogScrubberTest {
         String injected = "update malicious";
         String result = LogScrubber.safeEventName(injected);
         assertThat(result).doesNotContain(" ");
-        assertThat(result).startsWith("unknown(len=");
+        assertThat(result).startsWith("unknown-len-");
     }
 
     // -------------------------------------------------------------------------

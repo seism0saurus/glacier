@@ -10,6 +10,9 @@ import org.springframework.mock.env.MockEnvironment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+// Note: StartupSanityChecker has a mixed-state constructor (B6, ADR-P3B-1).
+// This test directly instantiates the checker; test helpers provide GlacierCookieProperties.
+
 /**
  * Unit tests for {@link StartupSanityChecker}.
  *
@@ -44,12 +47,19 @@ class StartupSanityCheckerTest {
         logger.detachAppender(appender);
     }
 
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     /** Build a checker with the given devmode flag and active profiles. */
     private static StartupSanityChecker checker(boolean devmode, boolean mastodonHttps,
             boolean cookieSecure, String... activeProfiles) {
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles(activeProfiles);
-        return new StartupSanityChecker(devmode, mastodonHttps, cookieSecure, env);
+        return new StartupSanityChecker(devmode, mastodonHttps, cookieProps(cookieSecure), env);
     }
 
     // -----------------------------------------------------------------------

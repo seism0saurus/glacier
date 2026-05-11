@@ -7,6 +7,7 @@ import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkLifetimePolicy;
 import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -308,9 +309,46 @@ class ShareLinkServiceImplTest {
 
         when(repository.findAllBySharer(SHARER_WALL_ID)).thenReturn(List.of(active, expired, revoked));
 
+        @SuppressWarnings("deprecation")
         List<ShareLink> result = service.listBySharer(SHARER_WALL_ID, T0);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).id()).isEqualTo(activeId);
+    }
+
+    // -----------------------------------------------------------------------
+    // Priority 1 — listSummaryBySharer
+    // -----------------------------------------------------------------------
+
+    /**
+     * {@code listSummaryBySharer} delegates to the repository and returns the result.
+     *
+     * <p>Arrange: repository returns one summary for the given sharer.
+     * <p>Act:     call {@code listSummaryBySharer}.
+     * <p>Assert:  the summary list from the repository is returned unchanged.
+     */
+    @Test
+    void listSummaryBySharer_delegatesToRepository() {
+        ShareLinkSummary summary = new ShareLinkSummary(
+                "abcd1234", T0, T0.plus(TTL), null, ShareLinkStatus.ACTIVE, SHARER_WALL_ID);
+        when(repository.listSummaryBySharer(SHARER_WALL_ID, T0)).thenReturn(List.of(summary));
+
+        List<ShareLinkSummary> result = service.listSummaryBySharer(SHARER_WALL_ID, T0);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).idHash8()).isEqualTo("abcd1234");
+        assertThat(result.get(0).status()).isEqualTo(ShareLinkStatus.ACTIVE);
+    }
+
+    /**
+     * {@code listSummaryBySharer} returns empty when the repository returns empty.
+     */
+    @Test
+    void listSummaryBySharer_returnsEmpty_whenRepositoryReturnsEmpty() {
+        when(repository.listSummaryBySharer(SHARER_WALL_ID, T0)).thenReturn(List.of());
+
+        List<ShareLinkSummary> result = service.listSummaryBySharer(SHARER_WALL_ID, T0);
+
+        assertThat(result).isEmpty();
     }
 }

@@ -1,8 +1,8 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.webservice.messaging.ShareViewPrincipalHandler;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -38,9 +38,8 @@ public class ShareViewerCookieFactory {
 
     private final boolean secureCookies;
 
-    public ShareViewerCookieFactory(
-            @Value("${glacier.cookie.secure:true}") final boolean secureCookies) {
-        this.secureCookies = secureCookies;
+    public ShareViewerCookieFactory(final GlacierCookieProperties cookieProps) {
+        this.secureCookies = Boolean.TRUE.equals(cookieProps.getSecure());
     }
 
     /**

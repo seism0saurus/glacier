@@ -12,6 +12,11 @@ import java.util.Arrays;
 /**
  * Startup sanity checks for Glacier's critical configuration invariants.
  *
+ * <p><strong>Mixed-state constructor (B6, ADR-P3B-1)</strong>: {@code glacier.cookie.secure}
+ * is injected via {@link GlacierCookieProperties} (ADR-P3B-1). {@code glacier.devmode} and
+ * {@code mastodon.https} remain on {@code @Value} injection (SR-9/D-14 fence prevents them
+ * from being moved to a shared bean in webservice/ packages).
+ *
  * <p>Two guards are enforced:
  *
  * <h3>Sec-01 — devmode startup guard</h3>
@@ -48,19 +53,23 @@ public class StartupSanityChecker {
     /**
      * Constructs the checker with the relevant configuration values.
      *
+     * <p>Mixed-state wiring (B6): {@code glacier.cookie.secure} is read from
+     * {@link GlacierCookieProperties} (ADR-P3B-1); {@code glacier.devmode} and
+     * {@code mastodon.https} remain on {@code @Value} injection.
+     *
      * @param devmode       {@code glacier.devmode} — enables unsafe dev-mode TLS overrides
      * @param mastodonHttps {@code mastodon.https} — whether the Mastodon endpoint uses HTTPS
-     * @param cookieSecure  {@code glacier.cookie.secure} — whether the wallId cookie has the Secure flag
+     * @param cookieProps   startup-validated bean for {@code glacier.cookie.*} settings (ADR-P3B-1)
      * @param environment   Spring {@link Environment} for active-profile detection
      */
     public StartupSanityChecker(
             @Value("${glacier.devmode:false}") final boolean devmode,
             @Value("${mastodon.https:true}") final boolean mastodonHttps,
-            @Value("${glacier.cookie.secure:true}") final boolean cookieSecure,
+            final GlacierCookieProperties cookieProps,
             final Environment environment) {
         this.devmode = devmode;
         this.mastodonHttps = mastodonHttps;
-        this.cookieSecure = cookieSecure;
+        this.cookieSecure = Boolean.TRUE.equals(cookieProps.getSecure());
         this.environment = environment;
     }
 

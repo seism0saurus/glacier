@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.util.LogScrubber;
 import net.jqwik.api.Arbitraries;
@@ -86,10 +87,17 @@ class ImageProxyUrlBuilderVerifyFuzzTest {
      * <p>The validator is constructed with {@code secureCookies=false} so the dev-mode
      * auto-generate path is available (or the configured secret is used as-is).
      */
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     private ShareImageProxyUrlBuilder buildBuilder() {
         // secureCookies=false → dev mode: short secrets accepted with a warning
         ImageProxyHmacSecretValidator validator =
-                new ImageProxyHmacSecretValidator(DEV_SECRET, false);
+                new ImageProxyHmacSecretValidator(DEV_SECRET, cookieProps(false));
         return new ShareImageProxyUrlBuilder(validator, "glacier.example.com");
     }
 

@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -19,6 +20,13 @@ class ShareViewerCookieFactoryTest {
 
     private static final Instant EXPIRES_IN_7_DAYS = Instant.now().plusSeconds(7 * 24 * 3600);
 
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     /**
      * In secure mode (glacier.cookie.secure=true), the cookie uses the {@code __Host-} prefix.
      * RFC 6265bis §4.1.3 mandates that {@code __Host-} cookies MUST have {@code Path=/}.
@@ -28,7 +36,7 @@ class ShareViewerCookieFactoryTest {
      */
     @Test
     void secureCookie_hasRootPath() {
-        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(true);
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(cookieProps(true));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
@@ -46,7 +54,7 @@ class ShareViewerCookieFactoryTest {
      */
     @Test
     void secureCookie_usesHostPrefix() {
-        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(true);
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(cookieProps(true));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
@@ -62,7 +70,7 @@ class ShareViewerCookieFactoryTest {
      */
     @Test
     void insecureCookie_hasSharePath() {
-        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(false);
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(cookieProps(false));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
@@ -83,7 +91,7 @@ class ShareViewerCookieFactoryTest {
      */
     @Test
     void secureCookie_emitsExactlyOneSetCookieHeader() {
-        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(true);
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(cookieProps(true));
         MockHttpServletResponse response = new MockHttpServletResponse();
         factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
 
@@ -103,7 +111,7 @@ class ShareViewerCookieFactoryTest {
      */
     @Test
     void insecureCookie_emitsExactlyOneSetCookieHeader() {
-        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(false);
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(cookieProps(false));
         MockHttpServletResponse response = new MockHttpServletResponse();
         factory.mintAndSet(response, EXPIRES_IN_7_DAYS);
 
@@ -122,7 +130,7 @@ class ShareViewerCookieFactoryTest {
      */
     @Test
     void secureCookie_hasSecureAndHttpOnly() {
-        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(true);
+        ShareViewerCookieFactory factory = new ShareViewerCookieFactory(cookieProps(true));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         factory.mintAndSet(response, EXPIRES_IN_7_DAYS);

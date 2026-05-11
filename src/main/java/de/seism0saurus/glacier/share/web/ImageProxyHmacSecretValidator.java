@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,7 +46,8 @@ public class ImageProxyHmacSecretValidator {
      */
     public ImageProxyHmacSecretValidator(
             @Value("${glacier.share.imgproxy.hmacSecret:#{null}}") final String configuredSecret,
-            @Value("${glacier.cookie.secure:true}") final boolean secureCookies) {
+            final GlacierCookieProperties cookieProps) {
+        final boolean secureCookies = Boolean.TRUE.equals(cookieProps.getSecure());
 
         if (configuredSecret == null || configuredSecret.isBlank()) {
             if (secureCookies) {

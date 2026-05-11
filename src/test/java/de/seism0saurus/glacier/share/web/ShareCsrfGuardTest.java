@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,9 +25,16 @@ class ShareCsrfGuardTest {
     private static final String DOMAIN = "glacier.example.com";
     private static final String TOKEN = "test-csrf-token-at-least-32chars!!";
 
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     @BeforeEach
     void setUp() {
-        guard = new ShareCsrfGuard(DOMAIN, true);
+        guard = new ShareCsrfGuard(DOMAIN, cookieProps(true));
         request = mock(HttpServletRequest.class);
     }
 
@@ -105,7 +113,7 @@ class ShareCsrfGuardTest {
 
     @Test
     void allowsHttpOriginInInsecureMode() {
-        ShareCsrfGuard insecureGuard = new ShareCsrfGuard(DOMAIN, false);
+        ShareCsrfGuard insecureGuard = new ShareCsrfGuard(DOMAIN, cookieProps(false));
         when(request.getHeader("Origin")).thenReturn("http://glacier.example.com");
         when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
         // In insecure mode the cookie name is 'shareCsrf' (no __Host- prefix)

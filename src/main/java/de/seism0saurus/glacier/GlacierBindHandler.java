@@ -81,9 +81,11 @@ public class GlacierBindHandler {
      *       {@code getCause().toString()}. A static count-only message is substituted.</li>
      *   <li><b>{@link BindException}</b> — thrown for type-conversion failures. The raw value
      *       from {@code ConfigurationProperty.getValue().toString()} is replaced with a
-     *       {@link LogScrubber#forErrorMessage(String)} summary. The original exception is
-     *       preserved as cause because {@code BindException.toString()} alone does not echo
-     *       the raw config value without the {@code ConfigurationProperty} being resolved.</li>
+     *       {@link LogScrubber#forErrorMessage(String)} summary. The cause is dropped entirely
+     *       (cause = null) because {@link BindException} wraps a
+     *       {@code ConversionFailedException} whose {@code getMessage()} emits
+     *       {@code "for value [<rawValue>]"} — preserving the cause would re-expose the raw
+     *       value to any caller walking {@code getCause()} (CWE-532; SR-P3B-07).</li>
      * </ol>
      */
     static class ScrubbingBindHandler extends AbstractBindHandler {
@@ -111,9 +113,11 @@ public class GlacierBindHandler {
          * <h3>BindException path (type-conversion failures)</h3>
          * <p>When the exception is a {@link BindException} carrying a
          * {@code ConfigurationProperty} with a raw value, the raw value is replaced with
-         * a scrubbed summary. The original exception is preserved as cause here because
-         * {@code BindException.toString()} alone does not re-echo the raw config value
-         * (the value is only in the property object, not in the exception message itself).
+         * a scrubbed summary. The cause is dropped (cause = {@code null}) because
+         * {@link BindException} wraps a {@code ConversionFailedException} whose
+         * {@code getMessage()} emits {@code "for value [<rawValue>]"} — preserving the
+         * cause would re-expose the raw value to any caller walking {@code getCause()}.
+         * (SR-P3B-07; CWE-532; ASVS V7.3.1 L1)
          *
          * @param name    the configuration property name being bound
          * @param target  the binding target
@@ -146,20 +150,24 @@ public class GlacierBindHandler {
 
             // BRANCH 2: Type-conversion failure — secondary leak path.
             // BindException.getProperty().getValue() holds the raw value; replace with scrubbed summary.
+            // The cause chain is also dropped (cause = null) because the BindException wraps a
+            // ConversionFailedException whose getMessage() emits "for value [<rawValue>]" —
+            // preserving the cause would re-expose the raw value to any caller walking getCause().
+            // C9 / CWE-532 / ASVS V7.3.1 L1 / ADR-P3A-7 / SEC-P3A-01 / SR-P3B-07
             if (error instanceof BindException bindException) {
                 ConfigurationProperty prop = bindException.getProperty();
                 if (prop != null && prop.getValue() != null) {
-                    // Replace the raw value with a scrubbed summary in the new exception message
+                    // Replace the raw value with a scrubbed summary in the new exception message.
                     // C9 — security events must not leak PII/tokens (ADR-P3A-7, CWE-532, ASVS V7.3.1 L1)
                     String rawValue = prop.getValue().toString();
                     String scrubbed = LogScrubber.forErrorMessage(rawValue);
 
-                    // Throw a scrubbing wrapper — preserving the BindException as cause is safe here
-                    // because BindException.toString() alone does not echo the raw config value.
+                    // MANDATORY null cause: preserving bindException re-exposes the raw value via
+                    // the wrapped ConversionFailedException.getMessage() ("for value [<rawValue>]").
                     throw new ScrubbedBindException(
                             "Failed to bind property '" + name + "': value "
-                                    + scrubbed + " (original: see cause)",
-                            bindException
+                                    + scrubbed + " (SR-P3B-07, ADR-P3A-7).",
+                            null   // MANDATORY null — cause chain contains ConversionFailedException leaking raw value
                     );
                 }
             }
@@ -177,9 +185,11 @@ public class GlacierBindHandler {
      * {@code null} — mandatory to prevent re-exposure of {@code FieldError.rejectedValue}
      * via {@code getCause().toString()}.
      *
-     * <p>For {@link BindException} (type-conversion failures), the original exception is
-     * preserved as the cause; the message is replaced with a
-     * {@link LogScrubber#forErrorMessage(String)} summary so the raw value is not echoed.
+     * <p>For {@link BindException} (type-conversion failures), the cause is also dropped
+     * (cause = null) because {@link BindException} wraps a {@code ConversionFailedException}
+     * whose {@code getMessage()} emits {@code "for value [<rawValue>]"}. The message is
+     * replaced with a {@link LogScrubber#forErrorMessage(String)} summary instead.
+     * (SR-P3B-07; CWE-532; ASVS V7.3.1 L1)
      *
      * <p>ADR-P3A-7; SEC-P3A-01; CWE-532; ASVS V7.3.1 L1.
      */

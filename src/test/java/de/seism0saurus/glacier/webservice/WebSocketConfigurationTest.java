@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WallTopicAuthInterceptor;
@@ -29,10 +30,17 @@ import static org.mockito.Mockito.*;
  */
 public class WebSocketConfigurationTest {
 
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     /** Injects the @Autowired fields that Spring would normally inject. */
     private static WebSocketConfiguration createConfig(String domain, boolean secureCookies) {
         WebSocketConfiguration config = new WebSocketConfiguration(
-                domain, secureCookies, new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
+                domain, cookieProps(secureCookies), new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
                 65536, 524288, 20000);
         // Inject @Autowired interceptors via reflection (Spring normally does this)
         try {

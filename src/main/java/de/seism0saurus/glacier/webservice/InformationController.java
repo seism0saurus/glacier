@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.GlacierOperatorProperties;
 import de.seism0saurus.glacier.mastodon.MastodonShortHandle;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
@@ -72,10 +73,11 @@ public class InformationController {
 
     /**
      * Whether to set the {@code Secure} flag on the wallId cookie.
-     * Defaults to {@code true}; set to {@code false} via {@code COOKIE_SECURE=false} in dev.
+     * {@code true} in production (HTTPS); {@code false} only in dev/loopback mode.
      *
-     * <p>Remains on {@code @Value} — migration to a typed properties bean is
-     * deferred to Bundle B (ADR-P3A-1; SR-P3A-05: partial wiring is forbidden).
+     * <p>Sourced from {@link GlacierCookieProperties#getSecure()} (ADR-P3B-1).
+     * Stored as primitive {@code boolean} for use in {@link ResponseCookie#secure(boolean)}.
+     * Unboxed once via {@code Boolean.TRUE.equals(...)} at construction time (ADR-P3B-3).
      */
     private final boolean cookieSecure;
 
@@ -88,19 +90,19 @@ public class InformationController {
      * <p>The {@link MastodonShortHandle} is injected as a Spring bean produced by
      * {@link de.seism0saurus.glacier.mastodon.MastodonHandleFactory} (ADR-P3A-2).
      * Operator properties are injected via {@link GlacierOperatorProperties} (ADR-P3A-3).
-     * Cookie-secure remains on {@code @Value} until Bundle B (ADR-P3A-1).
+     * Cookie security is injected via {@link GlacierCookieProperties} (ADR-P3B-1).
      */
     public InformationController(
             final MastodonShortHandle mastodonShortHandle,
             @Value("${glacier.domain}") final String domain,
             final GlacierOperatorProperties operatorProps,
-            @Value("${glacier.cookie.secure:true}") final boolean cookieSecure,
+            final GlacierCookieProperties cookieProps,
             final FallbackRateLimiter rateLimiter
     ) {
         this.mastodonShortHandle = mastodonShortHandle;
         this.domain = domain;
         this.operatorProps = operatorProps;
-        this.cookieSecure = cookieSecure;
+        this.cookieSecure = Boolean.TRUE.equals(cookieProps.getSecure());
         this.rateLimiter = rateLimiter;
     }
 

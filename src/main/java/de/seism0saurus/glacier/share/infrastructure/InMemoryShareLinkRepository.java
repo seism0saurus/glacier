@@ -4,8 +4,10 @@ import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Repository;
 
@@ -38,6 +40,12 @@ import java.util.stream.Collectors;
  * </ul>
  */
 @Repository
+// ADR-SQLITE-01: default adapter — active when glacier.share.db.path is NOT set.
+// @ConditionalOnProperty with matchIfMissing=true and a sentinel havingValue ensures
+// this bean is created ONLY when the property is absent (i.e., no SQLite path configured).
+// When glacier.share.db.path is set, SqliteShareLinkRepository takes over instead.
+@ConditionalOnProperty(name = "glacier.share.db.path", havingValue = "NEVER_MATCHES",
+        matchIfMissing = true)
 public class InMemoryShareLinkRepository implements ShareLinkRepository {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
@@ -127,6 +135,22 @@ public class InMemoryShareLinkRepository implements ShareLinkRepository {
     public List<ShareLink> findAllBySharer(final String sharerWallId) {
         return store.values().stream()
                 .filter(link -> sharerWallId.equals(link.sharerWallId()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ShareLinkSummary> listSummaryBySharer(final String sharerWallId, final Instant now) {
+        return store.values().stream()
+                .filter(link -> sharerWallId.equals(link.sharerWallId()))
+                .filter(link -> link.status(now) == ShareLinkStatus.ACTIVE)
+                .map(link -> new ShareLinkSummary(
+                        link.id().hash8(),
+                        link.createdAt(),
+                        link.expiresAt(),
+                        link.revokedAt().orElse(null),
+                        link.status(now),
+                        link.sharerWallId()
+                ))
                 .collect(Collectors.toList());
     }
 

@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -236,9 +237,16 @@ class ImageProxyUrlBuilderVerifyFuzzCanaryTest {
      * Builds a test-mode {@link ShareImageProxyUrlBuilder} using a fixed HMAC secret
      * so canary tests are deterministic and independent of the Spring context.
      */
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     private ShareImageProxyUrlBuilder buildBuilder() {
         ImageProxyHmacSecretValidator validator =
-                new ImageProxyHmacSecretValidator(DEV_SECRET, false);
+                new ImageProxyHmacSecretValidator(DEV_SECRET, cookieProps(false));
         return new ShareImageProxyUrlBuilder(validator, "glacier.example.com");
     }
 

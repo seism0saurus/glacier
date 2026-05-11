@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -37,10 +38,17 @@ class CsrfTokenCookieFactoryTest {
     private CsrfTokenCookieFactory secureFactory;
     private CsrfTokenCookieFactory insecureFactory;
 
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     @BeforeEach
     void setUp() {
-        secureFactory   = new CsrfTokenCookieFactory(true);
-        insecureFactory = new CsrfTokenCookieFactory(false);
+        secureFactory   = new CsrfTokenCookieFactory(cookieProps(true));
+        insecureFactory = new CsrfTokenCookieFactory(cookieProps(false));
     }
 
     // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.GlacierOperatorProperties;
 import de.seism0saurus.glacier.MastodonProperties;
 import de.seism0saurus.glacier.mastodon.MastodonHandleFactory;
@@ -38,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ASVS V7.1.1 (L1); WSTG-SESS-02.
  */
 @WebMvcTest(InformationController.class)
-@Import({MastodonProperties.class, MastodonHandleFactory.class})
+@Import({MastodonProperties.class, MastodonHandleFactory.class, GlacierCookieProperties.class})
 @TestPropertySource(properties = {
         "mastodon.handle=glacier@example.com",
         "glacier.cookie.secure=true",
@@ -315,7 +316,7 @@ class CookieEmissionIT {
      */
     @Nested
     @WebMvcTest(InformationController.class)
-    @Import({MastodonProperties.class, MastodonHandleFactory.class})
+    @Import({MastodonProperties.class, MastodonHandleFactory.class, GlacierCookieProperties.class})
     @TestPropertySource(properties = {
             "mastodon.handle=glacier@example.com",
             "glacier.cookie.secure=false",    // AC-13: insecure-transport mode (HTTP, dev/loopback)

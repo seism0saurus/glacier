@@ -1,7 +1,7 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -33,9 +33,8 @@ public class CsrfTokenCookieFactory {
 
     private final boolean secureCookies;
 
-    public CsrfTokenCookieFactory(
-            @Value("${glacier.cookie.secure:true}") final boolean secureCookies) {
-        this.secureCookies = secureCookies;
+    public CsrfTokenCookieFactory(final GlacierCookieProperties cookieProps) {
+        this.secureCookies = Boolean.TRUE.equals(cookieProps.getSecure());
     }
 
     /**

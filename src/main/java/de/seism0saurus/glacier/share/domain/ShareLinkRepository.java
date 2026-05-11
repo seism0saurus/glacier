@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+
 /**
  * Repository interface for {@link ShareLink} aggregate persistence.
  *
@@ -96,6 +97,24 @@ public interface ShareLinkRepository {
      *
      * @param sharerWallId the sharer's wallId; must not be null
      * @return all stored links for this sharer; never null; may be empty
+     * @deprecated Use {@link #listSummaryBySharer(String, Instant)} instead.
+     *             This method is retained for the in-memory adapter; the SQLite adapter
+     *             cannot reconstruct raw tokens from the hash stored as the primary key,
+     *             so it returns an empty list with a deprecation warning (ADR-SQLITE-05).
      */
+    @Deprecated(since = "P3-05", forRemoval = false)
     List<ShareLink> findAllBySharer(String sharerWallId);
+
+    /**
+     * Returns summary projections for all links belonging to the given sharer,
+     * filtered to {@link ShareLinkStatus#ACTIVE} at the given instant.
+     *
+     * <p>The raw share-link token is NOT included in the summary — it is shown exactly
+     * once at creation time. This method is used for the management list view.
+     *
+     * @param sharerWallId the sharer's wallId; must not be null
+     * @param now          reference instant for status derivation
+     * @return list of summaries; never null; may be empty
+     */
+    List<ShareLinkSummary> listSummaryBySharer(String sharerWallId, Instant now);
 }

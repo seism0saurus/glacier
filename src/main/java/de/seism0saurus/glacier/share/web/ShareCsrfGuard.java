@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.util.LogScrubber;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -51,9 +52,9 @@ public class ShareCsrfGuard {
 
     public ShareCsrfGuard(
             @Value("${glacier.domain}") final String glacierDomain,
-            @Value("${glacier.cookie.secure:true}") final boolean secureCookies) {
+            final GlacierCookieProperties cookieProps) {
         this.glacierDomain = glacierDomain;
-        this.secureCookies = secureCookies;
+        this.secureCookies = Boolean.TRUE.equals(cookieProps.getSecure());
     }
 
     /**

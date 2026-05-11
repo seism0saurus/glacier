@@ -8,6 +8,7 @@ import de.seism0saurus.glacier.share.domain.ShareLinkLifetimePolicy;
 import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import de.seism0saurus.glacier.share.domain.ShareLinkRevocationException;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import de.seism0saurus.glacier.util.LogScrubber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -192,9 +193,15 @@ public class ShareLinkServiceImpl implements ShareLinkService {
     }
 
     @Override
+    @Deprecated(since = "P3-05", forRemoval = false)
     public List<ShareLink> listBySharer(final String sharerWallId, final Instant now) {
         return repository.findAllBySharer(sharerWallId).stream()
                 .filter(link -> link.status(now) == ShareLinkStatus.ACTIVE)
                 .toList();
+    }
+
+    @Override
+    public List<ShareLinkSummary> listSummaryBySharer(final String sharerWallId, final Instant now) {
+        return repository.listSummaryBySharer(sharerWallId, now);
     }
 }

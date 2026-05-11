@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor;
@@ -62,14 +63,14 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
 
     public WebSocketConfiguration(
             @Value(value = "${glacier.domain}") String glacierDomain,
-            @Value(value = "${glacier.cookie.secure:true}") boolean secureCookies,
+            final GlacierCookieProperties cookieProps,
             final ShareLinkViewerCounter viewerCounter,
             final ShareLinkCapPolicy capPolicy,
             @Value(value = "${glacier.security.ws.message-size-bytes:65536}") int messageSizeBytes,
             @Value(value = "${glacier.security.ws.send-buffer-bytes:524288}") int sendBufferBytes,
             @Value(value = "${glacier.security.ws.send-time-ms:20000}") int sendTimeMs) {
         this.glacierDomain = glacierDomain;
-        this.secureCookies = secureCookies;
+        this.secureCookies = Boolean.TRUE.equals(cookieProps.getSecure());
         this.viewerCounter = viewerCounter;
         this.capPolicy = capPolicy;
         this.messageSizeBytes = messageSizeBytes;

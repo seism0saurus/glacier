@@ -267,13 +267,13 @@ class RawWallIdLogHygieneTest {
 
     /**
      * T3b (ADR-F6-05, SR-F6-05, CWE-117): an unknown/injected event name must be bounded to
-     * {@code unknown(len=N)} — raw attacker-controlled bytes must not reach the log encoder.
+     * {@code unknown-len-N} — raw attacker-controlled bytes must not reach the log encoder.
      *
      * <p>Arrange: build a GenericMessage with a CRLF-injected event name.
      * Act: onEvent processes the message.
      * Assert:
      * <ul>
-     *   <li>Log contains "unknown(len=...)" — the safeEventName guard rendered the fallback.</li>
+     *   <li>Log contains "unknown-len-..." — the safeEventName guard rendered the fallback.</li>
      *   <li>Log does NOT contain the injection string or any CR/LF characters in the log output.</li>
      *   <li>Log does NOT contain the raw payload canary URL.</li>
      * </ul>
@@ -306,9 +306,9 @@ class RawWallIdLogHygieneTest {
         List<ILoggingEvent> events = stompCallbackAppender.list;
 
         // T3b: safeEventName renders the bounded fallback — the unhandled warn line must be present
-        // with "unknown(len=N)" replacing the raw injected event name
+        // with "unknown-len-N" replacing the raw injected event name
         assertThat(events)
-                .anySatisfy(e -> assertThat(e.getFormattedMessage()).contains("unknown(len="));
+                .anySatisfy(e -> assertThat(e.getFormattedMessage()).contains("unknown-len-"));
 
         // CWE-117: raw injection characters must not appear in any formatted message
         for (ILoggingEvent e : events) {

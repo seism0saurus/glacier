@@ -10,6 +10,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.GlacierOperatorProperties;
 import de.seism0saurus.glacier.MastodonProperties;
 import de.seism0saurus.glacier.mastodon.MastodonHandleFactory;
@@ -69,7 +70,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Security reference: C5 — Secure By Default; ASVS V7.1.1 (L1); WSTG-SESS-02.
  */
 @WebMvcTest(controllers = {InformationController.class})
-@Import({MastodonProperties.class, MastodonHandleFactory.class})
+@Import({MastodonProperties.class, MastodonHandleFactory.class, GlacierCookieProperties.class})
 @TestPropertySource(properties = {
         "mastodon.handle=glacier@example.com",
         "glacier.cookie.secure=true",
@@ -350,7 +351,7 @@ class OwaspMatrixCookieAttributesLockstepTest {
      */
     @Nested
     @WebMvcTest(controllers = {ShareViewController.class})
-    @Import(CsrfTokenCookieFactory.class)
+    @Import({CsrfTokenCookieFactory.class, GlacierCookieProperties.class})
     @TestPropertySource(properties = {
             "glacier.cookie.secure=true",
             "glacier.domain=example.com",
@@ -524,7 +525,7 @@ class OwaspMatrixCookieAttributesLockstepTest {
      */
     @Nested
     @WebMvcTest(controllers = {ShareViewController.class})
-    @Import(CsrfTokenCookieFactory.class)
+    @Import({CsrfTokenCookieFactory.class, GlacierCookieProperties.class})
     @TestPropertySource(properties = {
             "glacier.cookie.secure=false",
             "glacier.domain=example.com",

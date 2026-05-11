@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.share.application;
 
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 
 import java.time.Instant;
 import java.util.List;
@@ -84,6 +85,22 @@ public interface ShareLinkService {
      * @param sharerWallId the sharer's wallId; must not be null
      * @param now          the current clock instant; drives status filtering
      * @return a (possibly empty) list of ACTIVE {@link ShareLink}s; never null
+     * @deprecated Use {@link #listSummaryBySharer(String, Instant)} — the new method returns
+     *             a safe projection that never exposes the raw token.
      */
+    @Deprecated(since = "P3-05", forRemoval = false)
     List<ShareLink> listBySharer(String sharerWallId, Instant now);
+
+    /**
+     * Returns summary projections for ACTIVE share links belonging to the given sharer.
+     *
+     * <p>The raw share-link token is NOT included in the returned summaries — it is shown
+     * exactly once at creation time (ADR-SQLITE-05). This method is the correct path for
+     * the sharer's management UI.
+     *
+     * @param sharerWallId the sharer's wallId; must not be null
+     * @param now          the current clock instant; drives status filtering
+     * @return a (possibly empty) list of {@link ShareLinkSummary} records; never null
+     */
+    List<ShareLinkSummary> listSummaryBySharer(String sharerWallId, Instant now);
 }

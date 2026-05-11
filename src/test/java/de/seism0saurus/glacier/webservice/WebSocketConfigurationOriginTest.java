@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.webservice;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WebSocketConfiguration;
@@ -32,6 +33,13 @@ import static org.mockito.Mockito.*;
 class WebSocketConfigurationOriginTest {
 
     private static final String GLACIER_DOMAIN = "glacier.example.com";
+
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
 
     /**
      * Production profile (cookieSecure=true): localhost:8080 must NOT be in the origin list.
@@ -75,7 +83,7 @@ class WebSocketConfigurationOriginTest {
      */
     private List<String> captureAllowedOrigins(String glacierDomain, boolean cookieSecure) {
         WebSocketConfiguration config = new WebSocketConfiguration(
-                glacierDomain, cookieSecure, new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
+                glacierDomain, cookieProps(cookieSecure), new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
                 65536, 524288, 20000);
         // Inject @Autowired fields that Spring normally provides
         try {

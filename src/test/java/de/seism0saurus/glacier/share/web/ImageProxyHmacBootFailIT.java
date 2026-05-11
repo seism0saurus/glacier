@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContextException;
@@ -23,6 +24,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class ImageProxyHmacBootFailIT {
 
+    /** Factory helper: creates {@link GlacierCookieProperties} with the given secure flag. */
+    private static GlacierCookieProperties cookieProps(boolean secure) {
+        GlacierCookieProperties props = new GlacierCookieProperties();
+        props.setSecure(secure);
+        return props;
+    }
+
     /**
      * Verifies that the application context fails to start when the HMAC secret is absent
      * and {@code glacier.cookie.secure=true} (production profile).
@@ -36,7 +44,7 @@ class ImageProxyHmacBootFailIT {
         // Direct unit test of the validator: construction must throw in prod profile
         // when secret is absent. This is the root guard; context-load coverage is
         // provided by the @SpringBootTest cases further down this file.
-        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator(null, true))
+        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator(null, cookieProps(true)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("glacier.share.imgproxy.hmacSecret")
                 .hasMessageContaining("32 bytes");
@@ -44,14 +52,14 @@ class ImageProxyHmacBootFailIT {
 
     @Test
     void blankHmacSecretInProd_bootFails() {
-        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("   ", true))
+        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("   ", cookieProps(true)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("glacier.share.imgproxy.hmacSecret");
     }
 
     @Test
     void shortHmacSecretInProd_bootFails() {
-        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("tooshort", true))
+        assertThatThrownBy(() -> new ImageProxyHmacSecretValidator("tooshort", cookieProps(true)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("32 bytes");
     }
@@ -60,16 +68,16 @@ class ImageProxyHmacBootFailIT {
     void adequateHmacSecretInProd_startOk() {
         // 32 * "A" = 32 bytes (just at minimum)
         org.assertj.core.api.Assertions.assertThatNoException()
-                .isThrownBy(() -> new ImageProxyHmacSecretValidator("A".repeat(32), true));
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator("A".repeat(32), cookieProps(true)));
     }
 
     @Test
     void missingHmacSecretInDev_autoGenerates_startOk() {
         // Dev mode (secureCookies=false): missing secret → auto-generate with WARN, no boot failure
         org.assertj.core.api.Assertions.assertThatNoException()
-                .isThrownBy(() -> new ImageProxyHmacSecretValidator(null, false));
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator(null, cookieProps(false)));
 
-        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator(null, false);
+        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator(null, cookieProps(false));
         org.assertj.core.api.Assertions.assertThat(validator.isOperational()).isTrue();
         org.assertj.core.api.Assertions.assertThat(validator.getEffectiveSecret()).isNotNull();
         org.assertj.core.api.Assertions.assertThat(validator.getEffectiveSecret().length)
@@ -79,9 +87,9 @@ class ImageProxyHmacBootFailIT {
     @Test
     void blankHmacSecretInDev_autoGenerates_startOk() {
         org.assertj.core.api.Assertions.assertThatNoException()
-                .isThrownBy(() -> new ImageProxyHmacSecretValidator("", false));
+                .isThrownBy(() -> new ImageProxyHmacSecretValidator("", cookieProps(false)));
 
-        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator("", false);
+        ImageProxyHmacSecretValidator validator = new ImageProxyHmacSecretValidator("", cookieProps(false));
         org.assertj.core.api.Assertions.assertThat(validator.isOperational()).isTrue();
     }
 }

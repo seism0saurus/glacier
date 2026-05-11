@@ -222,3 +222,17 @@ When writing a new ADR, add a row here in the acceptance commit.
 | [2026-05-10-planning-p3-backlog-bundle.md](2026-05-10-planning-p3-backlog-bundle.md) | P1: Plan housekeeping bundle: CodeQL cache-key fix, Javadoc typos, README improvements, ADR index, ADMIN.md key-rename note |
 | [2026-05-11-implementation-p3-backlog-bundle.md](2026-05-11-implementation-p3-backlog-bundle.md) | P2: Implement `MastodonShortHandle`, `MastodonHandleFactory`, `EventTypeMapping`, `MastodonProperties`; wire into `StompCallback`, `SubscriptionManagerImpl`, `InformationController`; `LogScrubber.forErrorMessage()`; ArchUnit exclusivity gate; CI/docs housekeeping |
 | [2026-05-11-acceptance-p3-backlog-bundle.md](2026-05-11-acceptance-p3-backlog-bundle.md) | P3: PASSED — 24/24 AC; 4 security findings (SEC-P3A-01/02/04/05) resolved; 337 IT, 0 failures |
+
+### P3 Backlog Bundle B (`p3-bundle-b`)
+| File | Summary |
+|---|---|
+| [2026-05-11-planning-p3-bundle-b.md](2026-05-11-planning-p3-bundle-b.md) | P1: Plan TD-P3A-DOMAIN-FIX (static-literal fix for DomainSafetyValidator.java:98) + GlacierCookieProperties atomic migration of 7 glacier.cookie.secure @Value consumers |
+
+---
+
+## Persistence
+
+### Share-Link SQLite Persistence (`share-link-sqlite-persistence`)
+| File | Summary |
+|---|---|
+| [2026-05-11-planning-share-link-sqlite-persistence.md](2026-05-11-planning-share-link-sqlite-persistence.md) | P1: Plan opt-in SQLite-backed `ShareLinkRepository` adapter (P3-05) that survives server restarts; in-memory adapter remains default |

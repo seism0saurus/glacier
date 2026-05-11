@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import org.junit.jupiter.api.Nested;
@@ -66,7 +67,7 @@ class CsrfTokenIssuanceIT {
      */
     @Nested
     @WebMvcTest(controllers = {ShareViewController.class})
-    @Import(CsrfTokenCookieFactory.class)
+    @Import({CsrfTokenCookieFactory.class, GlacierCookieProperties.class})
     @TestPropertySource(properties = {
             "glacier.cookie.secure=true",
             "glacier.domain=example.com",
@@ -228,7 +229,7 @@ class CsrfTokenIssuanceIT {
      */
     @Nested
     @WebMvcTest(controllers = {ShareViewController.class})
-    @Import(CsrfTokenCookieFactory.class)
+    @Import({CsrfTokenCookieFactory.class, GlacierCookieProperties.class})
     @TestPropertySource(properties = {
             "glacier.cookie.secure=false",
             "glacier.domain=example.com",
