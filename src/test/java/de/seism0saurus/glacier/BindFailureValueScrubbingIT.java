@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier;
 
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration;
@@ -143,5 +144,141 @@ class BindFailureValueScrubbingIT {
                                     + "different sentinel value that is echoed by Spring's BindValidationException.")
                             .contains(FAILING_SENTINEL);
                 });
+    }
+
+    // =========================================================================
+    // B2: CookieSecureBooleanBindFailures — glacier.cookie.secure scrubbing
+    // =========================================================================
+
+    /**
+     * Integration tests verifying that {@link GlacierBindHandler} scrubs bind failures
+     * for {@code glacier.cookie.secure} (SR-P3B-07, ADR-P3B-1).
+     *
+     * <p>Three cases mirror the failure paths in {@link GlacierCookiePropertiesBindIT}
+     * but focus on the SCRUBBING behavior: no raw value must appear in the exception chain.
+     *
+     * <p>References: ADR-P3B-1; ADR-P3A-7; SR-P3B-07; CWE-532; ASVS V7.3.1 L1.
+     */
+    @Nested
+    class CookieSecureBooleanBindFailures {
+
+        /** Reusable runner that boots only {@link GlacierCookieProperties} + handler. */
+        private ApplicationContextRunner cookieRunner() {
+            return new ApplicationContextRunner()
+                    .withConfiguration(AutoConfigurations.of(
+                            ValidationAutoConfiguration.class,
+                            ConfigurationPropertiesAutoConfiguration.class))
+                    .withUserConfiguration(GlacierCookieProperties.class, GlacierBindHandler.class);
+        }
+
+        /**
+         * Arrange: {@code glacier.cookie.secure} is completely absent
+         * Act: attempt to bind {@link GlacierCookieProperties}
+         * Assert: context fails; no raw value leaks (vacuously — there is no rejected
+         *         value to scrub; the {@code @NotNull} violation uses a static message)
+         *
+         * <p>BRANCH 1 of {@link GlacierBindHandler.ScrubbingBindHandler}: the
+         * {@code BindValidationException} is replaced with a count-only message.
+         */
+        @Test
+        void missingCookieSecure_failsWithScrubbedMessage() {
+            cookieRunner()
+                    // glacier.cookie.secure NOT set
+                    .run(context -> {
+                        assertThat(context)
+                                .as("Missing glacier.cookie.secure must cause context startup failure "
+                                        + "(ADR-P3B-1, SR-P3B-07, CWE-1188)")
+                                .hasFailed();
+
+                        // The scrubbed message must not contain the property key's value
+                        // (vacuously true for missing property, but asserting the handler ran)
+                        Throwable cause = context.getStartupFailure();
+                        while (cause != null) {
+                            String message = cause.getMessage();
+                            if (message != null) {
+                                // The static @NotNull message must appear; no raw value leak
+                                assertThat(message)
+                                        .as("Exception chain must not expose a raw rejected value "
+                                                + "(SR-P3B-07, ADR-P3A-7, CWE-532, ASVS V7.3.1 L1)")
+                                        .doesNotContain("rejected value [null]");
+                            }
+                            cause = cause.getCause();
+                        }
+                    });
+        }
+
+        /**
+         * Arrange: {@code glacier.cookie.secure=} (empty string)
+         * Act: attempt to bind {@link GlacierCookieProperties}
+         * Assert: context fails; no raw value (empty string) leaks in exception chain
+         *
+         * <p>BRANCH 1 of {@link GlacierBindHandler.ScrubbingBindHandler}: empty string
+         * cannot be converted to {@code Boolean}, leading to a bind failure.
+         */
+        @Test
+        void emptyCookieSecure_failsWithScrubbedMessage() {
+            cookieRunner()
+                    .withPropertyValues("glacier.cookie.secure=")
+                    .run(context -> {
+                        assertThat(context)
+                                .as("Empty glacier.cookie.secure must cause context startup failure "
+                                        + "(ADR-P3B-1, SR-P3B-07)")
+                                .hasFailed();
+
+                        // An empty string binding failure should not expose raw value details
+                        Throwable cause = context.getStartupFailure();
+                        while (cause != null) {
+                            String message = cause.getMessage();
+                            if (message != null) {
+                                assertThat(message)
+                                        .as("Exception chain must not expose the raw empty value "
+                                                + "(SR-P3B-07, ADR-P3A-7, CWE-532)")
+                                        .doesNotContain("rejected value []");
+                            }
+                            cause = cause.getCause();
+                        }
+                    });
+        }
+
+        /**
+         * Arrange: {@code glacier.cookie.secure=notabool}
+         * Act: attempt to bind {@link GlacierCookieProperties}
+         * Assert: context fails; the raw value {@code "notabool"} does NOT appear in any
+         *         exception message in the chain
+         *
+         * <p>BRANCH 2 of {@link GlacierBindHandler.ScrubbingBindHandler}: type-conversion
+         * failure carries the raw value in {@code BindException.getProperty().getValue()}.
+         * The handler replaces it with a {@link de.seism0saurus.glacier.util.LogScrubber}
+         * summary. CWE-532; ASVS V7.3.1 L1.
+         */
+        @Test
+        void nonBooleanCookieSecure_doesNotLeakRawValue() {
+            final String rawValue = "notabool";
+
+            cookieRunner()
+                    .withPropertyValues("glacier.cookie.secure=" + rawValue)
+                    .run(context -> {
+                        assertThat(context)
+                                .as("Non-boolean glacier.cookie.secure must cause context startup failure "
+                                        + "(ADR-P3B-1, SR-P3B-07)")
+                                .hasFailed();
+
+                        // Walk the entire exception chain — raw value must not appear anywhere.
+                        // GlacierBindHandler BRANCH 2 scrubs type-conversion failures.
+                        Throwable cause = context.getStartupFailure();
+                        while (cause != null) {
+                            String message = cause.getMessage();
+                            if (message != null) {
+                                assertThat(message)
+                                        .as("Raw value '%s' must not appear in exception chain — "
+                                                + "GlacierBindHandler BRANCH 2 must scrub "
+                                                + "type-conversion failures (SR-P3B-07, ADR-P3A-7, "
+                                                + "CWE-532, ASVS V7.3.1 L1)", rawValue)
+                                        .doesNotContain(rawValue);
+                            }
+                            cause = cause.getCause();
+                        }
+                    });
+        }
     }
 }
