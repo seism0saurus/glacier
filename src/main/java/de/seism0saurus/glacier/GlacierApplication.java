@@ -5,9 +5,6 @@ import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
-import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -30,18 +27,7 @@ import java.time.Clock;
  * </ul>
  * {@code allowCredentials} is NOT set (defaults to false — never "*" origins with credentials).
  */
-@SpringBootApplication(exclude = {
-        // P3-05 / ADR-SQLITE-01: DataSource is opt-in only when glacier.share.db.path is set.
-        // Without explicit exclusion, spring-boot-starter-jdbc triggers DataSourceAutoConfiguration
-        // and fails at startup if spring.datasource.url is not configured (which it never is by
-        // default — Glacier uses in-memory share links unless an operator configures the SQLite path).
-        // The custom SqliteDataSourceConfig + SharePersistenceProperties handle the conditional
-        // datasource wiring via @ConditionalOnProperty.
-        // References: ADR-SQLITE-01; OWASP A05:2021 Security Misconfiguration.
-        DataSourceAutoConfiguration.class,
-        DataSourceTransactionManagerAutoConfiguration.class,
-        JdbcTemplateAutoConfiguration.class
-})
+@SpringBootApplication
 @EnableScheduling
 public class GlacierApplication {
 

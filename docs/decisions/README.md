@@ -229,10 +229,3 @@ When writing a new ADR, add a row here in the acceptance commit.
 | [2026-05-11-planning-p3-bundle-b.md](2026-05-11-planning-p3-bundle-b.md) | P1: Plan TD-P3A-DOMAIN-FIX (static-literal fix for DomainSafetyValidator.java:98) + GlacierCookieProperties atomic migration of 7 glacier.cookie.secure @Value consumers |
 
 ---
-
-## Persistence
-
-### Share-Link SQLite Persistence (`share-link-sqlite-persistence`)
-| File | Summary |
-|---|---|
-| [2026-05-11-planning-share-link-sqlite-persistence.md](2026-05-11-planning-share-link-sqlite-persistence.md) | P1: Plan opt-in SQLite-backed `ShareLinkRepository` adapter (P3-05) that survives server restarts; in-memory adapter remains default |

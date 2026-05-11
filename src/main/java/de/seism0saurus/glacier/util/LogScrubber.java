@@ -52,7 +52,7 @@ public final class LogScrubber {
      * <p>ADR-F6-05: {@code genericMessageContent.getEvent()} originates from the Mastodon
      * streaming wire — a hostile or compromised instance can inject CRLF / control characters
      * (CWE-117 log injection). This allowlist is the CWE-117 guard: only values in this set
-     * pass through verbatim; everything else is rendered as {@code unknown-len-N}.
+     * pass through verbatim; everything else is rendered as {@code unknown(len=N)}.
      *
      * <p>Package-private for test access: {@code LogScrubberFuzzTest} (same package) references
      * this constant directly to avoid a shadow copy that could silently drift out of sync.
@@ -270,12 +270,8 @@ public final class LogScrubber {
      * control characters to corrupt log entries. This method is the CWE-117 guard:
      * <ul>
      *   <li>Allowlisted event names pass through unchanged — safe for structured logs.</li>
-     *   <li>Unknown names are rendered as {@code unknown-len-N} — bounded length, no
-     *       raw attacker-controlled bytes reach the log encoder.  The format uses only
-     *       alphanumeric characters and hyphens, so the fallback string can never contain
-     *       the raw input as a substring regardless of what the input is (ADR-F6-05;
-     *       prevents the jqwik property {@code doesNotContain(input)} from failing on
-     *       single-character punctuation inputs such as {@code "("}). </li>
+     *   <li>Unknown names are rendered as {@code unknown(len=N)} — bounded length, no
+     *       raw attacker-controlled bytes reach the log encoder.</li>
      *   <li>{@code null} → {@code "null"}; blank → {@code "blank"}.</li>
      * </ul>
      *
@@ -283,13 +279,12 @@ public final class LogScrubber {
      * {@code GenericMessageContent#getEvent()}.
      *
      * @param event the raw event name from the Mastodon streaming wire; may be {@code null}
-     * @return a log-safe representation of the event name; uses only {@code [A-Za-z0-9-]}
-     *         characters so it is safe for structured-log fields without further escaping
+     * @return a log-safe representation of the event name
      */
     public static String safeEventName(final String event) {
         if (event == null) return "null";
         if (event.isBlank()) return "blank";
         if (KNOWN_STREAM_EVENTS.contains(event)) return event;
-        return "unknown-len-" + event.length();
+        return "unknown(len=" + event.length() + ")";
     }
 }
