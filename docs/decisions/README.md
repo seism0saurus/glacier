@@ -228,5 +228,6 @@ When writing a new ADR, add a row here in the acceptance commit.
 |---|---|
 | [2026-05-11-planning-p3-bundle-b.md](2026-05-11-planning-p3-bundle-b.md) | P1: Plan TD-P3A-DOMAIN-FIX (static-literal fix for DomainSafetyValidator.java:98) + GlacierCookieProperties atomic migration of 7 glacier.cookie.secure @Value consumers |
 | [2026-05-12-implementation-p3-bundle-b.md](2026-05-12-implementation-p3-bundle-b.md) | P2: Lane A static-message fix + A1/A1b/A1c/A4 tests; Lane B GlacierCookieProperties + all 7 consumer migrations + B1–B5/B4a tests; 345 IT, 0 failures |
+| [2026-05-12-acceptance-p3-bundle-b.md](2026-05-12-acceptance-p3-bundle-b.md) | P3: PASSED — 14/14 AC; 3 medium findings (F-3/F-10/F-14) deferred; 345 IT, 0 failures |
 
 ---
