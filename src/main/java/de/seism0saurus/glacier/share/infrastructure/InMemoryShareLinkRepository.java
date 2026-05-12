@@ -6,6 +6,7 @@ import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Repository;
 
@@ -36,8 +37,17 @@ import java.util.stream.Collectors;
  *   <li>Not durable — state is lost on restart.  Share links are short-lived (7 days max),
  *       so loss on restart is an accepted operational trade-off (see ADR-SHARE-01 rationale).</li>
  * </ul>
+ *
+ * <p>Conditional registration (P3-05; ADR-SQLITE-01):
+ * This bean is active when {@code glacier.share.db.path} is NOT set (i.e. the default,
+ * in-memory-only case). The {@link ConditionalOnProperty} pattern with
+ * {@code havingValue="NEVER_MATCHES"} and {@code matchIfMissing=true} is used instead of
+ * {@code @ConditionalOnMissingBean(ShareLinkRepository.class)} to avoid the Spring
+ * self-referential BeanCreationException that occurs when the condition evaluates whether
+ * the interface's own implementation bean exists during its own registration.
  */
 @Repository
+@ConditionalOnProperty(name = "glacier.share.db.path", havingValue = "NEVER_MATCHES", matchIfMissing = true)
 public class InMemoryShareLinkRepository implements ShareLinkRepository {
 
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");

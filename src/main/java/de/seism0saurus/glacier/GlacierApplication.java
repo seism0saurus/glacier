@@ -5,6 +5,9 @@ import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -26,8 +29,21 @@ import java.time.Clock;
  *   <li>{@code https://${glacier.domain}} — production origin</li>
  * </ul>
  * {@code allowCredentials} is NOT set (defaults to false — never "*" origins with credentials).
+ *
+ * <p>DataSource auto-configuration exclusions (P3-05; ADR-SQLITE-01):
+ * {@link DataSourceAutoConfiguration}, {@link DataSourceTransactionManagerAutoConfiguration},
+ * and {@link JdbcTemplateAutoConfiguration} are excluded so that Spring Boot does NOT attempt
+ * to auto-configure a global DataSource from {@code application.properties}. The vast majority
+ * of Glacier operators do NOT set {@code glacier.share.db.path}, so no DataSource URL is
+ * available. Without these exclusions, Boot would fail at startup with a missing-URL error.
+ * The SQLite DataSource is opt-in: it is wired by {@code SqliteDataSourceConfig} only when
+ * {@code glacier.share.db.path} is present (ADR-SQLITE-01; OWASP A05 — fail-secure defaults).
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = {
+        DataSourceAutoConfiguration.class,
+        DataSourceTransactionManagerAutoConfiguration.class,
+        JdbcTemplateAutoConfiguration.class
+})
 @EnableScheduling
 public class GlacierApplication {
 
