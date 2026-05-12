@@ -6,7 +6,6 @@ import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
-import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import de.seism0saurus.glacier.webservice.FallbackAuthGuard;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 import jakarta.servlet.http.Cookie;
@@ -106,7 +105,6 @@ class ShareLinkControllerIT {
                 .andExpect(jsonPath("$.shareLinkId").value("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
                 .andExpect(jsonPath("$.expiresAt").isNotEmpty())
                 .andExpect(jsonPath("$.readonlyUrl").isNotEmpty())
-                // NOTE: readonlyUrl appears only in the create (POST) response — not the list view
                 // sharerWallId must NEVER appear in the response
                 .andExpect(result -> {
                     String body = result.getResponse().getContentAsString();
@@ -220,20 +218,17 @@ class ShareLinkControllerIT {
     @Test
     void getShareLinks_returnsActiveLinksForSharer() throws Exception {
         authenticateAs(WALL_ID);
-        // Use hash8 of the token for idHash8 (ADR-SQLITE-05 — raw token not returned in list)
-        String idHash8 = de.seism0saurus.glacier.util.LogScrubber.hash8("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        ShareLinkSummary summary = new ShareLinkSummary(
-                idHash8, NOW, EXPIRES, null, ShareLinkStatus.ACTIVE, WALL_ID);
-        when(shareLinkService.listSummaryBySharer(eq(WALL_ID), any(Instant.class)))
-                .thenReturn(List.of(summary));
+        ShareLinkId id1 = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        ShareLink link1 = ShareLink.create(id1, WALL_ID, NOW, java.time.Duration.ofDays(7));
+        when(shareLinkService.listBySharer(eq(WALL_ID), any(Instant.class)))
+                .thenReturn(List.of(link1));
 
         mockMvc.perform(get("/rest/share-links")
                         .cookie(new Cookie("wallId", WALL_ID))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].idHash8").value(idHash8))
-                .andExpect(jsonPath("$[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$[0].shareLinkId").value("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
                 // sharerWallId must NEVER appear in the response
                 .andExpect(result -> {
                     String body = result.getResponse().getContentAsString();
