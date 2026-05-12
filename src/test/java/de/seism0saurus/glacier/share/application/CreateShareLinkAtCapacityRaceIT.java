@@ -171,6 +171,7 @@ class CreateShareLinkAtCapacityRaceIT {
 
         // Core assertion: active count must never exceed CAP
         Instant now2 = clock.instant();
+        @SuppressWarnings("deprecation")
         List<ShareLink> activeLinks = shareLinkService.listBySharer(SHARER_WALL_ID, now2)
                 .stream()
                 .filter(link -> link.status(now2) == ShareLinkStatus.ACTIVE)

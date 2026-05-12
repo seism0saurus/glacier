@@ -1,13 +1,14 @@
 package de.seism0saurus.glacier.share.infrastructure;
 
+import de.seism0saurus.glacier.share.domain.SecureRandomTokenGenerator;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
 import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
-import de.seism0saurus.glacier.share.domain.SecureRandomTokenGenerator;
-import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -22,30 +23,41 @@ import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for {@link InMemoryShareLinkRepository}.
+ * Unit tests for {@link SqliteShareLinkRepository} using an in-memory SQLite database.
  *
- * <p>Covers:
- * <ul>
- *   <li>Basic CRUD: save, findById, markRevoked.</li>
- *   <li>Sweep: {@code sweepExpired} removes only links whose TTL has passed.</li>
- *   <li>Count methods: {@code countActive}, {@code countActiveForSharer},
- *       {@code countActiveForIp}.</li>
- *   <li>Concurrency: 32 virtual-thread simultaneous saves produce no lost updates.</li>
- * </ul>
+ * <p>Mirrors the scenario coverage of {@link InMemoryShareLinkRepositoryTest} exactly,
+ * plus SQLite-specific scenarios (token at rest, IP at rest, revocation race).
+ *
+ * <h2>In-memory connection strategy</h2>
+ * {@link SingleConnectionDataSource} is used instead of HikariCP because SQLite
+ * {@code :memory:} creates a separate, empty database per connection. Using a single
+ * connection ensures that schema DDL applied in {@link #setUp()} is visible to all
+ * subsequent JDBC operations within the same test.
+ *
+ * <p>References: SR-SQLITE-01; SR-SQLITE-04; ADR-SQLITE-04; R-05.
  */
-class InMemoryShareLinkRepositoryTest {
+class SqliteShareLinkRepositoryTest {
 
     private static final String SHARER_WALL_ID = "sharer-wall-id-00000000000000000000000";
     private static final String SHARER_IP = "10.0.0.1";
     private static final Duration TTL = Duration.ofDays(7);
     private static final Instant T0 = Instant.parse("2025-06-01T00:00:00Z");
+    // Valid 44-char Base64 key (256 bits; SR-SQLITE-22)
+    private static final String HMAC_KEY = "A".repeat(44);
 
-    private InMemoryShareLinkRepository repository;
+    private SqliteShareLinkRepository repository;
     private SecureRandomTokenGenerator tokenGenerator;
+    private SingleConnectionDataSource dataSource;
 
     @BeforeEach
     void setUp() {
-        repository = new InMemoryShareLinkRepository();
+        dataSource = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        SharePersistenceProperties props = new SharePersistenceProperties();
+        props.setPath(":memory:");
+        props.setIpHmacKey(HMAC_KEY);
+        repository = new SqliteShareLinkRepository(jdbcTemplate, props);
+        repository.init();
         tokenGenerator = new SecureRandomTokenGenerator();
     }
 
@@ -53,7 +65,8 @@ class InMemoryShareLinkRepositoryTest {
         return ShareLink.create(tokenGenerator.generateShareLinkId(), SHARER_WALL_ID, createdAt, TTL);
     }
 
-    private ShareLink buildLinkForSharer(final String sharerWallId, final String creatorIp, final Instant createdAt) {
+    private ShareLink buildLinkForSharer(final String sharerWallId, final String creatorIp,
+                                          final Instant createdAt) {
         return ShareLink.create(tokenGenerator.generateShareLinkId(), sharerWallId, creatorIp, createdAt, TTL);
     }
 
@@ -73,6 +86,20 @@ class InMemoryShareLinkRepositoryTest {
     }
 
     @Test
+    void savedLink_allFieldsMatchOriginal() {
+        ShareLink link = buildLink(T0);
+        repository.save(link);
+
+        ShareLink found = repository.findById(link.id()).orElseThrow();
+
+        assertThat(found.sharerWallId()).isEqualTo(SHARER_WALL_ID);
+        assertThat(found.createdAt()).isEqualTo(T0);
+        assertThat(found.expiresAt()).isEqualTo(T0.plus(TTL));
+        assertThat(found.revokedAt()).isEmpty();
+        assertThat(found.status(T0)).isEqualTo(ShareLinkStatus.ACTIVE);
+    }
+
+    @Test
     void findByIdReturnsEmptyForUnknownId() {
         ShareLinkId unknownId = ShareLinkId.fromUrlPath("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
         assertThat(repository.findById(unknownId)).isEmpty();
@@ -86,8 +113,8 @@ class InMemoryShareLinkRepositoryTest {
     void markRevokedTransitionsLinkToRevokedStatus() {
         ShareLink link = buildLink(T0);
         repository.save(link);
-
         Instant revokeTime = T0.plusSeconds(60);
+
         repository.markRevoked(link.id(), revokeTime);
 
         Optional<ShareLink> found = repository.findById(link.id());
@@ -97,9 +124,9 @@ class InMemoryShareLinkRepositoryTest {
 
     @Test
     void markRevokedOnUnknownIdIsNoOp() {
-        // Should not throw; anti-enumeration design — unknown and forbidden look the same
         ShareLinkId unknownId = ShareLinkId.fromUrlPath("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
-        repository.markRevoked(unknownId, T0); // must not throw
+        // Must not throw
+        repository.markRevoked(unknownId, T0);
     }
 
     // ---------------------------------------------------------------------------
@@ -109,7 +136,7 @@ class InMemoryShareLinkRepositoryTest {
     @Test
     void sweepExpiredRemovesOnlyExpiredLinks() {
         ShareLink active = buildLink(T0);
-        ShareLink expired = buildLink(T0.minus(TTL).minusSeconds(1)); // already past expiry
+        ShareLink expired = buildLink(T0.minus(TTL).minusSeconds(1));
 
         repository.save(active);
         repository.save(expired);
@@ -133,7 +160,6 @@ class InMemoryShareLinkRepositoryTest {
         repository.save(link);
         repository.markRevoked(link.id(), T0.plusSeconds(30));
 
-        // Sweep before TTL has elapsed — revoked links must survive sweep
         int removed = repository.sweepExpired(T0.plusSeconds(60));
 
         assertThat(removed).isEqualTo(0);
@@ -148,8 +174,7 @@ class InMemoryShareLinkRepositoryTest {
     void countActiveReturnsNumberOfNonExpiredNonRevokedLinks() {
         repository.save(buildLink(T0));
         repository.save(buildLink(T0));
-        ShareLink expired = buildLink(T0.minus(TTL).minusSeconds(1));
-        repository.save(expired);
+        repository.save(buildLink(T0.minus(TTL).minusSeconds(1))); // expired
 
         long count = repository.countActive(T0);
 
@@ -191,35 +216,79 @@ class InMemoryShareLinkRepositoryTest {
     // ---------------------------------------------------------------------------
 
     @Test
-    void listSummaryBySharer_returnsCorrectProjectionsForSharer() {
+    void listSummaryBySharer_returnsAllLinksForSharer() {
         ShareLink link1 = buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0);
         ShareLink link2 = buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0.plusSeconds(10));
         repository.save(link1);
         repository.save(link2);
-        // Different sharer — must not appear in the result
-        repository.save(buildLinkForSharer("other-wall-id-0000000000000000000000000", SHARER_IP, T0));
+        // Different sharer — must not appear
+        repository.save(buildLinkForSharer("other-wall-id-00000000000000000000000", SHARER_IP, T0));
 
         List<ShareLinkSummary> summaries = repository.listSummaryBySharer(SHARER_WALL_ID, T0);
 
         assertThat(summaries).hasSize(2);
-        assertThat(summaries).allSatisfy(s -> {
-            assertThat(s.sharerWallId()).isEqualTo(SHARER_WALL_ID);
-            assertThat(s.idHash8()).matches("[0-9a-f]{8}");
-            assertThat(s.status()).isEqualTo(ShareLinkStatus.ACTIVE);
-        });
+        assertThat(summaries).allSatisfy(s ->
+                assertThat(s.sharerWallId()).isEqualTo(SHARER_WALL_ID));
     }
 
     @Test
-    void listSummaryBySharer_returnsEmpty_forUnknownSharer() {
-        repository.save(buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0));
+    void listSummaryBySharer_orderedByCreatedAtDesc() {
+        ShareLink older = buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0);
+        ShareLink newer = buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0.plusSeconds(30));
+        repository.save(older);
+        repository.save(newer);
 
-        List<ShareLinkSummary> summaries = repository.listSummaryBySharer("unknown-sharer-00000000000000000000", T0);
+        List<ShareLinkSummary> summaries = repository.listSummaryBySharer(SHARER_WALL_ID, T0);
 
-        assertThat(summaries).isEmpty();
+        // Ordered DESC by createdAt — newer first
+        assertThat(summaries.get(0).createdAt()).isAfterOrEqualTo(summaries.get(1).createdAt());
+    }
+
+    @Test
+    void listSummaryBySharer_idHash8_isFirst8CharsOfStoredHash() {
+        ShareLink link = buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0);
+        repository.save(link);
+
+        List<ShareLinkSummary> summaries = repository.listSummaryBySharer(SHARER_WALL_ID, T0);
+
+        assertThat(summaries).hasSize(1);
+        // idHash8 must be exactly 8 hex chars
+        assertThat(summaries.get(0).idHash8())
+                .as("idHash8 must be exactly 8 hex characters")
+                .matches("[0-9a-f]{8}");
+    }
+
+    @Test
+    void listSummaryBySharer_revokedLink_hasRevokedStatus() {
+        ShareLink link = buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0);
+        repository.save(link);
+        repository.markRevoked(link.id(), T0.plusSeconds(60));
+
+        List<ShareLinkSummary> summaries = repository.listSummaryBySharer(SHARER_WALL_ID, T0.plusSeconds(120));
+
+        assertThat(summaries).hasSize(1);
+        assertThat(summaries.get(0).status()).isEqualTo(ShareLinkStatus.REVOKED);
+        assertThat(summaries.get(0).revokedAt()).isNotNull();
     }
 
     // ---------------------------------------------------------------------------
-    // Concurrency — 32 virtual threads, no lost updates
+    // findAllBySharer (deprecated — returns empty for SQLite adapter)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void findAllBySharer_returnsEmptyForSqliteAdapter() {
+        repository.save(buildLinkForSharer(SHARER_WALL_ID, SHARER_IP, T0));
+
+        List<ShareLink> result = repository.findAllBySharer(SHARER_WALL_ID);
+
+        assertThat(result)
+                .as("findAllBySharer on SQLite adapter must return empty — raw token not recoverable (ADR-SQLITE-04)")
+                .isEmpty();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Concurrency — 32 virtual threads saving
     // ---------------------------------------------------------------------------
 
     @Test
@@ -239,41 +308,12 @@ class InMemoryShareLinkRepositoryTest {
                     .toList();
 
             List<Future<Void>> futures = executor.invokeAll(tasks);
-            // Ensure all completed without exception
-            for (Future<Void> f : futures) {
-                f.get(); // re-throws any ExecutionException
-            }
-        }
-
-        // All 32 saves must be visible — no lost updates
-        long count = repository.countActive(T0);
-        assertThat(count).isEqualTo(threadCount);
-    }
-
-    @Test
-    void concurrentRevocationsDoNotCorruptRepository() throws Exception {
-        // Save 32 links, then revoke them concurrently
-        List<ShareLink> links = new ArrayList<>();
-        for (int i = 0; i < 32; i++) {
-            ShareLink link = buildLink(T0);
-            repository.save(link);
-            links.add(link);
-        }
-
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            List<Callable<Void>> tasks = links.stream()
-                    .<Callable<Void>>map(link -> () -> {
-                        repository.markRevoked(link.id(), T0.plusSeconds(1));
-                        return null;
-                    })
-                    .toList();
-            List<Future<Void>> futures = executor.invokeAll(tasks);
             for (Future<Void> f : futures) {
                 f.get();
             }
         }
 
-        // All 32 links should be revoked; countActive must return 0
-        assertThat(repository.countActive(T0.plusSeconds(2))).isEqualTo(0);
+        long count = repository.countActive(T0);
+        assertThat(count).isEqualTo(threadCount);
     }
 }

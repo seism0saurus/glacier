@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+// ShareLinkSummary is in the same package (share.domain) — no cross-layer import needed
+
 /**
  * Repository interface for {@link ShareLink} aggregate persistence.
  *
@@ -89,6 +91,20 @@ public interface ShareLinkRepository {
     int countActiveForIp(String ip, Instant now);
 
     /**
+     * Returns a summary projection for all links belonging to the given sharer.
+     *
+     * <p>Used by the sharer's self-management UI. Does NOT return the raw token — the
+     * share URL is shown exactly once at creation (ADR-SQLITE-05). The SQLite adapter
+     * stores only SHA-256(token) and cannot reconstruct the original token; the summary
+     * exposes {@code idHash8} (first 8 hex chars of the hash) as a visual identifier.
+     *
+     * @param sharerWallId the sharer's wallId; must not be null
+     * @param now          reference instant for {@link ShareLinkStatus} computation
+     * @return list of summaries ordered by creation time descending; never null; may be empty
+     */
+    List<ShareLinkSummary> listSummaryBySharer(String sharerWallId, Instant now);
+
+    /**
      * Returns all links for the given sharer, regardless of status.
      *
      * <p>The application layer filters for ACTIVE status using
@@ -96,6 +112,10 @@ public interface ShareLinkRepository {
      *
      * @param sharerWallId the sharer's wallId; must not be null
      * @return all stored links for this sharer; never null; may be empty
+     * @deprecated Use {@link #listSummaryBySharer(String, Instant)} instead.
+     *             This method returns full aggregates including the raw share-link token,
+     *             which is incompatible with at-rest token hashing (ADR-SQLITE-04).
      */
+    @Deprecated
     List<ShareLink> findAllBySharer(String sharerWallId);
 }

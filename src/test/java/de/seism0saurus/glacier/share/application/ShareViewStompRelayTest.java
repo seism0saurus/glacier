@@ -25,8 +25,14 @@ import static org.mockito.Mockito.*;
  * revocation control messages are delivered, and the wallId never leaks
  * into viewer-facing topic paths (SR-SHARE-02).
  *
+ * <p>{@code ShareViewStompRelay} uses the deprecated {@link ShareLinkService#listBySharer}
+ * method to obtain active links with full IDs for topic-path construction. The
+ * {@code @SuppressWarnings} here applies to the test's mock stubbing of that method.
+ * The production migration to a non-deprecated alternative is deferred to a follow-up lane.
+ *
  * <p>Security: SR-SHARE-02, SR-SHARE-06, ADR-SHARE-04.
  */
+@SuppressWarnings("deprecation")
 class ShareViewStompRelayTest {
 
     private SimpMessagingTemplate mockTemplate;

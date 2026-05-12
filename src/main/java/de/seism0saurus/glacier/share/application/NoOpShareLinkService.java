@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.share.application;
 
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -47,6 +48,13 @@ public class NoOpShareLinkService implements ShareLinkService {
     }
 
     @Override
+    public List<ShareLinkSummary> listSummaryBySharer(String sharerWallId, Instant now) {
+        log.debug("NoOpShareLinkService.listSummaryBySharer called — returning empty");
+        return List.of();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
     public List<ShareLink> listBySharer(String sharerWallId, Instant now) {
         log.debug("NoOpShareLinkService.listBySharer called — returning empty");
         return List.of();

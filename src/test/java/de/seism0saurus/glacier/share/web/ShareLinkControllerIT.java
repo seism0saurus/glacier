@@ -6,6 +6,8 @@ import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
+import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.FallbackAuthGuard;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
 import jakarta.servlet.http.Cookie;
@@ -218,18 +220,24 @@ class ShareLinkControllerIT {
     @Test
     void getShareLinks_returnsActiveLinksForSharer() throws Exception {
         authenticateAs(WALL_ID);
-        ShareLinkId id1 = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        ShareLink link1 = ShareLink.create(id1, WALL_ID, NOW, java.time.Duration.ofDays(7));
-        when(shareLinkService.listBySharer(eq(WALL_ID), any(Instant.class)))
-                .thenReturn(List.of(link1));
+        // The token value — hash its first 8 chars to predict idHash8 in the response
+        String token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        // Compute idHash8 as SHA-256(token).substring(0, 8) — same logic as repository
+        String expectedIdHash8 = LogScrubber.hash8(token).substring(0, 8);
+
+        ShareLinkSummary summary = new ShareLinkSummary(
+                expectedIdHash8, NOW, EXPIRES, null, ShareLinkStatus.ACTIVE, WALL_ID);
+        when(shareLinkService.listSummaryBySharer(eq(WALL_ID), any(Instant.class)))
+                .thenReturn(List.of(summary));
 
         mockMvc.perform(get("/rest/share-links")
                         .cookie(new Cookie("wallId", WALL_ID))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].shareLinkId").value("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
-                // sharerWallId must NEVER appear in the response
+                .andExpect(jsonPath("$[0].idHash8").value(expectedIdHash8))
+                .andExpect(jsonPath("$[0].status").value("ACTIVE"))
+                // sharerWallId must NEVER appear in the response body
                 .andExpect(result -> {
                     String body = result.getResponse().getContentAsString();
                     org.assertj.core.api.Assertions.assertThat(body).doesNotContain(WALL_ID);

@@ -7,6 +7,7 @@ import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkLifetimePolicy;
 import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -284,18 +285,62 @@ class ShareLinkServiceImplTest {
     }
 
     // -----------------------------------------------------------------------
-    // Priority 1 — listBySharer
+    // Priority 1 — listSummaryBySharer
     // -----------------------------------------------------------------------
 
     /**
-     * {@code listBySharer} returns only ACTIVE links — expired and revoked entries
+     * {@code listSummaryBySharer} delegates directly to the repository and returns
+     * the projections unchanged — the service does not filter or transform summaries.
+     *
+     * <p>Arrange: repository returns two summaries for the sharer.
+     * <p>Act:     call {@code listSummaryBySharer}.
+     * <p>Assert:  both summaries are returned in the same order; no filtering applied.
+     */
+    @Test
+    void listSummaryBySharer_delegatesToRepository_andReturnsSummariesUnfiltered() {
+        ShareLinkSummary s1 = new ShareLinkSummary(
+                "abcd1234", T0, T0.plus(TTL), null, ShareLinkStatus.ACTIVE, SHARER_WALL_ID);
+        ShareLinkSummary s2 = new ShareLinkSummary(
+                "efgh5678", T0.minusSeconds(60), T0.plus(TTL).minusSeconds(60),
+                T0.minusSeconds(30), ShareLinkStatus.REVOKED, SHARER_WALL_ID);
+        when(repository.listSummaryBySharer(SHARER_WALL_ID, T0)).thenReturn(List.of(s1, s2));
+
+        List<ShareLinkSummary> result = service.listSummaryBySharer(SHARER_WALL_ID, T0);
+
+        assertThat(result).containsExactly(s1, s2);
+        verify(repository).listSummaryBySharer(SHARER_WALL_ID, T0);
+    }
+
+    /**
+     * {@code listSummaryBySharer} returns empty when the repository returns empty.
+     *
+     * <p>Arrange: repository returns empty list.
+     * <p>Act:     call {@code listSummaryBySharer}.
+     * <p>Assert:  result is empty; no exception.
+     */
+    @Test
+    void listSummaryBySharer_returnsEmpty_whenRepositoryReturnsEmpty() {
+        when(repository.listSummaryBySharer(SHARER_WALL_ID, T0)).thenReturn(List.of());
+
+        List<ShareLinkSummary> result = service.listSummaryBySharer(SHARER_WALL_ID, T0);
+
+        assertThat(result).isEmpty();
+    }
+
+    // -----------------------------------------------------------------------
+    // Priority 1 — listBySharer (deprecated)
+    // -----------------------------------------------------------------------
+
+    /**
+     * {@code listBySharer} (deprecated) returns only ACTIVE links — expired and revoked entries
      * are filtered out so the sharer's management UI shows only usable links.
      *
      * <p>Arrange: one ACTIVE link + one EXPIRED link + one REVOKED link for the same sharer.
-     * <p>Act:     call {@code listBySharer}.
+     * <p>Act:     call the deprecated {@code listBySharer}.
      * <p>Assert:  only the ACTIVE link is present in the result.
      */
     @Test
+    @SuppressWarnings("deprecation")
     void listBySharer_filtersToActiveOnly() {
         ShareLinkId activeId = tokenGenerator.generateShareLinkId();
         ShareLinkId expiredId = tokenGenerator.generateShareLinkId();

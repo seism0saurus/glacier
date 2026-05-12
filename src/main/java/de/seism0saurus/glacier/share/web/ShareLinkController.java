@@ -5,6 +5,7 @@ import de.seism0saurus.glacier.share.application.ShareLinkNotFoundOrNotAuthorise
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.FallbackAuthGuard;
 import de.seism0saurus.glacier.webservice.cache.FallbackRateLimiter;
@@ -253,7 +254,7 @@ public class ShareLinkController {
 
         String principal = auth.principal();
         Instant now = clock.instant();
-        List<ShareLinkListEntry> entries = shareLinkService.listBySharer(principal, now)
+        List<ShareLinkListEntry> entries = shareLinkService.listSummaryBySharer(principal, now)
                 .stream()
                 .map(this::toListEntry)
                 .toList();
@@ -272,11 +273,12 @@ public class ShareLinkController {
                 buildReadonlyUrl(link.id().value()));
     }
 
-    private ShareLinkListEntry toListEntry(final ShareLink link) {
+    private ShareLinkListEntry toListEntry(final ShareLinkSummary summary) {
         return new ShareLinkListEntry(
-                link.id().value(),
-                link.expiresAt(),
-                buildReadonlyUrl(link.id().value()));
+                summary.idHash8(),
+                summary.createdAt(),
+                summary.expiresAt(),
+                summary.status());
     }
 
     private String buildReadonlyUrl(final String shareLinkId) {

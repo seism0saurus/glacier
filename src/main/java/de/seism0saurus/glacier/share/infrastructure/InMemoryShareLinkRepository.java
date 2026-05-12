@@ -4,12 +4,16 @@ import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkRepository;
 import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Repository;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -134,10 +138,57 @@ public class InMemoryShareLinkRepository implements ShareLinkRepository {
     }
 
     @Override
+    public List<ShareLinkSummary> listSummaryBySharer(final String sharerWallId, final Instant now) {
+        return store.values().stream()
+                .filter(link -> sharerWallId.equals(link.sharerWallId()))
+                .sorted((a, b) -> b.createdAt().compareTo(a.createdAt()))
+                .map(link -> {
+                    String hash8 = sha256Hex(link.id().value()).substring(0, 8);
+                    return new ShareLinkSummary(
+                            hash8,
+                            link.createdAt(),
+                            link.expiresAt(),
+                            link.revokedAt().orElse(null),
+                            link.status(now),
+                            link.sharerWallId());
+                })
+                .toList();
+    }
+
+    @Override
+    @Deprecated
     public List<ShareLink> findAllBySharer(final String sharerWallId) {
         return store.values().stream()
                 .filter(link -> sharerWallId.equals(link.sharerWallId()))
                 .collect(Collectors.toList());
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the full lowercase hex SHA-256 digest of the given value.
+     *
+     * <p>Used to compute the {@code idHash8} visual identifier for summary projections.
+     * SHA-256 is guaranteed by every JVM (NIST FIPS 180-4).
+     *
+     * @param value the input string; must not be null
+     * @return lowercase hex-encoded SHA-256 digest; always 64 characters
+     */
+    private static String sha256Hex(final String value) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is guaranteed in every JVM (NIST FIPS 180-4)
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
     }
 
     // -------------------------------------------------------------------------

@@ -6,12 +6,15 @@ import com.tngtech.archunit.core.domain.JavaMethodCall;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
+import de.seism0saurus.glacier.share.domain.ShareLink;
+import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Statement;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
@@ -21,27 +24,21 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  * <ol>
  *   <li>No {@code java.sql.Statement} (non-prepared) calls from {@code share.infrastructure.*}
  *       — all SQL must go through {@code PreparedStatement} (SR-SQLITE-10; OWASP A03 — Injection).</li>
- *   <li>{@code sha256Hex} method is private static within {@code share.infrastructure.*} —
- *       raw token hashing must not leak outside the adapter package (SR-SQLITE-19; ADR-SQLITE-04).
- *       [Disabled until Lane 3 implements {@code SqliteShareLinkRepository}]</li>
+ *   <li>{@code sha256Hex} methods in {@code share.infrastructure.*} must be private —
+ *       raw token hashing must not be callable from outside the adapter package
+ *       (SR-SQLITE-19; ADR-SQLITE-04).</li>
  *   <li>{@code ShareLinkSummary} record must not carry a field named {@code id}, {@code token},
  *       {@code secret}, or {@code url}, and must not have a field of type {@code ShareLinkId}
- *       (SR-SQLITE-20; ADR-SQLITE-05).
- *       [Disabled until Lane 3 implements {@code ShareLinkSummary}]</li>
- *   <li>{@code ShareLink#creatorIp()} may only be called from {@code ShareLinkServiceImpl.create}
- *       and {@code SqliteShareLinkRepository} — raw IP must not be exposed elsewhere
- *       (SR-SQLITE-23; GDPR Art. 25).
- *       [Disabled until Lane 3 implements {@code SqliteShareLinkRepository}]</li>
+ *       (SR-SQLITE-20; ADR-SQLITE-05).</li>
+ *   <li>{@code ShareLink#creatorIp()} may only be called from classes within
+ *       {@code share.infrastructure} — raw IP must not be accessed outside the
+ *       persistence/cap-accounting layer (SR-SQLITE-23; GDPR Art. 25).</li>
  * </ol>
- *
- * <p>Rules 2–4 are {@link Disabled} until Lane 3 completes the implementation. They will be
- * re-enabled in the acceptance phase. The {@code @Disabled} annotation carries the reason
- * so the gate cannot be silently dropped.
  *
  * <p>References:
  * <ul>
  *   <li>SR-SQLITE-10: no {@code Statement} from adapter package</li>
- *   <li>SR-SQLITE-19: single {@code sha256Hex} call site (ADR-SQLITE-04)</li>
+ *   <li>SR-SQLITE-19: {@code sha256Hex} is private in share.infrastructure (ADR-SQLITE-04)</li>
  *   <li>SR-SQLITE-20: {@code ShareLinkSummary} no-token ArchUnit rule (ADR-SQLITE-05)</li>
  *   <li>SR-SQLITE-23: {@code ShareLink#creatorIp()} call-site restriction</li>
  *   <li>OWASP A03:2021 — Injection; ASVS V5.3.4 (L1)</li>
@@ -100,67 +97,115 @@ class ShareLinkPersistenceArchitectureTest {
     }
 
     // -------------------------------------------------------------------------
-    // Rule 2: sha256Hex is private static within share.infrastructure (Lane 3)
+    // Rule 2: sha256Hex is private in share.infrastructure (active)
     // SR-SQLITE-19; ADR-SQLITE-04
     // -------------------------------------------------------------------------
 
     /**
-     * SR-SQLITE-19 / ADR-SQLITE-04: the {@code sha256Hex} method on
-     * {@code SqliteShareLinkRepository} must be private — raw token hashing must not be
-     * callable from outside the adapter package.
+     * SR-SQLITE-19 / ADR-SQLITE-04: any {@code sha256Hex} method declared in
+     * {@code share.infrastructure} must be private.
      *
-     * <p>Disabled until Lane 3 creates {@code SqliteShareLinkRepository}.
-     * Re-enable in the acceptance phase.
+     * <p>Raw token hashing is an adapter-internal concern. Exposing it as package-visible
+     * or public would allow callers outside the adapter to hash arbitrary values using the
+     * same algorithm and potentially reason about the token space. Private visibility
+     * enforces the encapsulation contract.
+     *
+     * <p>Both the static variant in {@code SqliteShareLinkRepository} and any other
+     * adapter class in the package are covered by this rule.
      */
     @Test
-    @Disabled("implemented in Lane 3 — SqliteShareLinkRepository.sha256Hex() not yet present")
-    void sha256HexIsPrivateAndOnlyCallableWithinShareInfrastructure() {
-        // When enabled, this rule asserts that sha256Hex has private visibility
-        // using noClasses().that().doNotResideInAPackage("share.infrastructure..")
-        // .should().callMethod(SqliteShareLinkRepository.class, "sha256Hex", String.class)
-        // The exact rule implementation is deferred until the target class exists.
+    void sha256HexIsPrivateWithinShareInfrastructure() {
+        // SR-SQLITE-19: sha256Hex must be private — hashing logic must not escape the adapter
+        // ADR-SQLITE-04: single, encapsulated hash path for token-at-rest storage
+        ArchRule rule = methods()
+                .that().haveName("sha256Hex")
+                .and().areDeclaredInClassesThat()
+                .resideInAPackage("de.seism0saurus.glacier.share.infrastructure..")
+                .should().bePrivate()
+                .because("SR-SQLITE-19 / ADR-SQLITE-04: sha256Hex is an adapter-internal "
+                        + "helper — private visibility prevents callers outside the package "
+                        + "from depending on the raw token hashing algorithm");
+        rule.check(productionClasses);
     }
 
     // -------------------------------------------------------------------------
-    // Rule 3: ShareLinkSummary has no raw-token fields (Lane 3)
+    // Rule 3: ShareLinkSummary has no raw-token fields (active)
     // SR-SQLITE-20; ADR-SQLITE-05
     // -------------------------------------------------------------------------
 
     /**
      * SR-SQLITE-20 / ADR-SQLITE-05: the {@code ShareLinkSummary} record must not contain
-     * any field named {@code id}, {@code token}, {@code secret}, or {@code url}, and must
-     * not have a field of type {@code ShareLinkId}.
+     * any field named {@code id}, {@code token}, {@code secret}, or {@code url}.
      *
-     * <p>This prevents the "shadow token retrieval" attack where the management list is used
-     * to recover bearer tokens that were intentionally not stored in the DB.
-     *
-     * <p>Disabled until Lane 3 creates {@code ShareLinkSummary}.
+     * <p>This prevents the "shadow token retrieval" attack: the management list endpoint
+     * must never return data that allows reconstruction of a bearer token. The record
+     * carries only {@code idHash8} (first 8 chars of SHA-256(token)) — an opaque
+     * visual identifier that cannot reverse-engineer the raw token.
      */
     @Test
-    @Disabled("implemented in Lane 3 — ShareLinkSummary record not yet present")
-    void shareLinkSummaryHasNoRawTokenOrIdFields() {
-        // When enabled, this rule will use ArchUnit's field-access DSL to assert
-        // that no field in ShareLinkSummary is named "id", "token", "secret", "url",
-        // or has type ShareLinkId.
+    void shareLinkSummaryHasNoForbiddenFieldName() {
+        // SR-SQLITE-20: field-name gate — names that could expose raw tokens are forbidden
+        // ADR-SQLITE-05: ShareLinkSummary is a safe read-model projection
+        ArchRule noIdField = fields()
+                .that().areDeclaredInClassesThat().haveSimpleName("ShareLinkSummary")
+                .should().notHaveName("id")
+                .because("SR-SQLITE-20: 'id' would expose the raw ShareLinkId "
+                        + "and allow token reconstruction — use idHash8 instead");
+        ArchRule noTokenField = fields()
+                .that().areDeclaredInClassesThat().haveSimpleName("ShareLinkSummary")
+                .should().notHaveName("token")
+                .because("SR-SQLITE-20: 'token' is a forbidden field name in ShareLinkSummary "
+                        + "(ADR-SQLITE-05)");
+        ArchRule noSecretField = fields()
+                .that().areDeclaredInClassesThat().haveSimpleName("ShareLinkSummary")
+                .should().notHaveName("secret")
+                .because("SR-SQLITE-20: 'secret' is a forbidden field name in ShareLinkSummary "
+                        + "(ADR-SQLITE-05)");
+        ArchRule noUrlField = fields()
+                .that().areDeclaredInClassesThat().haveSimpleName("ShareLinkSummary")
+                .should().notHaveName("url")
+                .because("SR-SQLITE-20: 'url' is a forbidden field name in ShareLinkSummary "
+                        + "(ADR-SQLITE-05)");
+        ArchRule noShareLinkIdType = fields()
+                .that().areDeclaredInClassesThat().haveSimpleName("ShareLinkSummary")
+                .should().notHaveRawType(ShareLinkId.class)
+                .because("SR-SQLITE-20: ShareLinkSummary must not hold a ShareLinkId — "
+                        + "that would allow callers to reconstruct the bearer token URL");
+        noIdField.check(productionClasses);
+        noTokenField.check(productionClasses);
+        noSecretField.check(productionClasses);
+        noUrlField.check(productionClasses);
+        noShareLinkIdType.check(productionClasses);
     }
 
     // -------------------------------------------------------------------------
-    // Rule 4: creatorIp() called only from permitted sites (Lane 3)
+    // Rule 4: creatorIp() called only from share.infrastructure (active)
     // SR-SQLITE-23; GDPR Art. 25
     // -------------------------------------------------------------------------
 
     /**
-     * SR-SQLITE-23: {@code ShareLink#creatorIp()} may only be called from
-     * {@code ShareLinkServiceImpl.create} and {@code SqliteShareLinkRepository}.
-     * All other callers are forbidden — raw IP must not be exposed beyond the cap-accounting
-     * and HMAC-pseudonymisation paths (GDPR Art. 25 — Data Protection by Design).
+     * SR-SQLITE-23: {@code ShareLink#creatorIp()} may only be called from classes that
+     * reside in {@code share.infrastructure}.
      *
-     * <p>Disabled until Lane 3 creates {@code SqliteShareLinkRepository}.
+     * <p>The raw IP is a personal datum under GDPR Art. 4(1). Callers outside the
+     * infrastructure layer — service, web, or other bounded contexts — must not receive
+     * the raw value. The only legitimate consumers are the in-memory and SQLite repository
+     * adapters: {@code InMemoryShareLinkRepository} (cap counting) and
+     * {@code SqliteShareLinkRepository} (HMAC pseudonymisation before storage).
+     *
+     * <p>GDPR Art. 25 — Data Protection by Design and by Default: minimise access to
+     * personal data by restricting call sites to the narrowest necessary scope.
      */
     @Test
-    @Disabled("implemented in Lane 3 — SqliteShareLinkRepository not yet present")
-    void creatorIpOnlyCalledFromPermittedSites() {
-        // When enabled, this rule will verify that ShareLink.creatorIp() is called
-        // only from ShareLinkServiceImpl and SqliteShareLinkRepository.
+    void creatorIpOnlyCalledFromShareInfrastructure() {
+        // SR-SQLITE-23: raw-IP accessor must not be reachable from outside the
+        // infrastructure layer — GDPR Art. 25 data-minimisation by architecture
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("de.seism0saurus.glacier.share.infrastructure..")
+                .should().callMethod(ShareLink.class, "creatorIp")
+                .because("SR-SQLITE-23: ShareLink.creatorIp() returns a raw personal IP datum "
+                        + "and must only be accessed from share.infrastructure adapters "
+                        + "(GDPR Art. 25 — Data Protection by Design)");
+        rule.check(productionClasses);
     }
 }

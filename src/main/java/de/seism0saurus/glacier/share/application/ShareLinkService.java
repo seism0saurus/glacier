@@ -2,6 +2,7 @@ package de.seism0saurus.glacier.share.application;
 
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
+import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 
 import java.time.Instant;
 import java.util.List;
@@ -76,6 +77,21 @@ public interface ShareLinkService {
     void revoke(ShareLinkId id, String callerWallId, Instant now);
 
     /**
+     * Returns summary projections for all share links created by the given sharer,
+     * regardless of status.
+     *
+     * <p>The summary includes the derived {@link de.seism0saurus.glacier.share.domain.ShareLinkStatus}
+     * at the given instant, so callers can filter or display status information without
+     * loading full aggregates. The raw share-link token is NOT returned — only the
+     * {@code idHash8} visual identifier (ADR-SQLITE-05; SR-SQLITE-20).
+     *
+     * @param sharerWallId the sharer's wallId; must not be null
+     * @param now          the current clock instant; drives status derivation
+     * @return a (possibly empty) list of {@link ShareLinkSummary} entries; never null
+     */
+    List<ShareLinkSummary> listSummaryBySharer(String sharerWallId, Instant now);
+
+    /**
      * Returns all ACTIVE share links created by the given sharer.
      *
      * <p>Expired and revoked links are filtered out so only currently usable links appear in
@@ -84,6 +100,10 @@ public interface ShareLinkService {
      * @param sharerWallId the sharer's wallId; must not be null
      * @param now          the current clock instant; drives status filtering
      * @return a (possibly empty) list of ACTIVE {@link ShareLink}s; never null
+     * @deprecated Use {@link #listSummaryBySharer(String, Instant)} instead.
+     *             This method returns full aggregates including the raw token, which is
+     *             incompatible with at-rest token hashing (ADR-SQLITE-04).
      */
+    @Deprecated
     List<ShareLink> listBySharer(String sharerWallId, Instant now);
 }

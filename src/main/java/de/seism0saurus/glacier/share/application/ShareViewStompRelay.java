@@ -98,7 +98,9 @@ public class ShareViewStompRelay {
 
         List<ShareLink> activeLinks;
         try {
-            activeLinks = shareLinkService.listBySharer(wallId, Instant.now());
+            @SuppressWarnings("deprecation")
+            List<ShareLink> activeLinksTmp = shareLinkService.listBySharer(wallId, Instant.now());
+            activeLinks = activeLinksTmp;
         } catch (Exception e) {
             log.warn("share.relay.lookup_failed wallId-hash={} reason={}",
                     LogScrubber.hash8(wallId), e.getMessage());

@@ -62,13 +62,28 @@ class NoOpShareLinkServiceTest {
     }
 
     /**
-     * {@code listBySharer} returns an empty list — the no-op has no stored links.
+     * {@code listSummaryBySharer} returns an empty list — the no-op has no stored links.
      *
      * <p>Arrange: any wallId.
-     * <p>Act:     call {@code listBySharer}.
+     * <p>Act:     call {@code listSummaryBySharer}.
      * <p>Assert:  empty list returned, no exception thrown.
      */
     @Test
+    void listSummaryBySharer_returnsEmptyList() {
+        List<?> result = service.listSummaryBySharer("any-wall-id", Instant.now());
+
+        assertThat(result).isNotNull().isEmpty();
+    }
+
+    /**
+     * {@code listBySharer} (deprecated) returns an empty list — the no-op has no stored links.
+     *
+     * <p>Arrange: any wallId.
+     * <p>Act:     call the deprecated {@code listBySharer}.
+     * <p>Assert:  empty list returned, no exception thrown.
+     */
+    @Test
+    @SuppressWarnings("deprecation")
     void listBySharer_returnsEmptyList() {
         List<?> result = service.listBySharer("any-wall-id", Instant.now());
 

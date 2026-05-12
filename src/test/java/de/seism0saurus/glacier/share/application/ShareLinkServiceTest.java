@@ -258,6 +258,7 @@ class ShareLinkServiceTest {
     // ---------------------------------------------------------------------------
 
     @Test
+    @SuppressWarnings("deprecation")
     void listBySharerReturnsOnlyActiveLinksForCallingSharer() {
         ShareLinkId id1 = tokenGenerator.generateShareLinkId();
         ShareLinkId id2 = tokenGenerator.generateShareLinkId();
@@ -272,6 +273,7 @@ class ShareLinkServiceTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void listBySharerReturnsEmptyListWhenNoActiveLinks() {
         when(repository.findAllBySharer(SHARER_WALL_ID)).thenReturn(List.of());
         assertThat(service.listBySharer(SHARER_WALL_ID, T0)).isEmpty();
