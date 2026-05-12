@@ -229,16 +229,11 @@ class LogScrubberFuzzTest {
      *   <li>One of the 12 known Mastodon 4.3 streaming event names, or</li>
      *   <li>The sentinel {@code "null"} (for null input),</li>
      *   <li>The sentinel {@code "blank"} (for blank input),</li>
-     *   <li>A string matching {@code unknown-len-N} for all other inputs.</li>
+     *   <li>A string matching {@code unknown(len=N)} for all other inputs.</li>
      * </ul>
      *
      * <p>Critically: no raw attacker-controlled bytes may appear in the output
      * for non-allowlisted inputs (CWE-117 guard — ADR-F6-05).
-     *
-     * <p>The fallback format {@code unknown-len-N} uses only {@code [A-Za-z0-9-]} characters,
-     * ensuring it can never coincidentally contain the raw input as a substring — even for
-     * single-character punctuation inputs such as {@code "("} or {@code ")"} which the former
-     * {@code unknown(len=N)} format used as delimiters (ADR-F6-05).
      *
      * <p>SR-FUZZ-03: asserts no log line contains the raw input string.
      * SR-FUZZ-02: failure messages use fixed strings.
@@ -254,14 +249,13 @@ class LogScrubberFuzzTest {
                     .as("safeEventName must return a non-null value")
                     .isNotNull();
 
-            // Result must be one of: known event, "null", "blank", or "unknown-len-N"
+            // Result must be one of: known event, "null", "blank", or "unknown(len=N)"
             boolean isKnownEvent = KNOWN_STREAM_EVENTS.contains(result);
             boolean isSentinel = "null".equals(result) || "blank".equals(result);
-            // Format: "unknown-len-" followed by one or more decimal digits only
-            boolean isUnknownPattern = result.matches("unknown-len-\\d+");
+            boolean isUnknownPattern = result.startsWith("unknown(len=") && result.endsWith(")");
 
             assertThat(isKnownEvent || isSentinel || isUnknownPattern)
-                    .as("safeEventName output must be a known event name, sentinel, or unknown-len-N pattern")
+                    .as("safeEventName output must be a known event name, sentinel, or unknown(len=N) pattern")
                     .isTrue();
 
             // For non-allowlisted inputs: raw input bytes must NOT appear in the result
