@@ -133,7 +133,7 @@ Approval message (verbatim): "approve"
 ## References
 
 - [New Testcases — Planning](2026-04-27-planning-new-testcases.md)
-- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API1 — Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) (R-1) — closed by `WallTopicAuthInterceptor`
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API1 — Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) — R-1 — closed by `WallTopicAuthInterceptor`
 - D-13/SR-8 — log hygiene enforced via `LogScrubber.hash8()`
 - ADR-TEST-01 through ADR-TEST-05 — all addressed except ADR-TEST-04 (deferred)
 - [New Testcases — Acceptance](2026-04-27-acceptance-new-testcases.md)

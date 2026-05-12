@@ -126,4 +126,4 @@ Approval message (verbatim): "approve"
 - `docs/decisions/2026-05-01-implementation-fuzz-mutation-testing.md` — Phase 2 decision
 - TD-4/ADR-TD4-01: `LogScrubber.xfoSummary(List<String>)` — CWE-117 guard origin
 - D-13/SR-8: Log hygiene discipline
-- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/) (Software Supply Chain Failures) — SR-FUZZ-07 standard reference
+- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/) — Software Supply Chain Failures — SR-FUZZ-07 standard reference

@@ -123,6 +123,6 @@ Approval message (verbatim): "approve"
 - CLAUDE.md: [`glacier-structured-logging-logback`](../../.claude/skills/glacier-structured-logging-logback.md) skill (authoritative D-13/SR-8 rules)
 - [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
-- [GDPR Recital 30](https://www.privacy-regulation.eu/en/recital-30-GDPR.htm) (session identifiers as personal data)
+- [GDPR Recital 30](https://www.privacy-regulation.eu/en/recital-30-GDPR.htm) — session identifiers as personal data
 - [F-6 D-13/SR-8 Raw Logging Cleanup — Implementation](2026-04-28-implementation-f6-log-scrubbing.md)
 - [F-6 D-13/SR-8 Raw Logging Cleanup — Acceptance](2026-04-28-acceptance-f6-log-scrubbing.md)

@@ -33,7 +33,7 @@ All ten security requirements (SR-NEW-01 through SR-NEW-10) from the Phase 1 pla
 
 | File | Changes |
 |------|---------|
-| `infrastructure/security/OWASP_COVERAGE_MATRIX.md` | 3 SameSite cells corrected (Strict→Lax for wallId rows EP-02/EP-05); `## Standards Traceability` section added (WSTG/ASVS 5.0.0/Proactive tables, version pin `ASVS 5.0.0 | WSTG 4.2 | Proactive Controls 2024`); WSTG labels corrected (SESS-04 description, INPV-01→AUTHZ-04, CONF-04→ATHN-03); ASVS levels corrected (V16.5.1 L1→L2, V4.1.4 L3 restored) |
+| `infrastructure/security/OWASP_COVERAGE_MATRIX.md` | 3 SameSite cells corrected (Strict→Lax for wallId rows EP-02/EP-05); `## Standards Traceability` section added (WSTG/ASVS 5.0.0/Proactive tables, version pin `ASVS 5.0.0 / WSTG 4.2 / Proactive Controls 2024`); WSTG labels corrected (SESS-04 description, INPV-01→AUTHZ-04, CONF-04→ATHN-03); ASVS levels corrected (V16.5.1 L1→L2, V4.1.4 L3 restored) |
 | `infrastructure/security/SECURITY_TESTS.md` | 3 new traceability columns (WSTG ID, ASVS shortcode, Proactive Control) in all Layer tables; new test classes added; `## Updating Standard Versions` section added; endpoint/STOMP addition guides updated with three traceability axes |
 
 ## Key Implementation Decisions

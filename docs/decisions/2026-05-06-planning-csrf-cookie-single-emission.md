@@ -106,16 +106,16 @@ for the attribute matrix. Two layers: unit for breadth, IT for end-to-end emissi
 |----|-------------|----------|------------------------|
 | SR-CSRF-01 | Set-Cookie MUST carry `SameSite=Strict` | [OWASP CSRF Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) | I-CSRF-2 unit + IT |
 | SR-CSRF-02 | Exactly one Set-Cookie header per call | [RFC 6265](https://www.rfc-editor.org/rfc/rfc6265) §4 | RED canary + IT |
-| SR-CSRF-03 | `HttpOnly` MUST be absent (intentional exception) | [CWE-1004](https://cwe.mitre.org/data/definitions/1004.html) (exception: double-submit) | I-CSRF-3 unit + IT |
+| SR-CSRF-03 | `HttpOnly` MUST be absent (intentional exception) | [CWE-1004](https://cwe.mitre.org/data/definitions/1004.html) — exception: double-submit | I-CSRF-3 unit + IT |
 | SR-CSRF-04 | `__Host-` prefix semantics in secure mode | [RFC 6265bis](https://www.rfc-editor.org/rfc/rfc6265bis) §4.1.3 | I-CSRF-4 unit |
 | SR-CSRF-05 | `Secure` present in secure mode; absent in insecure | [RFC 6265](https://www.rfc-editor.org/rfc/rfc6265) §4 | I-CSRF-4 unit (both branches) |
 | SR-CSRF-06 | `Max-Age=3600` present | [OWASP ASVS V7](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) Session Management | I-CSRF-5 unit + IT |
 | SR-CSRF-07 | Token entropy ≥ 256 bits (32-byte SecureRandom) | [NIST SP 800-63B](https://csrc.nist.gov/publications/detail/sp/800-63b/final) | Code path preserved unchanged |
 | SR-CSRF-08 | `ResponseCookie.toString()` MUST NOT transform token value | [CWE-116](https://cwe.mitre.org/data/definitions/116.html) | Substring test: `contains(token)` |
-| SR-CSRF-09 | ArchUnit gate MUST prevent Cookie API re-introduction | [CWE-1188](https://cwe.mitre.org/data/definitions/1188.html) (insecure default) | `CsrfCookieEmissionStructureTest` |
+| SR-CSRF-09 | ArchUnit gate MUST prevent Cookie API re-introduction | [CWE-1188](https://cwe.mitre.org/data/definitions/1188.html) — insecure default | `CsrfCookieEmissionStructureTest` |
 | SR-CSRF-10 | Zero new log lines capturing token or Set-Cookie content | D-13 / SR-8 (glacier-structured-logging) | Code review + recommended no-Logger gate |
-| SR-CSRF-11 | Ban `anyMatch` over unfiltered Set-Cookie stream for any attribute | [CWE-697](https://cwe.mitre.org/data/definitions/697.html) (incorrect comparison) | Regex gate in `CsrfCookieEmissionStructureTest` |
-| SR-CSRF-12 | Sibling-factory inventory; gate covers full `share.web` package | [OWASP A05:2021](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) (Misconfiguration) | Package-scoped ArchUnit + `ShareViewerCookieFactory` fix |
+| SR-CSRF-11 | Ban `anyMatch` over unfiltered Set-Cookie stream for any attribute | [CWE-697](https://cwe.mitre.org/data/definitions/697.html) — incorrect comparison | Regex gate in `CsrfCookieEmissionStructureTest` |
+| SR-CSRF-12 | Sibling-factory inventory; gate covers full `share.web` package | [OWASP A05:2021](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) — Misconfiguration | Package-scoped ArchUnit + `ShareViewerCookieFactory` fix |
 | SR-CSRF-13 | Rewrite `CsrfCookieLockstep`; delete `extractCsrfSetCookieWithSameSite()` | T-DSC-5 false-green threat | Lockstep redesign in Commit 2 |
 | SR-CSRF-14 | MockMvc-pipeline IT asserting single emission on real Spring response | [OWASP ASVS 5.0](https://raw.githubusercontent.com/OWASP/ASVS/refs/heads/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.json) V3.4 | `CsrfTokenIssuanceIT.java` |
 

@@ -97,5 +97,5 @@ Approval message (verbatim): "accept and create follow up items for the open ris
 - [F-6 D-13/SR-8 Raw Logging Cleanup — Implementation](2026-04-28-implementation-f6-log-scrubbing.md)
 - [OWASP Top 10 (2021) — A09: Security Logging and Monitoring Failures](https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/)
 - [CWE-117: Improper Output Neutralization for Logs](https://cwe.mitre.org/data/definitions/117.html)
-- [GDPR Recital 30](https://www.privacy-regulation.eu/en/recital-30-GDPR.htm) (session identifiers as personal data)
+- [GDPR Recital 30](https://www.privacy-regulation.eu/en/recital-30-GDPR.htm) — session identifiers as personal data
 - [NIST SP 800-53 SI-11: Error Handling](https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_0/home?element=SI-11)

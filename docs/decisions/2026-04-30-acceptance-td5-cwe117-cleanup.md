@@ -20,7 +20,7 @@ TD-5 closes three remaining CWE-117 / D-13 / SR-8 violations from the TD-4 infor
 | SR-TD5-01 | PASS | T7a (canary), T7a-struct (8-row injection fuzz) — both `getFormattedMessage()` and `getArgumentArray()` checked at `StompCallbackTest.java:3258-3302` and `:3468-3524` |
 | SR-TD5-02 | PASS | T7b (canary), T7b-struct (8-row injection fuzz) at `:3335-3379` and `:3559-3616` |
 | SR-TD5-03 | PASS | LST-T5-1 (overflow canary: 2049 × 1 MiB flyweight, expected 2_148_532_224L) + LST-T5-2 (jqwik 1000 tries) at `LogScrubberTest.java:649-677` and `:699-725` |
-| SR-TD5-04 | PASS (after M-1 fix) | T7-gate at `StompCallbackTest.java:3642-3681`; filter widened to `LOGGER. \|\| logEvent(` at commit `5e90286`; verified by destructive test |
+| SR-TD5-04 | PASS (after M-1 fix) | T7-gate at `StompCallbackTest.java:3642-3681`; filter widened to `LOGGER. || logEvent(` at commit `5e90286`; verified by destructive test |
 | SR-TD5-05 | PASS | T7a positive-shape `:3297-3301`, T7a-struct `:3518-3523` — `"class="` present in default-branch message |
 | SR-TD5-06 | PASS (stronger than planned) | T7b-struct `:3610-3615` asserts full prefix `"got an Open event (class="` rather than just `"class="` |
 

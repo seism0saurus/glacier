@@ -146,7 +146,7 @@ Approval message (verbatim): "ok,, approve"
 
 - [New Testcases — Planning](2026-04-27-planning-new-testcases.md)
 - [New Testcases — Implementation](2026-04-27-implementation-new-testcases.md)
-- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API1 — Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) (R-1) — closed by `WallTopicAuthInterceptor`
+- [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API1 — Broken Object Level Authorization](https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/) — R-1 — closed by `WallTopicAuthInterceptor`
 - [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — [API3 — Excessive Data Exposure](https://owasp.org/API-Security/editions/2023/en/0xa3-excessive-data-exposure/) — closed by `DtoFieldScanTest`
 - D-13/SR-8 — log hygiene enforced via `LogScrubber.hash8()`
 - ADR-TEST-01 through ADR-TEST-05 — all addressed

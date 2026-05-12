@@ -230,4 +230,9 @@ When writing a new ADR, add a row here in the acceptance commit.
 | [2026-05-12-implementation-p3-bundle-b.md](2026-05-12-implementation-p3-bundle-b.md) | P2: Lane A static-message fix + A1/A1b/A1c/A4 tests; Lane B GlacierCookieProperties + all 7 consumer migrations + B1–B5/B4a tests; 345 IT, 0 failures |
 | [2026-05-12-acceptance-p3-bundle-b.md](2026-05-12-acceptance-p3-bundle-b.md) | P3: PASSED — 14/14 AC; 3 medium findings (F-3/F-10/F-14) deferred; 345 IT, 0 failures |
 
+### P3-05 Share-link SQLite Persistence (`share-link-sqlite-persistence`)
+| File | Summary |
+|---|---|
+| [2026-05-11-planning-share-link-sqlite-persistence.md](2026-05-11-planning-share-link-sqlite-persistence.md) | P1: Plan opt-in SQLite adapter for share-link durability; adapter-local token hashing; ShareLinkSummary projection; 24 security requirements |
+
 ---

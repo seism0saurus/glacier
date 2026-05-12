@@ -283,12 +283,12 @@ For implementers and acceptance auditor:
 
 ## References
 
-- [Prior decision](2026-05-07-planning-quality-review.md) (D.3 deferred item)
+- [Prior decision](2026-05-07-planning-quality-review.md) — D.3 deferred item
 - [Acceptance](2026-05-08-acceptance-quality-review.md) (SR-PRUNE-01..13 lock-in)
-- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/) (localStorage trust boundary, FIND-P3-SEC-4)
-- [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/) (dependency direction, single queue instance)
-- [OWASP A08:2021 — Software and Data Integrity Failures](https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/) (schema migration banner one-shot)
-- [CWE-20: Improper Input Validation](https://cwe.mitre.org/data/definitions/20.html) (`validateHashtagsList` call-site discipline)
-- [CWE-117: Improper Output Neutralisation for Logs](https://cwe.mitre.org/data/definitions/117.html) (do not log malformed localStorage value)
+- [OWASP A03:2021 — Injection](https://owasp.org/Top10/A03_2021-Injection/) — localStorage trust boundary, FIND-P3-SEC-4
+- [OWASP A04:2021 — Insecure Design](https://owasp.org/Top10/A04_2021-Insecure_Design/) — dependency direction, single queue instance
+- [OWASP A08:2021 — Software and Data Integrity Failures](https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/) — schema migration banner one-shot
+- [CWE-20: Improper Input Validation](https://cwe.mitre.org/data/definitions/20.html) — `validateHashtagsList` call-site discipline
+- [CWE-117: Improper Output Neutralisation for Logs](https://cwe.mitre.org/data/definitions/117.html) — do not log malformed localStorage value
 - Glacier skill: [`glacier-fallback-mode-discipline`](../../.claude/skills/glacier-fallback-mode-discipline.md) (ingest convergence, [ADR-6](2026-04-24-planning-hashtag-prune.md#adr-6---normalizehashtagss-canonical-helper))
 - Glacier skill: [`angular-karma-jasmine-testing`](../../.claude/skills/angular-karma-jasmine-testing.md) (Karma constraints; TestBed provider chain)
