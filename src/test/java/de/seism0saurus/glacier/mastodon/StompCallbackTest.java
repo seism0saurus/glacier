@@ -853,9 +853,8 @@ public class StompCallbackTest {
         assertThat(logAppender.getLoggedMessages())
                 .anySatisfy(msg -> assertThat(msg).contains("stream.generic.unhandled"));
         // Ensure raw event name from unknown value is not present verbatim (CWE-117 guard)
-        // safeEventName renders "unknown-len-11" for "other_event" (11 chars, not in allowlist)
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("unknown-len-11")); // "other_event" has 11 chars
+                .anySatisfy(msg -> assertThat(msg).contains("unknown(len=11)")); // "other_event" has 11 chars
         // Ensure the old unguarded format is gone
         assertThat(logAppender.getLoggedMessages())
                 .noneSatisfy(msg -> assertThat(msg).contains("Not an update event for the subscribed hashtag"));
