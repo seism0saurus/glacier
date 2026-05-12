@@ -29,6 +29,12 @@ jobs:
       - name: Lint the frontend
         working-directory: frontend
         run: npm run lint
+      - name: Verify sqlite-jdbc SHA-256 checksum
+        run: |
+          curl -fsSL -o dependency-checksums/sqlite-jdbc-3.49.1.0.jar \
+            https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.49.1.0/sqlite-jdbc-3.49.1.0.jar
+          sha256sum -c dependency-checksums/sqlite-jdbc-3.49.1.0.sha256
+          rm dependency-checksums/sqlite-jdbc-3.49.1.0.jar
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results

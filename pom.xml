@@ -252,6 +252,29 @@
 <!--            <artifactId>spring-boot-starter-data-mongodb</artifactId>-->
 <!--        </dependency>-->
 
+        <!--
+            spring-boot-starter-jdbc: Spring JDBC template + HikariCP connection pool.
+            BOM-managed — no explicit version needed.
+            Required for SqliteShareLinkRepository (P3-05 SQLite persistence, ADR-SQLITE-01).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!--
+            SQLite JDBC driver — exact version pin (SR-SQLITE-12).
+            SHA-256 supply-chain pin: 5c8609d2ca341deb8c6f71778974b5ba4995c7d32d7c7c89d9392a3e72c39291
+            Checksum file: dependency-checksums/sqlite-jdbc-3.49.1.0.sha256
+            Verified in both CI workflows before the Maven build step.
+            Do not use a version property or range — pin must be immutable.
+        -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.49.1.0</version>
+        </dependency>
+
         <!--Test Libraries-->
         <dependency>
             <groupId>org.springframework.boot</groupId>

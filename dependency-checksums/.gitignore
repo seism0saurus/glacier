@@ -1,0 +1,3 @@
+# Exclude downloaded JAR files from accidental commits.
+# Only the .sha256 checksum files and this README belong in version control.
+*.jar
