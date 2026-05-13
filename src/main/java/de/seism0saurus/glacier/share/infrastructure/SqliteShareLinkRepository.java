@@ -7,6 +7,8 @@ import de.seism0saurus.glacier.share.domain.ShareLinkStatus;
 import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import de.seism0saurus.glacier.util.LogScrubber;
 import jakarta.annotation.PostConstruct;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.UncategorizedDataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +47,11 @@ import java.util.Optional;
  *       never as raw strings (ADR-SQLITE-04; SR-SQLITE-04; GDPR Art. 25).</li>
  *   <li><strong>File permissions</strong>: the DB file is created and chmod'd to
  *       {@code 0600} (owner r/w only) at {@code @PostConstruct} time (SR-SQLITE-07).</li>
+ *   <li><strong>JDBC exception scrubbing</strong>: all eight public CRUD methods wrap
+ *       {@link DataAccessException} before re-throwing — the raw JDBC error message
+ *       is passed through {@link LogScrubber#forErrorMessage} so that SQL fragments,
+ *       table names, and file-system paths from the driver never appear in exception
+ *       messages that may reach logs or HTTP error responses (SR-SQLITE-03).</li>
  * </ul>
  *
  * <h2>Schema</h2>
@@ -198,23 +205,29 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public ShareLink save(final ShareLink link) {
-        String idHash = sha256Hex(link.id().value());
-        String ipHmac = link.creatorIp().map(this::hmacSha256Hex).orElse(null);
-        Long revokedAtMillis = link.revokedAt().map(Instant::toEpochMilli).orElse(null);
+        try {
+            String idHash = sha256Hex(link.id().value());
+            String ipHmac = link.creatorIp().map(this::hmacSha256Hex).orElse(null);
+            Long revokedAtMillis = link.revokedAt().map(Instant::toEpochMilli).orElse(null);
 
-        jdbcTemplate.update(
-                "INSERT OR REPLACE INTO share_links "
-                        + "(id, sharer_wall_id, creator_ip_hmac, created_at, expires_at, revoked_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?)",
-                idHash,
-                link.sharerWallId(),
-                ipHmac,
-                link.createdAt().toEpochMilli(),
-                link.expiresAt().toEpochMilli(),
-                revokedAtMillis);
+            jdbcTemplate.update(
+                    "INSERT OR REPLACE INTO share_links "
+                            + "(id, sharer_wall_id, creator_ip_hmac, created_at, expires_at, revoked_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)",
+                    idHash,
+                    link.sharerWallId(),
+                    ipHmac,
+                    link.createdAt().toEpochMilli(),
+                    link.expiresAt().toEpochMilli(),
+                    revokedAtMillis);
 
-        log.debug("share.link.saved id-hash8={}", link.id().hash8());
-        return link;
+            log.debug("share.link.saved id-hash8={}", link.id().hash8());
+            return link;
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating —
+            // the raw exception message can contain SQL fragments or file-system paths.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
     }
 
     /**
@@ -230,21 +243,26 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public Optional<ShareLink> findById(final ShareLinkId id) {
-        String idHash = sha256Hex(id.value());
-        List<ShareLink> results = jdbcTemplate.query(
-                "SELECT sharer_wall_id, created_at, expires_at, revoked_at "
-                        + "FROM share_links WHERE id = ?",
-                (rs, rowNum) -> {
-                    String sharerWallId = rs.getString("sharer_wall_id");
-                    Instant createdAt = Instant.ofEpochMilli(rs.getLong("created_at"));
-                    Instant expiresAt = Instant.ofEpochMilli(rs.getLong("expires_at"));
-                    long revokedAtRaw = rs.getLong("revoked_at");
-                    Instant revokedAt = rs.wasNull() ? null : Instant.ofEpochMilli(revokedAtRaw);
-                    // creatorIp is null — raw IP cannot be recovered from the HMAC (ADR-SQLITE-04)
-                    return ShareLink.fromPersistence(id, sharerWallId, null, createdAt, expiresAt, revokedAt);
-                },
-                idHash);
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+        try {
+            String idHash = sha256Hex(id.value());
+            List<ShareLink> results = jdbcTemplate.query(
+                    "SELECT sharer_wall_id, created_at, expires_at, revoked_at "
+                            + "FROM share_links WHERE id = ?",
+                    (rs, rowNum) -> {
+                        String sharerWallId = rs.getString("sharer_wall_id");
+                        Instant createdAt = Instant.ofEpochMilli(rs.getLong("created_at"));
+                        Instant expiresAt = Instant.ofEpochMilli(rs.getLong("expires_at"));
+                        long revokedAtRaw = rs.getLong("revoked_at");
+                        Instant revokedAt = rs.wasNull() ? null : Instant.ofEpochMilli(revokedAtRaw);
+                        // creatorIp is null — raw IP cannot be recovered from the HMAC (ADR-SQLITE-04)
+                        return ShareLink.fromPersistence(id, sharerWallId, null, createdAt, expiresAt, revokedAt);
+                    },
+                    idHash);
+            return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
     }
 
     /**
@@ -259,13 +277,18 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public void markRevoked(final ShareLinkId id, final Instant when) {
-        String idHash = sha256Hex(id.value());
-        int rowsUpdated = jdbcTemplate.update(
-                "UPDATE share_links SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
-                when.toEpochMilli(),
-                idHash);
-        if (rowsUpdated == 0) {
-            log.debug("markRevoked: id-hash8={} — already revoked or not found (no-op)", id.hash8());
+        try {
+            String idHash = sha256Hex(id.value());
+            int rowsUpdated = jdbcTemplate.update(
+                    "UPDATE share_links SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+                    when.toEpochMilli(),
+                    idHash);
+            if (rowsUpdated == 0) {
+                log.debug("markRevoked: id-hash8={} — already revoked or not found (no-op)", id.hash8());
+            }
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
         }
     }
 
@@ -281,15 +304,20 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public int sweepExpired(final Instant now) {
-        int removed = jdbcTemplate.update(
-                "DELETE FROM share_links WHERE expires_at <= ? AND revoked_at IS NULL",
-                now.toEpochMilli());
-        if (removed > 0) {
-            AUDIT.info("share.link.sweep removed={}", removed);
-        } else {
-            log.debug("share.link.sweep removed=0");
+        try {
+            int removed = jdbcTemplate.update(
+                    "DELETE FROM share_links WHERE expires_at <= ? AND revoked_at IS NULL",
+                    now.toEpochMilli());
+            if (removed > 0) {
+                AUDIT.info("share.link.sweep removed={}", removed);
+            } else {
+                log.debug("share.link.sweep removed=0");
+            }
+            return removed;
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
         }
-        return removed;
     }
 
     /**
@@ -300,11 +328,16 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public long countActive(final Instant now) {
-        Long count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM share_links WHERE expires_at > ? AND revoked_at IS NULL",
-                Long.class,
-                now.toEpochMilli());
-        return count != null ? count : 0L;
+        try {
+            Long count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM share_links WHERE expires_at > ? AND revoked_at IS NULL",
+                    Long.class,
+                    now.toEpochMilli());
+            return count != null ? count : 0L;
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
     }
 
     /**
@@ -316,13 +349,18 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public int countActiveForSharer(final String sharerWallId, final Instant now) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM share_links "
-                        + "WHERE sharer_wall_id = ? AND expires_at > ? AND revoked_at IS NULL",
-                Integer.class,
-                sharerWallId,
-                now.toEpochMilli());
-        return count != null ? count : 0;
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM share_links "
+                            + "WHERE sharer_wall_id = ? AND expires_at > ? AND revoked_at IS NULL",
+                    Integer.class,
+                    sharerWallId,
+                    now.toEpochMilli());
+            return count != null ? count : 0;
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
     }
 
     /**
@@ -337,14 +375,19 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public int countActiveForIp(final String ip, final Instant now) {
-        String ipHmac = hmacSha256Hex(ip);
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM share_links "
-                        + "WHERE creator_ip_hmac = ? AND expires_at > ? AND revoked_at IS NULL",
-                Integer.class,
-                ipHmac,
-                now.toEpochMilli());
-        return count != null ? count : 0;
+        try {
+            String ipHmac = hmacSha256Hex(ip);
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM share_links "
+                            + "WHERE creator_ip_hmac = ? AND expires_at > ? AND revoked_at IS NULL",
+                    Integer.class,
+                    ipHmac,
+                    now.toEpochMilli());
+            return count != null ? count : 0;
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
     }
 
     /**
@@ -360,31 +403,36 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      */
     @Override
     public List<ShareLinkSummary> listSummaryBySharer(final String sharerWallId, final Instant now) {
-        return jdbcTemplate.query(
-                "SELECT id, created_at, expires_at, revoked_at "
-                        + "FROM share_links WHERE sharer_wall_id = ? "
-                        + "ORDER BY created_at DESC",
-                (rs, rowNum) -> {
-                    // id column is already SHA-256(token); first 8 chars = idHash8
-                    String idHash8 = rs.getString("id").substring(0, 8);
-                    Instant createdAt = Instant.ofEpochMilli(rs.getLong("created_at"));
-                    Instant expiresAt = Instant.ofEpochMilli(rs.getLong("expires_at"));
-                    long revokedAtRaw = rs.getLong("revoked_at");
-                    Instant revokedAt = rs.wasNull() ? null : Instant.ofEpochMilli(revokedAtRaw);
+        try {
+            return jdbcTemplate.query(
+                    "SELECT id, created_at, expires_at, revoked_at "
+                            + "FROM share_links WHERE sharer_wall_id = ? "
+                            + "ORDER BY created_at DESC",
+                    (rs, rowNum) -> {
+                        // id column is already SHA-256(token); first 8 chars = idHash8
+                        String idHash8 = rs.getString("id").substring(0, 8);
+                        Instant createdAt = Instant.ofEpochMilli(rs.getLong("created_at"));
+                        Instant expiresAt = Instant.ofEpochMilli(rs.getLong("expires_at"));
+                        long revokedAtRaw = rs.getLong("revoked_at");
+                        Instant revokedAt = rs.wasNull() ? null : Instant.ofEpochMilli(revokedAtRaw);
 
-                    // Derive status from the stored timestamps at the reference instant
-                    ShareLinkStatus status;
-                    if (revokedAt != null) {
-                        status = ShareLinkStatus.REVOKED;
-                    } else if (!now.isBefore(expiresAt)) {
-                        status = ShareLinkStatus.EXPIRED;
-                    } else {
-                        status = ShareLinkStatus.ACTIVE;
-                    }
+                        // Derive status from the stored timestamps at the reference instant
+                        ShareLinkStatus status;
+                        if (revokedAt != null) {
+                            status = ShareLinkStatus.REVOKED;
+                        } else if (!now.isBefore(expiresAt)) {
+                            status = ShareLinkStatus.EXPIRED;
+                        } else {
+                            status = ShareLinkStatus.ACTIVE;
+                        }
 
-                    return new ShareLinkSummary(idHash8, createdAt, expiresAt, revokedAt, status, sharerWallId);
-                },
-                sharerWallId);
+                        return new ShareLinkSummary(idHash8, createdAt, expiresAt, revokedAt, status, sharerWallId);
+                    },
+                    sharerWallId);
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
     }
 
     /**

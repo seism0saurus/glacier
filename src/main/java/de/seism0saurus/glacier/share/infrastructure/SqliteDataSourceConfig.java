@@ -28,26 +28,30 @@ import javax.sql.DataSource;
  *       early (SR-SQLITE-24).</li>
  * </ul>
  *
- * <h2>Connection-init PRAGMAs (ADR-SQLITE-02; SR-SQLITE-05)</h2>
+ * <h2>Connection PRAGMAs via JDBC URL parameters (ADR-SQLITE-02; SR-SQLITE-05)</h2>
  * <ul>
- *   <li>{@code PRAGMA journal_mode=WAL} — enables WAL for concurrent read/write.</li>
- *   <li>{@code PRAGMA synchronous=FULL} — required for revocation durability: a revocation
+ *   <li>{@code journal_mode=WAL} — enables WAL for concurrent read/write.</li>
+ *   <li>{@code synchronous=FULL} — required for revocation durability: a revocation
  *       write is flushed to the OS before the JDBC call returns, preventing rollback on
  *       power failure (SR-SQLITE-05).</li>
- *   <li>{@code PRAGMA foreign_keys=ON} — enforce referential integrity.</li>
+ *   <li>{@code foreign_keys=ON} — enforce referential integrity.</li>
+ *   <li>{@code busy_timeout=N} — SQLite wait time in ms before returning SQLITE_BUSY;
+ *       value from {@link SharePersistenceProperties#getBusyTimeoutMs()}.</li>
  * </ul>
  *
- * <p>Note: {@code PRAGMA busy_timeout} is set per-connection via {@code connectionInitSql}.
- * The value from {@link SharePersistenceProperties#getBusyTimeoutMs()} is inlined
- * into the init SQL string (this is safe because the value is a validated integer, not
- * user-supplied free text).
+ * <p>These settings are encoded as JDBC URL query parameters rather than
+ * {@code connectionInitSql}. The sqlite-jdbc driver's {@code Statement.execute()} calls
+ * {@code sqlite3_prepare_v2()} internally, which compiles only the <em>first</em>
+ * statement in a semicolon-separated string — subsequent statements are silently dropped.
+ * URL parameters are applied atomically by the driver before any SQL executes, so all
+ * four PRAGMA settings are guaranteed to take effect on every pool-vended connection.
  *
  * <h2>References</h2>
  * <ul>
  *   <li>ADR-SQLITE-01: conditional wiring</li>
- *   <li>ADR-SQLITE-02: PRAGMA settings</li>
+ *   <li>ADR-SQLITE-02: PRAGMA settings — all applied via JDBC URL query parameters</li>
  *   <li>ADR-SQLITE-09: pool size = 2</li>
- *   <li>SR-SQLITE-05: {@code synchronous=FULL}</li>
+ *   <li>SR-SQLITE-05: {@code synchronous=FULL} via URL parameter</li>
  *   <li>SR-SQLITE-13: pool + timeout settings</li>
  *   <li>SR-SQLITE-24: leak detection threshold</li>
  * </ul>
@@ -67,16 +71,23 @@ public class SqliteDataSourceConfig {
      */
     @Bean
     public DataSource shareDataSource(final SharePersistenceProperties props) {
+        // Encode all PRAGMA settings as JDBC URL query parameters.
+        // sqlite-jdbc applies these atomically before any SQL executes, guaranteeing
+        // that journal_mode, synchronous, foreign_keys, and busy_timeout are all in
+        // effect on every connection the pool vends.
+        // Using connectionInitSql is insufficient: sqlite3_prepare_v2() compiles only
+        // the first statement in a semicolon-separated string, silently dropping the rest.
+        String url = "jdbc:sqlite:" + props.getPath()
+                + "?journal_mode=WAL"
+                + "&synchronous=FULL"         // SR-SQLITE-05: revocation durability
+                + "&foreign_keys=ON"
+                + "&busy_timeout=" + props.getBusyTimeoutMs(); // validated int — injection-safe
+
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:sqlite:" + props.getPath());
+        config.setJdbcUrl(url);
         config.setMaximumPoolSize(2);            // SR-SQLITE-13, ADR-SQLITE-09: SQLite WAL allows 1 writer + concurrent readers
         config.setConnectionTimeout(2000);       // SR-SQLITE-13: fail fast; prevents unbounded request queuing
         config.setLeakDetectionThreshold(10000); // SR-SQLITE-24: surface connection leaks early
-        // SR-SQLITE-05: synchronous=FULL required for revocation durability.
-        // busy_timeout from validated int (not raw user string — injection-safe).
-        config.setConnectionInitSql(
-                "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout="
-                        + props.getBusyTimeoutMs());
         return new HikariDataSource(config);
     }
 

@@ -13,6 +13,7 @@ If you want to contribute code, see the [developer guide](DEVELOPER.md).
 - [Run the container](#run-the-container)
   - [Required variables](#required-variables)
   - [Share link variables](#share-link-variables)
+    - [Share-link SQLite persistence (opt-in)](#share-link-sqlite-persistence-opt-in)
   - [Optional tuning variables](#optional-tuning-variables)
   - [Docker](#docker)
   - [Containerd with nerdctl](#containerd-with-nerdctl)
@@ -119,6 +120,32 @@ The following variables tune the share link and QR code feature. `GLACIER_SHARE_
 | `GLACIER_SHARE_MAX_VIEWERS_PER_LINK` | Maximum concurrent viewers per share link | `100` |
 | `GLACIER_SHARE_MAX_ACTIVE_PER_SHARER` | Maximum active links a single wall owner can have at once | `3` |
 | `GLACIER_SHARE_MAX_ACTIVE_PER_IP` | Maximum active links per source IP | `10` |
+
+#### Share-link SQLite persistence (opt-in)
+
+By default, Glacier stores share links in memory — they are lost on restart. Set `GLACIER_SHARE_DB_PATH` to activate the SQLite-backed adapter, which persists share links across restarts.
+
+| Variable | Description | Default |
+|---|---|---|
+| `GLACIER_SHARE_DB_PATH` | Absolute path to the SQLite database file. When absent, Glacier uses the in-memory adapter. Example: `/var/lib/glacier/shares.db` | *(absent — in-memory mode)* |
+| `GLACIER_SHARE_DB_IP_HMAC_KEY` | Base64-encoded HMAC-SHA256 key used to store creator IPs as one-way hashes. **Mandatory** when `GLACIER_SHARE_DB_PATH` is set. Must be at least 44 base64 characters (≥ 32 raw bytes). Use a cryptographically random value — never a password or a predictable string. | *(none — startup fails if path is set but key is absent or too short)* |
+| `GLACIER_SHARE_DB_MAX_PAGE_COUNT` | SQLite `PRAGMA max_page_count`. At the default 4 KB page size this limits the database to `max_page_count × 4 KB`. The default (65536 pages) caps the file at 256 MB, which is sufficient for all practical deployments. Raise only if you expect millions of share links. | `65536` (256 MB) |
+
+**Security requirements for the database file (SR-SQLITE-16)**
+
+The SQLite database file contains hashed creator IPs and share-link metadata. Treat it with the same access controls as your Mastodon API token (`ACCESS_KEY`):
+
+- Set filesystem permissions to `0600` (owner read/write only). Glacier creates the file with `0600` automatically on POSIX systems; on non-POSIX systems (Windows) creation falls back to a `WARN` log entry and permissions must be set manually.
+- Do **not** place the file on NFS, CIFS/SMB, or any other shared remote mount. SQLite WAL mode does not work reliably on network filesystems.
+- Include the three WAL sidecar files (`<db>`, `<db>-wal`, `<db>-shm`) in every backup. A backup of the main file alone may be in a partially-written state if taken while the application is running (SR-SQLITE-15). See [`docs/MIGRATION.md`](MIGRATION.md) for the full backup procedure.
+
+**One-time URL display (SR-SQLITE-21)**
+
+A share URL is returned **once** at creation time and is never reconstructed or retrievable afterwards. The database stores only `SHA-256(token)`, not the raw token. If a user loses their share URL, the only recovery option is to revoke the existing link and create a new one. Communicate this clearly in any operator-facing runbooks or user-facing help text.
+
+**IP-cap HMAC key rotation**
+
+Rotating `GLACIER_SHARE_DB_IP_HMAC_KEY` invalidates existing HMAC values in the database — `countActiveForIp()` returns 0 for all IPs created before the rotation, so the per-IP cap resets. This is accepted because the cap is a soft anti-DoS measure, not a hard security boundary. No database rebuild is required; simply update the environment variable and restart the service. See [`docs/MIGRATION.md`](MIGRATION.md) for the rotation procedure.
 
 ### Optional tuning variables
 

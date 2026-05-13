@@ -10,6 +10,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -17,6 +19,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Log hygiene test for the SQLite share-link repository layer.
@@ -161,6 +164,63 @@ class SqliteShareLinkRepositoryLoggingTest {
 
         // The AUDIT logger must not have been triggered with raw token or IP
         assertNoRawTokenOrIpInLogs(auditAppender.list, "ShareLink.create()");
+    }
+
+    // -------------------------------------------------------------------------
+    // SR-SQLITE-03: JDBC exception messages are scrubbed before re-throw
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies that when a CRUD method encounters a JDBC error the propagated exception's
+     * {@code getMessage()} has been scrubbed through {@link LogScrubber#forErrorMessage}
+     * and does NOT contain raw SQL fragments or the canary token (SR-SQLITE-03).
+     *
+     * <p>Strategy: build a repository against an in-memory SQLite, initialise the schema,
+     * then DROP the table via a separate connection so the next CRUD call hits a missing-
+     * table error. The exception message coming from the sqlite-jdbc driver will contain
+     * the table name ({@code share_links}) and other SQL artefacts — after scrubbing it
+     * must be replaced with the {@code [scrubbed ...]} sentinel pattern.
+     *
+     * <p>Arrange: repository over an in-memory DB; schema initialised; table then dropped.
+     * <p>Act:     call {@code findById()} on the now-broken repository.
+     * <p>Assert:  thrown exception message matches {@code "[scrubbed ...]} pattern and does
+     *             NOT contain the canary token string.
+     */
+    @Test
+    void crudMethod_onJdbcError_exceptionMessageIsScrubbed_notRaw() {
+        // Use SingleConnectionDataSource so the DROP TABLE is visible to the JdbcTemplate
+        // on the same connection (in-memory SQLite isolates state per-connection).
+        SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(ds);
+
+        SharePersistenceProperties props = new SharePersistenceProperties();
+        props.setPath(":memory:");
+        // Use a valid Base64 key — CANARY_TOKEN contains underscores which are not valid
+        // in standard Base64. The key value here is a synthetic fixture, not the canary.
+        props.setIpHmacKey("A".repeat(44));
+
+        SqliteShareLinkRepository repository = new SqliteShareLinkRepository(jdbcTemplate, props);
+        repository.init(); // creates the share_links table
+
+        // Sabotage: drop the table so the next CRUD call fails with a JDBC error whose
+        // raw message will contain SQL artefacts (table name, etc.) — never the canary token.
+        jdbcTemplate.execute("DROP TABLE share_links");
+
+        ShareLinkId anyId = ShareLinkId.fromUrlPath(CANARY_TOKEN);
+
+        assertThatThrownBy(() -> repository.findById(anyId))
+                .isInstanceOf(RuntimeException.class)
+                .satisfies(ex -> {
+                    String msg = ex.getMessage();
+                    assertThat(msg)
+                            .as("Scrubbed exception message must start with '[scrubbed' (SR-SQLITE-03)")
+                            .startsWith("[scrubbed");
+                    assertThat(msg)
+                            .as("Scrubbed exception message must not contain the canary token (SR-SQLITE-03)")
+                            .doesNotContain(CANARY_TOKEN);
+                });
+
+        ds.destroy();
     }
 
     // -------------------------------------------------------------------------
