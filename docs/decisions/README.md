@@ -235,5 +235,6 @@ When writing a new ADR, add a row here in the acceptance commit.
 |---|---|
 | [2026-05-11-planning-share-link-sqlite-persistence.md](2026-05-11-planning-share-link-sqlite-persistence.md) | P1: Plan opt-in SQLite adapter for share-link durability; adapter-local token hashing; ShareLinkSummary projection; 24 security requirements |
 | [2026-05-13-implementation-share-link-sqlite-persistence.md](2026-05-13-implementation-share-link-sqlite-persistence.md) | P2: Implement SQLite persistence adapter; token + IP at-rest hashing; HikariCP pool; ArchUnit gates; scheduled sweep |
+| [2026-05-14-acceptance-share-link-sqlite-persistence.md](2026-05-14-acceptance-share-link-sqlite-persistence.md) | P3: PASSED — 17/17 AC; 7 findings fixed (TOCTOU 0600, JDBC URL injection, ArchUnit fence, AUDIT assert, WiringTest, InetAddress, i18n warning); 1708 unit + 379 IT, 0 failures |
 
 ---
