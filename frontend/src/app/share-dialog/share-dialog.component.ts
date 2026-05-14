@@ -99,6 +99,13 @@ import {
             </button>
           </div>
 
+          <!-- Shown-once warning (SR-SQLITE-21): URL is only displayed at creation time -->
+          <p
+            role="alert"
+            class="shown-once-warning"
+            i18n="@@share.dialog.url.shown-once.warning"
+          >Wichtig: Dieser Link wird nur jetzt angezeigt und kann später nicht erneut abgerufen werden. Bitte kopiere ihn jetzt.</p>
+
           <!-- Expiry -->
           <p class="expiry-text" aria-live="off">
             <span i18n="@@share.dialog.expires">Läuft ab am </span>
@@ -191,6 +198,7 @@ import {
     .created-link { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
     .url-copy-row { display: flex; align-items: center; gap: 8px; }
     .url-field { flex: 1; }
+    .shown-once-warning { font-size: 0.875rem; font-weight: 500; color: var(--mat-sys-error, #b3261e); margin: 0; }
     .expiry-text { font-size: 0.875rem; margin: 0; }
     .cap-message { color: var(--mat-sys-error, red); }
     .error-message { color: var(--mat-sys-error, red); }

@@ -116,8 +116,10 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
      *
      * <p>Performed in order:
      * <ol>
-     *   <li>POSIX 0600 file permissions (SR-SQLITE-07) — enforced before the connection pool
-     *       makes its first write, preventing transient window where the file is world-readable.</li>
+     *   <li>POSIX 0600 file permissions (SR-SQLITE-07; CRIT-2/F-1 defence-in-depth) — the
+     *       primary enforcement is done by {@code SqliteDbFileInitializer} (BFP) before HikariCP
+     *       opens its first connection; {@link #enforceFilePermissions()} here is the second
+     *       line of defence for pre-existing files or unusual context ordering.</li>
      *   <li>{@code CREATE TABLE IF NOT EXISTS share_links} — idempotent DDL.</li>
      *   <li>Three partial indexes: by sharer+expiry (active links), creator_ip+expiry
      *       (IP cap), and expiry alone (sweep efficiency).</li>
@@ -532,9 +534,15 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
     /**
      * Enforces POSIX {@code 0600} permissions on the SQLite database file (SR-SQLITE-07).
      *
-     * <p>If the file does not exist, it is created with {@code 0600} permissions before
-     * the connection pool opens it — preventing a transient window where the file is
-     * world-readable (TOCTOU mitigation).
+     * <p>This method is the second line of defence (defence-in-depth after
+     * {@code SqliteDbFileInitializer}). By the time {@code @PostConstruct} runs, the file
+     * already exists (created by the BFP before HikariCP opened its first connection).
+     * This method only applies {@code chmod 0600} to guard against the case where the
+     * file was pre-existing with wrong permissions.
+     *
+     * <p>The file-creation logic that was previously here has been moved to
+     * {@code SqliteDbFileInitializer} (CRIT-2/F-1) to eliminate the TOCTOU window between
+     * HikariCP creating the file (with default umask) and this {@code @PostConstruct} chmod.
      *
      * <p>On non-POSIX filesystems (e.g., Windows), a WARN is logged to the AUDIT logger
      * advising the operator to enforce permissions manually.
@@ -548,15 +556,11 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
         }
 
         Path filePath = Path.of(path);
+        // File is expected to exist — SqliteDbFileInitializer BFP created it before HikariCP
+        // opened its first connection (CRIT-2/F-1). We still handle the non-existent case as a
+        // safety net (e.g., an in-memory DataSource or an unusual Spring context ordering).
         try {
-            if (!Files.exists(filePath)) {
-                Path parent = filePath.getParent();
-                if (parent != null && !Files.exists(parent)) {
-                    Files.createDirectories(parent);
-                }
-                Files.createFile(filePath,
-                        PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
-            } else {
+            if (Files.exists(filePath)) {
                 try {
                     Files.setPosixFilePermissions(filePath, PosixFilePermissions.fromString("rw-------"));
                 } catch (UnsupportedOperationException e) {
@@ -564,10 +568,17 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
                             + "cannot enforce 0600 permissions on share-link DB. "
                             + "Operator must enforce file permissions manually (SR-SQLITE-07).");
                 }
+            } else {
+                // Fallback: file was not created by the BFP (unexpected ordering or non-file path).
+                // Log an AUDIT WARN so the operator is aware — do NOT create the file here to
+                // avoid confusion with the BFP's responsibility (CRIT-2/F-1).
+                AUDIT.warn("share.link.db.file.missing.at.postconstruct: DB file did not exist "
+                        + "when @PostConstruct ran — SqliteDbFileInitializer may not have run "
+                        + "(CRIT-2/F-1; SR-SQLITE-07). Operator must verify permissions.");
             }
         } catch (IOException e) {
             throw new IllegalStateException(
-                    LogScrubber.forErrorMessage("Failed to create/chmod share-link DB file"), e);
+                    LogScrubber.forErrorMessage("Failed to chmod share-link DB file"), e);
         }
     }
 

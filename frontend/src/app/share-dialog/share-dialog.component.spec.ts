@@ -232,6 +232,52 @@ describe('ShareDialogComponent', () => {
     }));
   });
 
+  // ---- Shown-once warning (SR-SQLITE-21) ----
+
+  describe('shown-once warning', () => {
+    it('is present in the DOM when a link has just been created (activeLink set)', () => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      const warning: HTMLElement | null =
+        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+      expect(warning).not.toBeNull('expected shown-once-warning element to be present');
+    });
+
+    it('contains the expected warning text when a link is active', () => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      const warning: HTMLElement | null =
+        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+      expect(warning?.textContent).toContain('Wichtig:');
+    });
+
+    it('is NOT present in the DOM when no link has been created (initial state)', () => {
+      // Initial state: activeLink is null
+      expect(component.activeLink()).toBeNull();
+      fixture.detectChanges();
+      const warning: HTMLElement | null =
+        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+      expect(warning).toBeNull('expected shown-once-warning element to be absent in initial state');
+    });
+
+    it('disappears after the link is revoked (activeLink cleared)', fakeAsync(() => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+
+      component.confirmRevoke(mockCreated.shareLinkId);
+      tick();
+      fixture.detectChanges();
+
+      const warning: HTMLElement | null =
+        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+      expect(warning).toBeNull('expected shown-once-warning to disappear after link is revoked');
+    }));
+  });
+
   // ---- Cap reached ----
 
   describe('cap handling', () => {

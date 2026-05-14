@@ -28,6 +28,7 @@
   "share.dialog.title": "Share this wall",
   "share.dialog.lead": "Create an accessible copy of your wall for people using screen readers or zoom. Everyone with the link or QR code will see your wall.",
   "share.dialog.url.label": "Copy link",
+  "share.dialog.url.shown-once.warning": "Important: this link is shown only now and cannot be retrieved later. Please copy it now.",
   "share.dialog.copy.button": "Copy",
   "share.dialog.copied.announce": "Link copied",
   "share.dialog.expires": "Expires on {date}",

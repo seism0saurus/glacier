@@ -14,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -101,6 +103,12 @@ public class ShareLinkServiceImpl implements ShareLinkService {
 
     @Override
     public ShareLink create(final String sharerWallId, final String sharerIp, final Instant now) {
+        // SR-SQLITE-11: validate the creator IP via InetAddress round-trip before any cap
+        // check or persistence — prevents cap-bypass via malformed X-Forwarded-For values
+        // (e.g., "Hi-Im-Attacker-1") that would produce a unique HMAC and never match any
+        // legitimate IP's HMAC, so the IP cap would never trigger.
+        validateCreatorIp(sharerIp);
+
         // R-2 (TOCTOU fix): acquire a per-sharer lock before the check-then-act sequence.
         // Without this lock, concurrent callers can all pass the cap check and then all save,
         // overshooting the cap by up to (N-1) links.
@@ -203,5 +211,88 @@ public class ShareLinkServiceImpl implements ShareLinkService {
         return repository.findAllBySharer(sharerWallId).stream()
                 .filter(link -> link.status(now) == ShareLinkStatus.ACTIVE)
                 .toList();
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Validates the creator IP address by confirming it is a well-formed IPv4 or IPv6
+     * numeric literal (SR-SQLITE-11).
+     *
+     * <p>The validation strategy:
+     * <ol>
+     *   <li>Parse {@code ip} with {@link InetAddress#getByName(String)}.</li>
+     *   <li>For IPv4 ({@link java.net.Inet4Address}): verify that
+     *       {@code getHostAddress()} equals the original string — ensures no hostname
+     *       resolution occurred (e.g., {@code "localhost"} resolves to {@code "127.0.0.1"},
+     *       so the round-trip check rejects it).</li>
+     *   <li>For IPv6 ({@link java.net.Inet6Address}): {@link InetAddress#getByName(String)}
+     *       accepts only numeric literals for IPv6 without performing DNS lookup; however
+     *       it normalises the form (e.g., {@code "::1"} → {@code "0:0:0:0:0:0:0:1"}).
+     *       We verify the normalised canonical forms of the original and re-parsed address
+     *       match, ensuring the parse was self-consistent.</li>
+     * </ol>
+     *
+     * <p>Hostnames and malformed strings (e.g., {@code "Hi-Im-Attacker-1"}) would produce
+     * a unique HMAC on each submission, bypassing the per-IP cap entirely. Rejecting them
+     * here closes that bypass.
+     *
+     * <p>Null and blank values are accepted — the domain model treats a missing creator IP
+     * as an anonymous request (no IP cap applies).
+     *
+     * <p>The exception message deliberately does NOT echo the {@code ip} parameter to prevent
+     * hostile input from appearing in logs or HTTP error responses (SR-SQLITE-01; D-13;
+     * CWE-117 — Improper Output Neutralisation).
+     *
+     * @param ip the creator IP string from the HTTP layer; may be null or blank
+     * @throws IllegalArgumentException if {@code ip} is non-blank but not a well-formed IP literal
+     */
+    private static void validateCreatorIp(final String ip) {
+        // Null/blank accepted — treated as anonymous (no IP cap applies)
+        if (ip == null || ip.isBlank()) {
+            return;
+        }
+        try {
+            InetAddress addr = InetAddress.getByName(ip);
+            if (addr instanceof java.net.Inet4Address) {
+                // IPv4 round-trip: getHostAddress() must equal the input exactly.
+                // If the input was a hostname (e.g., "localhost" → "127.0.0.1") the
+                // round-trip fails and we reject it — CWE-20; SR-SQLITE-11.
+                if (!addr.getHostAddress().equals(ip)) {
+                    // Static message: do NOT include the ip value — CWE-117; SR-SQLITE-01
+                    throw new IllegalArgumentException("invalid IP address format");
+                }
+            } else {
+                // IPv6: getByName accepts only numeric literals (no DNS resolution for pure
+                // IPv6 forms). The normalised canonical address of a second parse of
+                // getHostAddress() must equal addr.getHostAddress() — this confirms the
+                // parse was self-consistent.  We do NOT compare against the original string
+                // because IPv6 has multiple valid representations of the same address
+                // (e.g., "::1" normalises to "0:0:0:0:0:0:0:1").
+                String canonical = InetAddress.getByName(addr.getHostAddress()).getHostAddress();
+                if (!canonical.equals(addr.getHostAddress())) {
+                    throw new IllegalArgumentException("invalid IP address format");
+                }
+            }
+        } catch (UnknownHostException e) {
+            // Malformed literal (getByName failed) — static message, no value echo
+            throw new IllegalArgumentException("invalid IP address format");
+        }
+    }
+
+    /**
+     * Test-support forwarder that exposes the package-private {@code validateCreatorIp}
+     * method to unit tests in the same package without requiring a full Spring context.
+     *
+     * <p>This method is intentionally NOT part of any interface and must only be called
+     * from test code. Production callers must use {@link #create} which invokes the
+     * validation internally.
+     *
+     * @param ip the IP address string to validate
+     */
+    static void validateCreatorIpForTest(final String ip) {
+        validateCreatorIp(ip);
     }
 }

@@ -1,56 +1,41 @@
 package de.seism0saurus.glacier.share.infrastructure;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import de.seism0saurus.glacier.share.domain.SecureRandomTokenGenerator;
-import de.seism0saurus.glacier.share.domain.ShareLink;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
-import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.SingleConnectionDataSource;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Duration;
-import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 
 /**
- * Verifies that the scheduled sweep does not kill the scheduler thread when the DB
- * is temporarily read-only (degraded-mode test).
+ * Verifies that {@link SqliteShareLinkRepository#scheduledSweep} does not kill the
+ * scheduler thread and emits an AUDIT WARN when the underlying JDBC call fails.
  *
  * <p>The sweep is wrapped in a try-catch in {@link SqliteShareLinkRepository#scheduledSweep}.
- * If the DB file becomes read-only mid-test (simulated by chmod 0444), the DELETE
- * will fail with a JDBC exception. The sweep must catch it, log a WARN to the AUDIT
- * logger, and return normally — the scheduler thread must not be killed.
- *
- * <p>This test is disabled on Windows where POSIX permissions do not apply.
+ * This test uses a Mockito-stubbed {@link JdbcTemplate} that throws a
+ * {@link DataAccessException} when the sweep DELETE is attempted, avoiding the
+ * fragile POSIX chmod approach.
  *
  * <p>References: SR-SQLITE-14 (scheduler thread must not be killed); ADR-SQLITE-02.
  */
-@DisabledOnOs(OS.WINDOWS)
 class SqliteShareLinkRepositoryDegradedSweepIT {
 
-    private static final String SHARER_WALL_ID = "sharer-wall-id-fixture-value-0000000000";
-    private static final Duration TTL = Duration.ofDays(7);
-    private static final Instant T0 = Instant.parse("2025-06-01T00:00:00Z");
     private static final String HMAC_KEY = "A".repeat(44);
 
     private ListAppender<ILoggingEvent> auditAppender;
     private Logger auditLogger;
-
-    @TempDir
-    Path tempDir;
 
     @BeforeEach
     void attachAuditAppender() {
@@ -69,82 +54,49 @@ class SqliteShareLinkRepositoryDegradedSweepIT {
     }
 
     /**
-     * When the DB file is made read-only before sweep, the scheduled sweep logs a WARN
-     * to the AUDIT logger and does not throw an exception.
+     * When the JdbcTemplate throws a DataAccessException during the sweep DELETE,
+     * scheduledSweep must not propagate the exception and must log AUDIT WARN.
      *
-     * <p>Arrange: a file-based SQLite DB with one expired link; then chmod 0444 (read-only).
+     * <p>Arrange: a stubbed JdbcTemplate that throws {@link TransientDataAccessResourceException}
+     *             (simulating a temporarily unavailable or read-only database) on any
+     *             {@code update(...)} call.
      * <p>Act:     call {@code scheduledSweep()} directly.
-     * <p>Assert:  no exception thrown; AUDIT WARN logged.
+     * <p>Assert:  no exception propagated; AUDIT logger received a WARN containing
+     *             {@code "share.link.sweep.failed"} (SR-SQLITE-14).
      */
     @Test
-    void scheduledSweep_onReadOnlyFile_logsWarnAndDoesNotThrow() throws IOException {
-        String dbPath = tempDir.resolve("share-links-degraded.db").toAbsolutePath().toString();
-        Path dbFile = Path.of(dbPath);
+    void scheduledSweep_onJdbcFailure_logsAuditWarnAndDoesNotThrow() {
+        // Arrange: stub JdbcTemplate so the sweep DELETE raises DataAccessException.
+        // The varargs form update(String, Object...) requires casting to Object[] for Mockito.
+        JdbcTemplate failingJdbcTemplate = mock(JdbcTemplate.class);
+        doThrow(new TransientDataAccessResourceException("simulated read-only DB"))
+                .when(failingJdbcTemplate).update(anyString(), (Object[]) any());
 
-        // Create the DB and insert an expired link
-        {
-            SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite:" + dbPath, true);
-            JdbcTemplate jdbcTemplate = new JdbcTemplate(ds);
-            SharePersistenceProperties props = makeProps(dbPath);
-            SqliteShareLinkRepository repository = new SqliteShareLinkRepository(jdbcTemplate, props);
-            repository.init();
+        SharePersistenceProperties props = makeInMemoryProps();
+        SqliteShareLinkRepository repository =
+                new SqliteShareLinkRepository(failingJdbcTemplate, props);
 
-            // Insert an expired link (created 8 days ago)
-            ShareLink expired = ShareLink.create(
-                    new SecureRandomTokenGenerator().generateShareLinkId(),
-                    SHARER_WALL_ID,
-                    T0.minus(Duration.ofDays(8)),
-                    TTL);
-            repository.save(expired);
-            ds.destroy();
-        }
+        // Act: scheduledSweep must not throw even when sweepExpired fails
+        assertThatCode(repository::scheduledSweep)
+                .as("scheduledSweep must not propagate DataAccessException to the scheduler "
+                        + "thread (SR-SQLITE-14)")
+                .doesNotThrowAnyException();
 
-        // Make the DB file read-only (simulates degraded mode)
-        Files.setPosixFilePermissions(dbFile, PosixFilePermissions.fromString("r--------"));
-
-        // Create a new repository pointing at the now-read-only file
-        try {
-            SingleConnectionDataSource ds = new SingleConnectionDataSource("jdbc:sqlite:" + dbPath, true);
-            JdbcTemplate jdbcTemplate = new JdbcTemplate(ds);
-            SharePersistenceProperties props = makeProps(dbPath);
-            SqliteShareLinkRepository repository = new SqliteShareLinkRepository(jdbcTemplate, props);
-            // Note: init() may fail on read-only file — the scheduledSweep test is what matters
-            // We call scheduledSweep directly to test it in isolation
-            try {
-                repository.init();
-            } catch (Exception ignored) {
-                // init may or may not fail depending on SQLite's caching — the key assertion is below
-            }
-
-            // Act: scheduledSweep must not throw even when the underlying DB fails
-            assertThatCode(() -> repository.scheduledSweep())
-                    .as("scheduledSweep must not throw when DB is read-only (SR-SQLITE-14)")
-                    .doesNotThrowAnyException();
-
-            ds.destroy();
-        } finally {
-            // Restore permissions so @TempDir cleanup can delete the file
-            try {
-                Files.setPosixFilePermissions(dbFile, PosixFilePermissions.fromString("rw-------"));
-            } catch (Exception ignored) {
-                // best-effort cleanup
-            }
-        }
-
-        // The AUDIT logger must have received a WARN (either from init or scheduledSweep)
-        // We allow for the possibility that the DB opened read-only without error
-        // and the sweep either succeeded trivially or failed with a WARN
-        // The key invariant is: no exception propagated from scheduledSweep
-        // (already asserted above via assertThatCode)
+        // Assert: AUDIT logger received a WARN starting with "share.link.sweep.failed"
+        assertThat(auditAppender.list)
+                .as("scheduledSweep must emit AUDIT.warn on JDBC failure (SR-SQLITE-14)")
+                .filteredOn(e -> e.getLevel() == Level.WARN)
+                .extracting(ILoggingEvent::getFormattedMessage)
+                .anyMatch(m -> m.startsWith("share.link.sweep.failed"));
     }
 
     // -------------------------------------------------------------------------
     // Helper
     // -------------------------------------------------------------------------
 
-    private static SharePersistenceProperties makeProps(final String path) {
+    private static SharePersistenceProperties makeInMemoryProps() {
         SharePersistenceProperties props = new SharePersistenceProperties();
-        props.setPath(path);
+        props.setPath(":memory:");
         props.setIpHmacKey(HMAC_KEY);
         return props;
     }

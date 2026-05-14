@@ -12,10 +12,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Statement;
+import java.util.List;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * ArchUnit structural gates for the SQLite share-link persistence adapter.
@@ -33,6 +35,9 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  *   <li>{@code ShareLink#creatorIp()} may only be called from classes within
  *       {@code share.infrastructure} — raw IP must not be accessed outside the
  *       persistence/cap-accounting layer (SR-SQLITE-23; GDPR Art. 25).</li>
+ *   <li>{@code ShareLink#fromPersistence} may only be called from classes within
+ *       {@code share.infrastructure} — this reconstitution factory bypasses domain invariants
+ *       and must be restricted to persistence adapters (ADR-SQLITE-08).</li>
  * </ol>
  *
  * <p>References:
@@ -41,6 +46,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
  *   <li>SR-SQLITE-19: {@code sha256Hex} is private in share.infrastructure (ADR-SQLITE-04)</li>
  *   <li>SR-SQLITE-20: {@code ShareLinkSummary} no-token ArchUnit rule (ADR-SQLITE-05)</li>
  *   <li>SR-SQLITE-23: {@code ShareLink#creatorIp()} call-site restriction</li>
+ *   <li>ADR-SQLITE-08: {@code ShareLink#fromPersistence} call-site restriction</li>
  *   <li>OWASP A03:2021 — Injection; ASVS V5.3.4 (L1)</li>
  * </ul>
  */
@@ -207,5 +213,75 @@ class ShareLinkPersistenceArchitectureTest {
                         + "and must only be accessed from share.infrastructure adapters "
                         + "(GDPR Art. 25 — Data Protection by Design)");
         rule.check(productionClasses);
+    }
+
+    // -------------------------------------------------------------------------
+    // Rule 5: fromPersistence() called only from share.infrastructure (active)
+    // ADR-SQLITE-08
+    // -------------------------------------------------------------------------
+
+    /**
+     * ADR-SQLITE-08: {@code ShareLink#fromPersistence} may only be called from classes that
+     * reside in {@code share.infrastructure}.
+     *
+     * <p>{@code fromPersistence} is a persistence-reconstitution factory that bypasses domain
+     * creation invariants (e.g., it accepts a pre-existing {@code revokedAt} without going
+     * through {@link ShareLink#revoke}). Allowing arbitrary callers to use this factory would
+     * undermine the aggregate's invariant enforcement and could allow callers to construct
+     * aggregates in illegal states.
+     *
+     * <p>The only legitimate caller is the SQLite persistence adapter
+     * ({@code SqliteShareLinkRepository}) which must re-hydrate aggregates from stored rows.
+     */
+    @Test
+    void fromPersistenceOnlyCalledFromShareInfrastructure() {
+        // ADR-SQLITE-08: fromPersistence bypasses domain invariants — restricted to adapters
+        DescribedPredicate<JavaMethodCall> callsFromPersistence =
+                new DescribedPredicate<>("call to ShareLink.fromPersistence(...)") {
+                    @Override
+                    public boolean test(final JavaMethodCall call) {
+                        return call.getTarget().getName().equals("fromPersistence")
+                                && call.getTarget().getOwner().isAssignableTo(ShareLink.class);
+                    }
+                };
+
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("de.seism0saurus.glacier.share.infrastructure..")
+                .should().callMethodWhere(callsFromPersistence)
+                .because("ADR-SQLITE-08: fromPersistence is a persistence-reconstitution factory "
+                        + "that bypasses domain invariants — restricted to share.infrastructure adapters");
+        rule.check(productionClasses);
+    }
+
+    /**
+     * Self-pinning sentinel: the ADR-SQLITE-08 rule description must reference the ADR ID.
+     *
+     * <p>Ensures the {@code because()} clause of {@link #fromPersistenceOnlyCalledFromShareInfrastructure}
+     * is never silently emptied or reworded in a way that removes the traceability link
+     * to the governing ADR.
+     */
+    @Test
+    void fromPersistenceRule_becauseClause_containsAdrReference() {
+        // Build the rule and verify its description contains "ADR-SQLITE-08"
+        DescribedPredicate<JavaMethodCall> callsFromPersistence =
+                new DescribedPredicate<>("call to ShareLink.fromPersistence(...)") {
+                    @Override
+                    public boolean test(final JavaMethodCall call) {
+                        return call.getTarget().getName().equals("fromPersistence")
+                                && call.getTarget().getOwner().isAssignableTo(ShareLink.class);
+                    }
+                };
+
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("de.seism0saurus.glacier.share.infrastructure..")
+                .should().callMethodWhere(callsFromPersistence)
+                .because("ADR-SQLITE-08: fromPersistence is a persistence-reconstitution factory "
+                        + "that bypasses domain invariants — restricted to share.infrastructure adapters");
+
+        List<String> ruleTexts = List.of(rule.getDescription());
+        assertThat(ruleTexts)
+                .as("The fromPersistence ArchUnit rule description must contain 'ADR-SQLITE-08' "
+                        + "to preserve traceability to the governing decision record")
+                .allMatch(desc -> desc.contains("ADR-SQLITE-08"));
     }
 }

@@ -28,6 +28,7 @@
   "share.dialog.title": "Pinnwand teilen",
   "share.dialog.lead": "Erstelle eine barrierefreie Kopie deiner Pinnwand für Menschen, die Screenreader oder Zoom verwenden. Jede Person mit dem Link oder QR-Code kann deine Pinnwand sehen.",
   "share.dialog.url.label": "Link kopieren",
+  "share.dialog.url.shown-once.warning": "Wichtig: Dieser Link wird nur jetzt angezeigt und kann später nicht erneut abgerufen werden. Bitte kopiere ihn jetzt.",
   "share.dialog.copy.button": "Kopieren",
   "share.dialog.copied.announce": "Link kopiert",
   "share.dialog.expires": "Läuft ab am {date}",

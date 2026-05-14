@@ -26,6 +26,10 @@ import java.lang.annotation.Target;
  *   <li>U+2028 (LINE SEPARATOR) — JS/log newline</li>
  *   <li>U+2029 (PARAGRAPH SEPARATOR) — JS/log newline</li>
  *   <li>{@code %00} — URL-encoded null byte</li>
+ *   <li>{@code ?} — JDBC URL query-string injection (appends SQLite PRAGMA overrides)</li>
+ *   <li>{@code #} — URL fragment injection</li>
+ *   <li>{@code %3F} — URL-encoded {@code ?}</li>
+ *   <li>{@code %23} — URL-encoded {@code #}</li>
  * </ul>
  *
  * <p>Accepted verbatim (needed for in-memory SQLite in tests):

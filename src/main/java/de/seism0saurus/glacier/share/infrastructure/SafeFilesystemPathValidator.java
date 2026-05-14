@@ -22,6 +22,10 @@ import jakarta.validation.ConstraintValidatorContext;
  *   <li>U+2028 (LINE SEPARATOR) — log/JS injection</li>
  *   <li>U+2029 (PARAGRAPH SEPARATOR) — log/JS injection</li>
  *   <li>{@code %00} (URL-encoded null byte) — URL decoding bypass</li>
+ *   <li>{@code ?} — JDBC URL query-string injection (appends PRAGMA overrides before controlled params)</li>
+ *   <li>{@code #} — URL fragment injection</li>
+ *   <li>{@code %3F} (URL-encoded {@code ?}) — bypass via URL encoding</li>
+ *   <li>{@code %23} (URL-encoded {@code #}) — bypass via URL encoding</li>
  * </ul>
  *
  * <h2>Verbatim allowlist (in-memory SQLite test paths)</h2>
@@ -50,6 +54,23 @@ public class SafeFilesystemPathValidator
 
     /** URL-encoded null byte sequence — must be rejected before any decoding step. */
     private static final String URL_ENCODED_NULL = "%00";
+
+    /**
+     * URL-encoded {@code ?} — SQLite JDBC URL query-string injection bypass.
+     * A path like {@code /db.sqlite%3Fsynchronous=OFF} would inject a PRAGMA before the
+     * controlled parameters, potentially overriding {@code synchronous=FULL} (CRIT-3/F-2).
+     */
+    private static final String URL_ENCODED_QUESTION = "%3F";
+
+    /**
+     * URL-encoded {@code ?} — lowercase variant; HTTP clients may send either case.
+     */
+    private static final String URL_ENCODED_QUESTION_LC = "%3f";
+
+    /**
+     * URL-encoded {@code #} — URL fragment injection bypass.
+     */
+    private static final String URL_ENCODED_HASH = "%23";
 
     /** Forbidden code point: U+202E RIGHT-TO-LEFT OVERRIDE */
     private static final char RTL_OVERRIDE = '‮';
@@ -88,6 +109,13 @@ public class SafeFilesystemPathValidator
 
         // URL-encoded null byte bypass (must check before character scan)
         if (value.contains(URL_ENCODED_NULL)) {
+            return setStaticViolation(context);
+        }
+
+        // URL-encoded ? and # bypass — JDBC URL query-string / fragment injection (CRIT-3/F-2)
+        if (value.contains(URL_ENCODED_QUESTION)
+                || value.contains(URL_ENCODED_QUESTION_LC)
+                || value.contains(URL_ENCODED_HASH)) {
             return setStaticViolation(context);
         }
 
@@ -132,13 +160,21 @@ public class SafeFilesystemPathValidator
     }
 
     /**
-     * Returns {@code true} if the character is a shell metacharacter that could enable
-     * command injection or shell-word splitting if the path were passed to a shell.
+     * Returns {@code true} if the character is a shell metacharacter or JDBC URL injector
+     * that could enable command injection, shell-word splitting, or PRAGMA override if the
+     * path were passed to a shell or concatenated into a JDBC URL.
      *
-     * <p>Covered: {@code ; | &amp; ` $ ( ) { } &lt; &gt;}
+     * <p>Covered: {@code ; | &amp; ` $ ( ) { } &lt; &gt; ? #}
+     *
+     * <p>{@code ?} starts the JDBC URL query string — a path containing {@code ?} would
+     * inject SQLite PRAGMA parameters before the controlled parameters, potentially
+     * overriding {@code synchronous=FULL} (CRIT-3/F-2; SR-SQLITE-08).
+     *
+     * <p>{@code #} is a URL fragment separator — injection would silently truncate the
+     * controlled URL parameters.
      *
      * @param c character to test
-     * @return {@code true} if forbidden shell metacharacter
+     * @return {@code true} if forbidden metacharacter
      */
     private static boolean isShellMetacharacter(final char c) {
         return c == ';'
@@ -151,7 +187,11 @@ public class SafeFilesystemPathValidator
                 || c == '{'
                 || c == '}'
                 || c == '<'
-                || c == '>';
+                || c == '>'
+                // JDBC URL query-string injection: path + "?synchronous=OFF" overrides FULL (CRIT-3/F-2)
+                || c == '?'
+                // URL fragment injection: path + "#..." silently truncates PRAGMA params
+                || c == '#';
     }
 
     /**

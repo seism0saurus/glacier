@@ -183,6 +183,42 @@ class SharePersistencePropertiesPathTraversalTest {
     }
 
     // -------------------------------------------------------------------------
+    // JDBC URL query-string and fragment injection (CRIT-3/F-2; SR-SQLITE-08)
+    // -------------------------------------------------------------------------
+
+    /**
+     * CRIT-3/F-2 regression: {@code ?} in a path would inject PRAGMA parameters into the
+     * JDBC URL, potentially overriding {@code synchronous=FULL} with attacker-controlled
+     * values. Both raw {@code ?} and URL-encoded {@code %3F} / {@code %23} must be rejected.
+     *
+     * <p>References: SR-SQLITE-08; OWASP A03:2021 — Injection; CWE-88 — Argument Injection.
+     */
+    @ParameterizedTest(name = "JDBC URL injection rejected: [{0}]")
+    @ValueSource(strings = {
+            // Raw query-string injection — appends PRAGMA before controlled params
+            "/var/lib/glacier/db.sqlite?synchronous=OFF",
+            // Raw fragment injection — truncates controlled PRAGMA params
+            "/var/lib/glacier/db.sqlite#fragment",
+            // Question mark mid-path
+            "/var/lib/glacier/db?extra.sqlite",
+            // URL-encoded ? bypass
+            "/var/lib/glacier/db.sqlite%3Fsynchronous=OFF",
+            // URL-encoded ? lowercase bypass
+            "/var/lib/glacier/db.sqlite%3fsynchronous=OFF",
+            // URL-encoded # bypass
+            "/var/lib/glacier/db.sqlite%23fragment",
+    })
+    void pathWithJdbcUrlInjection_isRejected(final String maliciousPath) {
+        SharePersistenceProperties props = propsWithPath(maliciousPath);
+        Set<ConstraintViolation<SharePersistenceProperties>> violations = validator.validate(props);
+
+        assertThat(violations)
+                .as("Expected @SafeFilesystemPath to reject JDBC URL injection in: [%s]", maliciousPath)
+                .extracting(v -> v.getPropertyPath().toString())
+                .contains("path");
+    }
+
+    // -------------------------------------------------------------------------
     // Violation message must NOT echo the input (CWE-22 prevention)
     // -------------------------------------------------------------------------
 
