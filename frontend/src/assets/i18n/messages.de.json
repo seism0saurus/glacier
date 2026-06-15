@@ -91,5 +91,11 @@
   "wall.migration.banner.body": "Die Pinnwand wurde auf ein neues Format aktualisiert und geleert. Neue Beiträge erscheinen, sobald Mastodon sie liefert.",
   "wall.migration.banner.dismiss.aria": "Hinweis schließen",
   "chip.settling.aria": "Synchronisiert, kurz warten",
-  "chip.settling.visual.tooltip": "Synchronisiert …"
+  "chip.settling.visual.tooltip": "Synchronisiert …",
+  "share.connection.live.label": "Live",
+  "share.connection.probing.label": "Verbinde…",
+  "share.connection.fallback.label": "Fallback-Modus",
+  "share.connection.expired.label": "Abgelaufen",
+  "share.connection.expired.announce": "Dieser Link ist abgelaufen oder wurde widerrufen.",
+  "share.connection.status.changed": "Verbindungsstatus: {status}"
 }

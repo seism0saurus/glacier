@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -56,7 +57,7 @@ class ShareLinkServiceImplTest {
     private ShareLinkRepository repository;
 
     @Mock
-    private ShareViewStompRelay shareViewStompRelay;
+    private ApplicationEventPublisher eventPublisher;
 
     private ShareLinkLifetimePolicy lifetimePolicy;
     private ShareLinkCapPolicy capPolicy;
@@ -72,9 +73,8 @@ class ShareLinkServiceImplTest {
         lifetimePolicy.setTtl(TTL);
         capPolicy = new ShareLinkCapPolicy();
         tokenGenerator = new SecureRandomTokenGenerator();
-        // Real relay mock passed in; specific tests pass null to verify null-safety.
         service = new ShareLinkServiceImpl(
-                repository, tokenGenerator, lifetimePolicy, capPolicy, shareViewStompRelay, fixedClock);
+                repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher, fixedClock);
     }
 
     // -----------------------------------------------------------------------
@@ -250,10 +250,14 @@ class ShareLinkServiceImplTest {
 
     /**
      * Revoking with the correct wallId marks the link revoked in the repository
-     * and pushes a STOMP revocation message to viewers.
+     * and publishes a {@link ShareLinkRevokedEvent} for the relay to push to viewers.
+     *
+     * <p>ADR-RELAY-01 / ARCH-RELAY-06: the service no longer calls
+     * {@code shareViewStompRelay.pushRevocation()} directly. Revocation is routed via
+     * {@link ApplicationEventPublisher} to decouple the circular dependency.
      */
     @Test
-    void revoke_marksLinkRevoked_andPushesStompRevocation() {
+    void revoke_marksLinkRevoked_andPublishesRevokedEvent() {
         ShareLinkId id = tokenGenerator.generateShareLinkId();
         ShareLink link = ShareLink.create(id, SHARER_WALL_ID, T0, TTL);
         when(repository.findById(id)).thenReturn(Optional.of(link));
@@ -261,27 +265,13 @@ class ShareLinkServiceImplTest {
         service.revoke(id, SHARER_WALL_ID, T0.plusSeconds(10));
 
         verify(repository).markRevoked(id, T0.plusSeconds(10));
-        verify(shareViewStompRelay).pushRevocation(id);
-    }
 
-    /**
-     * When {@code shareViewStompRelay} is null (stub mode or disabled), revoke must
-     * complete without throwing a NullPointerException.
-     */
-    @Test
-    void revoke_doesNotPushStomp_whenRelayIsNull() {
-        ShareLinkId id = tokenGenerator.generateShareLinkId();
-        ShareLink link = ShareLink.create(id, SHARER_WALL_ID, T0, TTL);
-        when(repository.findById(id)).thenReturn(Optional.of(link));
-
-        // Build a service instance with a null relay
-        ShareLinkServiceImpl serviceWithNullRelay = new ShareLinkServiceImpl(
-                repository, tokenGenerator, lifetimePolicy, capPolicy, null, fixedClock);
-
-        // Must not throw
-        serviceWithNullRelay.revoke(id, SHARER_WALL_ID, T0.plusSeconds(5));
-
-        verify(repository).markRevoked(id, T0.plusSeconds(5));
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(ShareLinkRevokedEvent.class);
+        ShareLinkRevokedEvent event = (ShareLinkRevokedEvent) captor.getValue();
+        assertThat(event.shareLinkId()).isEqualTo(id);
+        assertThat(event.sharerWallId()).isEqualTo(SHARER_WALL_ID);
     }
 
     // -----------------------------------------------------------------------

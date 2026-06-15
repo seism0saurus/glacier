@@ -149,8 +149,12 @@ services:
       # Mount the certificate of the proxy service so no TLS errors are thrown
       - ./proxy.crt:/certificates/proxy.crt
     environment:
-      # Start spring with the default profile
-      SPRING_PROFILES_ACTIVE: "default"
+      # Start spring with the 'dev' profile. DEVMODE=true (below) enables
+      # withTrustAllCerts() for the self-signed Traefik proxy cert, which
+      # StartupSanityChecker (Sec-01) forbids unless the 'dev' or 'test' profile
+      # is active. 'dev' (not 'test') is used so PassthroughFallbackAuthGuard
+      # (@Profile("test")) stays inactive and fallback auth behaves production-like.
+      SPRING_PROFILES_ACTIVE: "dev"
 
       # Trust and unwrap X-Forwarded-For from Traefik so that getRemoteAddr()
       # returns the real client IP, not Traefik's container IP.

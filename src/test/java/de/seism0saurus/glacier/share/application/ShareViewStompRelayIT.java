@@ -9,8 +9,10 @@ import de.seism0saurus.glacier.share.domain.SecureRandomTokenGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -18,18 +20,19 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Verifies that {@link ShareLinkServiceImpl#revoke} triggers
- * {@link ShareViewStompRelay#pushRevocation} and that the relay correctly
- * transforms toot events (wallId never in topic path — SR-SHARE-02).
+ * Verifies that {@link ShareLinkServiceImpl#revoke} publishes a {@link ShareLinkRevokedEvent}
+ * via {@link ApplicationEventPublisher} — the event triggers {@link ShareViewStompRelay#onRevoke}
+ * which calls {@code pushRevocation()} (ADR-RELAY-01; ARCH-RELAY-06; SR-RELAY-23).
  *
- * <p>Security: ADR-SHARE-04, SR-SHARE-02 (wallId non-disclosure),
- * ADR-SHARE-08 (revocation push to viewers).
+ * <p>Security: ADR-SHARE-04, ADR-RELAY-01, SR-SHARE-02 (wallId non-disclosure),
+ * ADR-SHARE-08 (revocation push to viewers via event).
  */
 @ExtendWith(MockitoExtension.class)
 class ShareViewStompRelayIT {
@@ -43,7 +46,7 @@ class ShareViewStompRelayIT {
     private ShareLinkRepository repository;
 
     @Mock
-    private ShareViewStompRelay shareViewStompRelay;
+    private ApplicationEventPublisher eventPublisher;
 
     private ShareLinkServiceImpl service;
 
@@ -57,36 +60,40 @@ class ShareViewStompRelayIT {
 
         service = new ShareLinkServiceImpl(
                 repository, tokenGenerator, lifetimePolicy, capPolicy,
-                shareViewStompRelay, fixedClock);
+                eventPublisher, fixedClock);
     }
 
     /**
      * Verifies that calling {@code revoke(id, wallId, now)} on a found link
-     * results in {@code ShareViewStompRelay.pushRevocation(id)} being called.
+     * results in a {@link ShareLinkRevokedEvent} being published via the event bus.
      *
-     * <p>ADR-SHARE-08: when a share link is revoked, viewers must receive a control
-     * message so they can disconnect within the SLA window.
+     * <p>ADR-RELAY-01 / ARCH-RELAY-06: the service no longer calls
+     * {@code shareViewStompRelay.pushRevocation()} directly — it publishes an event
+     * and lets {@link ShareViewStompRelay#onRevoke} handle the push.
      */
     @Test
-    void revoke_callsPushRevocation() {
+    void revoke_publishesRevokedEvent_withCorrectLinkId() {
         ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         ShareLink link = ShareLink.create(linkId, SHARER_WALL_ID, SHARER_IP, T0, TTL);
         when(repository.findById(any(ShareLinkId.class))).thenReturn(Optional.of(link));
 
         service.revoke(linkId, SHARER_WALL_ID, T0);
 
-        // ADR-SHARE-08: pushRevocation must be called with the exact link ID
-        verify(shareViewStompRelay).pushRevocation(eq(linkId));
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+
+        assertThat(captor.getValue()).isInstanceOf(ShareLinkRevokedEvent.class);
+        ShareLinkRevokedEvent event = (ShareLinkRevokedEvent) captor.getValue();
+        assertThat(event.shareLinkId()).isEqualTo(linkId);
     }
 
     /**
-     * Verifies that revoking a non-existent link does NOT call pushRevocation.
+     * Verifying that revoking a non-existent link does NOT publish a revoked event.
      *
-     * <p>Anti-enumeration (T-07): we should not push revocation for links we cannot find,
-     * since that would give viewers information about the link's existence.
+     * <p>Anti-enumeration (T-07): we should not emit a revocation event for links we cannot find.
      */
     @Test
-    void revoke_notFound_doesNotCallPushRevocation() {
+    void revoke_notFound_doesNotPublishRevokedEvent() {
         ShareLinkId linkId = ShareLinkId.fromUrlPath("sv_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
         when(repository.findById(any(ShareLinkId.class))).thenReturn(Optional.empty());
 
@@ -96,8 +103,6 @@ class ShareViewStompRelayIT {
             // Expected — the service throws for not-found
         }
 
-        // pushRevocation must NOT be called for non-existent links
-        org.mockito.Mockito.verify(shareViewStompRelay, org.mockito.Mockito.never())
-                .pushRevocation(any(ShareLinkId.class));
+        verify(eventPublisher, never()).publishEvent(any(ShareLinkRevokedEvent.class));
     }
 }

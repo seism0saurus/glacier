@@ -102,5 +102,11 @@
   "header.h1": "Glacier - The Mastodon Social Wall",
   "header.share.button.aria": "Share wall",
   "gdpr.dialog.title": "Legal Notice and Privacy Policy",
-  "wall.empty.cta": "No posts yet — type a hashtag in the search field to get started."
+  "wall.empty.cta": "No posts yet — type a hashtag in the search field to get started.",
+  "share.connection.live.label": "Live",
+  "share.connection.probing.label": "Connecting…",
+  "share.connection.fallback.label": "Fallback mode",
+  "share.connection.expired.label": "Expired",
+  "share.connection.expired.announce": "This link has expired or been revoked.",
+  "share.connection.status.changed": "Connection status: {status}"
 }

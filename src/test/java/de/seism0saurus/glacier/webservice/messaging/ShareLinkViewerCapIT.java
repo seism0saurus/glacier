@@ -1,6 +1,9 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
+import de.seism0saurus.glacier.share.application.ShareLinkActivityRegistry;
+import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
+import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -21,9 +24,13 @@ import social.bigbone.MastodonClient;
 
 import java.net.URI;
 import java.security.Principal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -81,6 +88,22 @@ class ShareLinkViewerCapIT {
     @MockitoBean
     private MastodonClient mastodonClient;
 
+    /**
+     * SR-RELAY-05: ShareLinkService is mocked so that resolve() returns an active link,
+     * allowing the handler to proceed past the resolve gate and reach the cap check.
+     * Without this stub, determineUser() returns null for all requests (link not active).
+     */
+    @MockitoBean
+    private ShareLinkService shareLinkService;
+
+    /**
+     * SR-RELAY-06: ShareLinkActivityRegistry is mocked so that register() returns true,
+     * allowing the handler to proceed past the TOCTOU registration gate.
+     * We focus this IT on cap enforcement, not TOCTOU — TOCTOU is tested in ShareViewPrincipalHandlerToctouIT.
+     */
+    @MockitoBean
+    private ShareLinkActivityRegistry shareLinkActivityRegistry;
+
     @Autowired
     private ShareViewPrincipalHandler shareViewPrincipalHandler;
 
@@ -93,21 +116,31 @@ class ShareLinkViewerCapIT {
     private WebSocketHandler wsHandler;
 
     /**
-     * The sentinel share link ID produced by the handler when no {@code shareLinkId}
-     * query parameter is present.  It is a 43-char base64url string of all zeros.
-     * All test requests use this same sentinel so they contend on the same counter bucket.
+     * The share link ID present in all test request URIs.
+     * Tests use a real (non-sentinel) link ID so that the handler goes through
+     * the full flow: resolve → cookie → increment → cap check → registry.register().
      */
-    private static final ShareLinkId UNBOUND_ID =
-            ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    private static final String TEST_LINK_ID = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFff";
+    private static final ShareLinkId TEST_LINK = ShareLinkId.fromUrlPath(TEST_LINK_ID);
+    private static final URI TEST_URI =
+            URI.create("ws://localhost/share-view-ws?shareLinkId=" + TEST_LINK_ID);
 
     @BeforeEach
     void resetCounter() {
-        // Drain the counter for the unbound sentinel link between tests.
+        // Drain the counter for the test link between tests.
         // The counter never goes below zero, so decrementing until zero is safe.
-        while (viewerCounter.get(UNBOUND_ID) > 0) {
-            viewerCounter.decrement(UNBOUND_ID);
+        while (viewerCounter.get(TEST_LINK) > 0) {
+            viewerCounter.decrement(TEST_LINK);
         }
         wsHandler = mock(WebSocketHandler.class);
+
+        // SR-RELAY-05: stub resolve() to return an active link so the handler passes the gate.
+        ShareLink activeLink = ShareLink.create(
+                TEST_LINK, "cap-it-sharer-wallid-1234", Instant.now(), Duration.ofDays(7));
+        when(shareLinkService.resolve(any(), any())).thenReturn(Optional.of(activeLink));
+
+        // SR-RELAY-06: stub register() to return true so the handler passes the TOCTOU gate.
+        when(shareLinkActivityRegistry.register(any(), any(), any(), any())).thenReturn(true);
     }
 
     // -----------------------------------------------------------------------
@@ -158,7 +191,7 @@ class ShareLinkViewerCapIT {
         shareViewPrincipalHandler.determineUser(requestWithNoCookies(), wsHandler, new HashMap<>()); // rejected
 
         // Counter must be exactly 2 (the cap), not 3
-        assertThat(viewerCounter.get(UNBOUND_ID))
+        assertThat(viewerCounter.get(TEST_LINK))
                 .as("Counter must be refunded after rejection so it stays at the cap, not cap+1")
                 .isEqualTo(2);
     }
@@ -233,6 +266,10 @@ class ShareLinkViewerCapIT {
     // Helpers
     // -----------------------------------------------------------------------
 
+    /**
+     * Creates a mock request with TEST_LINK_ID in the URI so the handler passes the
+     * SR-RELAY-05 resolve gate (which is tested separately in ShareViewPrincipalHandlerOrderingTest).
+     */
     private static ServerHttpRequest requestWithNoCookies() {
         HttpServletRequest servletRequest = mock(HttpServletRequest.class);
         when(servletRequest.getCookies()).thenReturn(null);
@@ -241,8 +278,7 @@ class ShareLinkViewerCapIT {
         when(servletRequest.getSession()).thenReturn(session);
         ServletServerHttpRequest serverHttpRequest = mock(ServletServerHttpRequest.class);
         when(serverHttpRequest.getServletRequest()).thenReturn(servletRequest);
-        when(serverHttpRequest.getURI()).thenReturn(
-                URI.create("ws://localhost/share-view-ws"));
+        when(serverHttpRequest.getURI()).thenReturn(TEST_URI);
         return serverHttpRequest;
     }
 

@@ -237,4 +237,11 @@ When writing a new ADR, add a row here in the acceptance commit.
 | [2026-05-13-implementation-share-link-sqlite-persistence.md](2026-05-13-implementation-share-link-sqlite-persistence.md) | P2: Implement SQLite persistence adapter; token + IP at-rest hashing; HikariCP pool; ArchUnit gates; scheduled sweep |
 | [2026-05-14-acceptance-share-link-sqlite-persistence.md](2026-05-14-acceptance-share-link-sqlite-persistence.md) | P3: PASSED — 17/17 AC; 7 findings fixed (TOCTOU 0600, JDBC URL injection, ArchUnit fence, AUDIT assert, WiringTest, InetAddress, i18n warning); 1708 unit + 379 IT, 0 failures |
 
+### ShareViewStompRelay Migration (`share-view-stomp-relay-migration`)
+| File | Summary |
+|---|---|
+| [2026-05-15-planning-share-view-stomp-relay-migration.md](2026-05-15-planning-share-view-stomp-relay-migration.md) | P1: Plan event-driven registry (`ShareLinkActivityRegistry`) to replace deprecated `listBySharer()` call in `ShareViewStompRelay`; removes SQLite production blocker |
+| [2026-05-15-implementation-share-view-stomp-relay-migration.md](2026-05-15-implementation-share-view-stomp-relay-migration.md) | P2: Registry + events + handshake reorder + Angular ReadonlyWallStompClient; 1742 unit + 383 IT + 616 Karma — 0 failures; BUILD SUCCESS |
+| [2026-06-15-acceptance-share-view-stomp-relay-migration.md](2026-06-15-acceptance-share-view-stomp-relay-migration.md) | P3: PASSED — 2 blocking findings fixed (SEC-ACC-01 counter-leak refund on `register()` throw; SEC-ACC-02 exponential reconnect backoff); SR-RELAY 23/23, 7/7 ArchUnit; 1743 unit + 383 IT + 618 Karma, 0 failures; live-relay Playwright e2e to run in CI before merge |
+
 ---

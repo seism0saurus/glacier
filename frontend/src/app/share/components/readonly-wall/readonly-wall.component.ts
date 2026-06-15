@@ -5,11 +5,13 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Subscription } from 'rxjs';
 import { ReadonlyWallService } from '../../services/readonly-wall.service';
+import { ReadonlyWallStompClient } from '../../services/readonly-wall-stomp-client.service';
+import { ViewerTransportMode } from '../../services/viewer-transport-mode';
 import { ReadonlyTootComponent } from '../readonly-toot/readonly-toot.component';
 import { ReadonlyTootView } from '../../model/readonly-toot-view';
 
@@ -25,15 +27,19 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
  *
  * State management:
  * - ReadonlyWallService is provided per-component (not root) to allow teardown.
- * - STOMP via /share-view-ws is wired by this component (placeholder pending
- *   backend WS endpoint; see CLARIFICATION REQUEST below).
- * - Falls back to HTTP polling when STOMP is unavailable.
+ * - ReadonlyWallStompClient is provided per-component (SR-RELAY-17): each viewer
+ *   component owns its own connection; different share links must never share a
+ *   connection instance.
+ * - STOMP connects to /share-view-ws (native WebSocket, SR-RELAY-18).
+ * - Falls back to HTTP polling via ReadonlyWallService.startFallbackPolling()
+ *   when STOMP transitions to FALLBACK mode.
  */
 @Component({
   selector: 'app-readonly-wall',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [ReadonlyWallService],
+  // SR-RELAY-17: ReadonlyWallStompClient is per-component, NOT providedIn:'root'
+  providers: [ReadonlyWallService, ReadonlyWallStompClient],
   imports: [
     CommonModule,
     MatProgressSpinnerModule,
@@ -178,13 +184,52 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
 
   constructor(
     private route: ActivatedRoute,
+    private router: Router,
     private wallService: ReadonlyWallService,
+    private stompClient: ReadonlyWallStompClient,
     private liveAnnouncer: LiveAnnouncer,
   ) {}
 
   ngOnInit(): void {
     const shareId = this.route.snapshot.paramMap.get('shareId') ?? '';
     this.wallService.initialize(shareId);
+
+    // Open the STOMP connection to the share-view WebSocket endpoint.
+    // SR-RELAY-17: stompClient is per-component — each viewer owns its own connection.
+    this.stompClient.connect(shareId);
+
+    // Subscribe to STOMP toot events for each hashtag loaded from the catalog.
+    // The catalog is loaded synchronously enough that hashtags are available
+    // immediately after initialize(); for deferred hashtags, the STOMP client
+    // re-registers topic subscriptions on each reconnect.
+    this.wallService.hashtags.forEach((hashtag) => {
+      this.subscription.add(
+        this.stompClient.tootEvents$(hashtag).subscribe((toot: ReadonlyTootView) => {
+          this.wallService.handleToot(toot);
+        }),
+      );
+    });
+
+    // React to transport mode changes.
+    this.subscription.add(
+      this.stompClient.transportMode$.subscribe((mode) => {
+        if (mode === ViewerTransportMode.FALLBACK) {
+          // STOMP grace window elapsed without reconnect — start HTTP polling
+          this.wallService.startFallbackPolling();
+        } else if (mode === ViewerTransportMode.LIVE) {
+          // STOMP reconnected — stop HTTP polling if it was active
+          this.wallService.stopFallbackPolling();
+        } else if (mode === ViewerTransportMode.EXPIRED) {
+          // Control frame received (revoked/expired) — announce and navigate
+          const expiryMsg = $localize`:@@share.connection.expired.announce:Dieser Link ist abgelaufen oder wurde widerrufen.`;
+          this.liveAnnouncer.announce(expiryMsg, 'assertive');
+          // WCAG 2.2.1 / 3.2.5: delay navigation so screen readers can read
+          setTimeout(() => {
+            this.router.navigate(['/share', shareId, 'expired']);
+          }, 1000);
+        }
+      }),
+    );
 
     // Announce new toots as they arrive (batched — UX plan §1.2 Step 6)
     this.subscription.add(
@@ -198,6 +243,7 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stompClient.disconnect();
     this.subscription.unsubscribe();
     this.wallService.destroy();
   }

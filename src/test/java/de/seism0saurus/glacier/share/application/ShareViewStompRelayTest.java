@@ -1,6 +1,5 @@
 package de.seism0saurus.glacier.share.application;
 
-import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,9 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-import java.time.Instant;
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -25,22 +23,20 @@ import static org.mockito.Mockito.*;
  * revocation control messages are delivered, and the wallId never leaks
  * into viewer-facing topic paths (SR-SHARE-02).
  *
- * <p>{@code ShareViewStompRelay} uses the deprecated {@link ShareLinkService#listBySharer}
- * method to obtain active links with full IDs for topic-path construction. The
- * {@code @SuppressWarnings} here applies to the test's mock stubbing of that method.
- * The production migration to a non-deprecated alternative is deferred to a follow-up lane.
+ * <p>After the ADR-RELAY-01 migration, routing uses {@link ShareLinkActivityRegistry}
+ * instead of the deprecated {@link ShareLinkService#listBySharer}.
  *
- * <p>Security: SR-SHARE-02, SR-SHARE-06, ADR-SHARE-04.
+ * <p>Security: SR-SHARE-02, SR-SHARE-06, ADR-SHARE-04, ADR-RELAY-01.
  */
-@SuppressWarnings("deprecation")
 class ShareViewStompRelayTest {
 
     private SimpMessagingTemplate mockTemplate;
     private ShareLinkService mockShareLinkService;
     private MessageCache mockMessageCache;
+    private ShareLinkActivityRegistry mockRegistry;
     private ShareViewStompRelay relay;
 
-    private static final String WALL_ID = "test-wall-id";
+    private static final String WALL_ID = "test-wall-id-AAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     private static final String HASHTAG = "testhashtag";
     private static final ShareLinkId LINK_ID =
             ShareLinkId.fromUrlPath("sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
@@ -52,7 +48,8 @@ class ShareViewStompRelayTest {
         mockTemplate = mock(SimpMessagingTemplate.class);
         mockShareLinkService = mock(ShareLinkService.class);
         mockMessageCache = mock(MessageCache.class);
-        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache);
+        mockRegistry = mock(ShareLinkActivityRegistry.class);
+        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry);
     }
 
     // -----------------------------------------------------------------------
@@ -61,9 +58,7 @@ class ShareViewStompRelayTest {
 
     @Test
     void relayTootEvent_publishesToShareTopic() {
-        ShareLink activeLink = shareLink(LINK_ID, WALL_ID);
-        when(mockShareLinkService.listBySharer(eq(WALL_ID), any(Instant.class)))
-                .thenReturn(List.of(activeLink));
+        when(mockRegistry.getActiveLinks(WALL_ID)).thenReturn(Set.of(LINK_ID));
 
         Object payload = Map.of("id", "toot-1");
         relay.relayTootEvent(WALL_ID, HASHTAG, "creation", payload);
@@ -74,10 +69,7 @@ class ShareViewStompRelayTest {
 
     @Test
     void relayTootEvent_multipleActiveLinks_publishesToAll() {
-        ShareLink link1 = shareLink(LINK_ID, WALL_ID);
-        ShareLink link2 = shareLink(LINK_ID_2, WALL_ID);
-        when(mockShareLinkService.listBySharer(eq(WALL_ID), any(Instant.class)))
-                .thenReturn(List.of(link1, link2));
+        when(mockRegistry.getActiveLinks(WALL_ID)).thenReturn(Set.of(LINK_ID, LINK_ID_2));
 
         Object payload = Map.of("id", "toot-2");
         relay.relayTootEvent(WALL_ID, HASHTAG, "modification", payload);
@@ -92,8 +84,7 @@ class ShareViewStompRelayTest {
 
     @Test
     void relayTootEvent_noActiveLinks_noPublish() {
-        when(mockShareLinkService.listBySharer(eq(WALL_ID), any(Instant.class)))
-                .thenReturn(List.of());
+        when(mockRegistry.getActiveLinks(WALL_ID)).thenReturn(Set.of());
 
         relay.relayTootEvent(WALL_ID, HASHTAG, "creation", Map.of());
 
@@ -106,13 +97,10 @@ class ShareViewStompRelayTest {
 
     @Test
     void relayTootEvent_wallIdNeverInTopicPath() {
-        ShareLink link = shareLink(LINK_ID, WALL_ID);
-        when(mockShareLinkService.listBySharer(eq(WALL_ID), any(Instant.class)))
-                .thenReturn(List.of(link));
+        when(mockRegistry.getActiveLinks(WALL_ID)).thenReturn(Set.of(LINK_ID));
 
         relay.relayTootEvent(WALL_ID, HASHTAG, "creation", Map.of());
 
-        @SuppressWarnings("unchecked")
         ArgumentCaptor<String> topicCaptor = ArgumentCaptor.forClass(String.class);
         verify(mockTemplate).convertAndSend(topicCaptor.capture(), any(Object.class));
 
@@ -166,17 +154,9 @@ class ShareViewStompRelayTest {
 
     @Test
     void relayTootEvent_blankHashtag_doesNotThrow() {
-        when(mockShareLinkService.listBySharer(any(), any())).thenReturn(List.of());
+        when(mockRegistry.getActiveLinks(any())).thenReturn(Set.of());
         assertThatCode(() -> relay.relayTootEvent(WALL_ID, "", "creation", Map.of()))
                 .doesNotThrowAnyException();
     }
 
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
-
-    private static ShareLink shareLink(ShareLinkId id, String wallId) {
-        Instant now = Instant.now();
-        return ShareLink.create(id, wallId, now, java.time.Duration.ofDays(7));
-    }
 }

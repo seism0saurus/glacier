@@ -1,6 +1,9 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
+import de.seism0saurus.glacier.share.application.ShareLinkActivityRegistry;
+import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
+import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import jakarta.servlet.http.Cookie;
@@ -17,8 +20,11 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import java.net.URI;
 import java.security.Principal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,12 +56,40 @@ class ShareViewPrincipalHandlerTest {
     @Mock
     private WebSocketHandler wsHandler;
 
+    /**
+     * SR-RELAY-05: shareLinkService.resolve() is called before increment; existing tests focus
+     * on cap/cookie/disconnect behaviour — stub resolve() to always return active so these tests
+     * are not affected by the new ordering.
+     */
+    @Mock
+    private ShareLinkService shareLinkService;
+
+    /**
+     * SR-RELAY-06: registry.register() re-resolves under lock; stub to return true so existing
+     * tests for cap/cookie/disconnect behaviour pass through unaffected.
+     */
+    @Mock
+    private ShareLinkActivityRegistry registry;
+
     @BeforeEach
     void setUp() {
         viewerCounter = new ShareLinkViewerCounter();
         capPolicy = new ShareLinkCapPolicy();
         capPolicy.setMaxViewersPerLink(TEST_CAP);
-        handler = new ShareViewPrincipalHandler(true, viewerCounter, capPolicy);
+
+        // Stub an active link so existing tests that exercise cap/cookie/disconnect logic
+        // are not blocked by the new resolve() gate (SR-RELAY-05).
+        // DEFAULT_URI carries TEST_LINK_ID so the resolve() stub is exercised.
+        // lenient() because some tests (e.g. nullPrincipalDisconnectDoesNotThrow) never
+        // call determineUser() and therefore never consume the stubbing.
+        ShareLinkId testLinkId = ShareLinkId.fromUrlPath(TEST_LINK_ID);
+        ShareLink activeLink = ShareLink.create(testLinkId, "test-sharer-wallid-1234", Instant.now(), Duration.ofDays(7));
+        org.mockito.Mockito.lenient().when(shareLinkService.resolve(any(), any()))
+                .thenReturn(Optional.of(activeLink));
+        org.mockito.Mockito.lenient().when(registry.register(any(), any(), any(), any()))
+                .thenReturn(true);
+
+        handler = new ShareViewPrincipalHandler(true, viewerCounter, capPolicy, shareLinkService, registry);
     }
 
     @Test
@@ -187,10 +221,9 @@ class ShareViewPrincipalHandlerTest {
         handler.determineUser(requestWithNoCookies(), wsHandler, new HashMap<>());
         // third attempt — rejected
         handler.determineUser(requestWithNoCookies(), wsHandler, new HashMap<>());
-        // The unbound sentinel link ID used by requestWithNoCookies() is always the same;
-        // counter for it must equal the cap (2), not 3
-        ShareLinkId sentinelId = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        assertThat(viewerCounter.get(sentinelId)).isEqualTo(TEST_CAP);
+        // Counter for TEST_LINK_ID must equal the cap (2), not 3 (refunded on rejection)
+        ShareLinkId testLinkId = ShareLinkId.fromUrlPath(TEST_LINK_ID);
+        assertThat(viewerCounter.get(testLinkId)).isEqualTo(TEST_CAP);
     }
 
     @Test
@@ -218,14 +251,14 @@ class ShareViewPrincipalHandlerTest {
     void wallPrincipalDisconnectDoesNotDecrementViewerCounter() {
         // One viewer connected
         handler.determineUser(requestWithNoCookies(), wsHandler, new HashMap<>());
-        ShareLinkId sentinelId = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        int countBefore = viewerCounter.get(sentinelId);
+        ShareLinkId testLinkId = ShareLinkId.fromUrlPath(TEST_LINK_ID);
+        int countBefore = viewerCounter.get(testLinkId);
 
         // A WallPrincipal disconnects — must NOT affect the viewer counter
         WallPrincipal wallPrincipal = new WallPrincipal("some-wall-id-uuid-1234567890abcdef");
         handler.onDisconnect(disconnectEventFor(wallPrincipal));
 
-        assertThat(viewerCounter.get(sentinelId)).isEqualTo(countBefore);
+        assertThat(viewerCounter.get(testLinkId)).isEqualTo(countBefore);
     }
 
     @Test
@@ -233,15 +266,24 @@ class ShareViewPrincipalHandlerTest {
         // Null principal in the event must be handled gracefully (defensive)
         handler.onDisconnect(disconnectEventFor(null));
         // No exception thrown — counter unchanged
-        ShareLinkId sentinelId = ShareLinkId.fromUrlPath("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        assertThat(viewerCounter.get(sentinelId)).isZero();
+        ShareLinkId testLinkId = ShareLinkId.fromUrlPath(TEST_LINK_ID);
+        assertThat(viewerCounter.get(testLinkId)).isZero();
     }
 
     // -----------------------------------------------------------------------
     // Helpers — mock requests that also stub getURI() (needed by extractShareLinkId)
     // -----------------------------------------------------------------------
 
-    private static final URI DEFAULT_URI = URI.create("ws://localhost/share-view-ws");
+    /**
+     * A well-formed shareLinkId present in all request URIs so that the new
+     * {@code shareLinkService.resolve()} gate in {@link ShareViewPrincipalHandler#determineUser}
+     * is exercised on every test (SR-RELAY-05: resolve before increment).
+     * Without a shareLinkId query param the handler returns the sentinel principal without
+     * calling resolve/increment, which would bypass the cap tests.
+     */
+    private static final String TEST_LINK_ID = "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEee";
+    private static final URI DEFAULT_URI =
+            URI.create("ws://localhost/share-view-ws?shareLinkId=" + TEST_LINK_ID);
 
     private ServerHttpRequest requestWithCookie(String name, String value) {
         Cookie cookie = new Cookie(name, value);

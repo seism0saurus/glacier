@@ -12,6 +12,7 @@ import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import de.seism0saurus.glacier.util.LogScrubber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.net.InetAddress;
@@ -69,31 +70,37 @@ public class ShareLinkServiceImpl implements ShareLinkService {
     private final SecureRandomTokenGenerator tokenGenerator;
     private final ShareLinkLifetimePolicy lifetimePolicy;
     private final ShareLinkCapPolicy capPolicy;
-    private final ShareViewStompRelay shareViewStompRelay;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     /**
      * Constructs the service with all required collaborators.
      *
-     * @param repository          persistence for {@link ShareLink} aggregates
-     * @param tokenGenerator      cryptographically strong ID generator
-     * @param lifetimePolicy      TTL and sweep configuration
-     * @param capPolicy           per-sharer and per-IP caps
-     * @param shareViewStompRelay relay used to push revocation control messages to viewers
-     * @param clock               injected clock for time operations (use {@link Clock#fixed} in tests)
+     * <p>Note: {@link ShareViewStompRelay} is intentionally NOT a dependency here
+     * (ARCH-RELAY-06; SR-RELAY-23). Revocation control messages are delivered via the
+     * {@link ShareLinkRevokedEvent} published to {@code eventPublisher}, which
+     * {@link ShareViewStompRelay#onRevoke} handles. This removes the circular dependency
+     * and prevents double STOMP control frame delivery.
+     *
+     * @param repository     persistence for {@link ShareLink} aggregates
+     * @param tokenGenerator cryptographically strong ID generator
+     * @param lifetimePolicy TTL and sweep configuration
+     * @param capPolicy      per-sharer and per-IP caps
+     * @param eventPublisher Spring event bus for lifecycle events
+     * @param clock          injected clock for time operations (use {@link Clock#fixed} in tests)
      */
     public ShareLinkServiceImpl(
             final ShareLinkRepository repository,
             final SecureRandomTokenGenerator tokenGenerator,
             final ShareLinkLifetimePolicy lifetimePolicy,
             final ShareLinkCapPolicy capPolicy,
-            final ShareViewStompRelay shareViewStompRelay,
+            final ApplicationEventPublisher eventPublisher,
             final Clock clock) {
         this.repository = repository;
         this.tokenGenerator = tokenGenerator;
         this.lifetimePolicy = lifetimePolicy;
         this.capPolicy = capPolicy;
-        this.shareViewStompRelay = shareViewStompRelay;
+        this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
 
@@ -142,6 +149,9 @@ public class ShareLinkServiceImpl implements ShareLinkService {
 
             AUDIT.info("share.link.created shareId-hash8={} wallId-hash8={} expiresAt={} activeCount={}",
                     id.hash8(), LogScrubber.hash8(sharerWallId), link.expiresAt(), activeForSharer + 1);
+
+            // Notify the activity registry that a new link is now active (ADR-RELAY-01)
+            eventPublisher.publishEvent(new ShareLinkActivatedEvent(sharerWallId, id));
 
             return link;
         } finally {
@@ -193,11 +203,11 @@ public class ShareLinkServiceImpl implements ShareLinkService {
         AUDIT.info("share.link.revoked shareId-hash8={} wallId-hash8={} outcome=revoked",
                 id.hash8(), LogScrubber.hash8(callerWallId));
 
-        // ADR-SHARE-08: push revocation control message to viewers via STOMP
-        // Viewers must disconnect within the SLA window after receiving the revoked message
-        if (shareViewStompRelay != null) {
-            shareViewStompRelay.pushRevocation(id);
-        }
+        // Notify the relay that the link is revoked — the @EventListener in ShareViewStompRelay
+        // will call unregister() + pushRevocation() atomically (ADR-RELAY-01; SR-RELAY-23).
+        // The direct shareViewStompRelay.pushRevocation() call has been removed to prevent
+        // double STOMP control frame delivery (CONFLICT 5 resolution; ARCH-RELAY-06).
+        eventPublisher.publishEvent(new ShareLinkRevokedEvent(link.sharerWallId(), id));
     }
 
     @Override

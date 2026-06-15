@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice.messaging;
 
 import de.seism0saurus.glacier.GlacierCookieProperties;
+import de.seism0saurus.glacier.share.application.ShareLinkActivityRegistry;
+import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor;
@@ -10,8 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -46,6 +50,22 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
      * for counter decrement on disconnect). */
     private final ShareLinkViewerCounter viewerCounter;
     private final ShareLinkCapPolicy capPolicy;
+
+    /**
+     * SR-RELAY-05: share-link service forwarded to {@link ShareViewPrincipalHandler} so that
+     * {@code determineUser()} can resolve a link BEFORE incrementing the viewer counter.
+     * Declared {@code @Lazy} to break the potential circular dependency via event publishing.
+     */
+    @Lazy
+    @Autowired
+    private ShareLinkService shareLinkService;
+
+    /**
+     * SR-RELAY-06 / SR-RELAY-07: routing table with per-linkId locks.
+     * Forwarded to {@link ShareViewPrincipalHandler} for TOCTOU-resistant handshake registration.
+     */
+    @Autowired
+    private ShareLinkActivityRegistry shareLinkActivityRegistry;
 
     // SR-WS-05 (ADR-PT-G5-01): explicit WebSocket transport limits (OWASP API4)
     private final int messageSizeBytes;
@@ -83,10 +103,37 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
      * {@link org.springframework.context.event.EventListener}-annotated
      * {@code onDisconnect(SessionDisconnectEvent)} method is picked up by the application
      * event bus for viewer counter decrement on disconnect (SR-SHARE-05).
+     *
+     * <p>SR-RELAY-05 / SR-RELAY-06 / SR-RELAY-13: the handler now receives
+     * {@code shareLinkService} and {@code shareLinkActivityRegistry} to enforce the
+     * secure ordering: {@code resolve()} → {@code increment()} → {@code registry.register()}.
      */
     @Bean
     public ShareViewPrincipalHandler shareViewPrincipalHandler() {
-        return new ShareViewPrincipalHandler(secureCookies, viewerCounter, capPolicy);
+        return new ShareViewPrincipalHandler(
+                secureCookies, viewerCounter, capPolicy, shareLinkService, shareLinkActivityRegistry);
+    }
+
+    /**
+     * Spring-managed heartbeat scheduler for the STOMP simple broker.
+     *
+     * <p>SR-RELAY-19: declaring this as a {@code @Bean} ensures that
+     * {@link ThreadPoolTaskScheduler#destroy()} — which shuts down the underlying
+     * {@link java.util.concurrent.ScheduledThreadPoolExecutor} — is invoked by Spring
+     * on application shutdown. Without this, the thread pool would leak in integration
+     * test runs that load the Spring context multiple times.
+     *
+     * <p>Spring calls {@link ThreadPoolTaskScheduler#afterPropertiesSet()} automatically
+     * via the {@link org.springframework.beans.factory.InitializingBean} contract, so
+     * {@code initialize()} must NOT be called manually here.
+     */
+    @Bean
+    public ThreadPoolTaskScheduler stompHeartbeatScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("stomp-heartbeat-");
+        // Do NOT call scheduler.initialize() — Spring calls afterPropertiesSet() automatically
+        return scheduler;
     }
 
     /**
@@ -153,7 +200,15 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
      */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        config.enableSimpleBroker("/topic");
+        // SR-RELAY-19: 10 s heartbeat (incoming/outgoing) so the broker detects stale viewer
+        // sessions promptly — without a heartbeat, zombie sessions consume counter slots
+        // and block new viewers from connecting (OWASP API4: Unrestricted Resource Consumption).
+        // A TaskScheduler is required by Spring's SimpleBrokerMessageHandler when heartbeat is set.
+        // The scheduler is Spring-managed (stompHeartbeatScheduler bean) so destroy() is called
+        // on application stop, preventing thread pool leaks during repeated context loads in tests.
+        config.enableSimpleBroker("/topic")
+                .setHeartbeatValue(new long[]{10000, 10000})
+                .setTaskScheduler(stompHeartbeatScheduler()); // @Configuration CGLIB returns singleton
         config.setApplicationDestinationPrefixes("/glacier");
     }
 

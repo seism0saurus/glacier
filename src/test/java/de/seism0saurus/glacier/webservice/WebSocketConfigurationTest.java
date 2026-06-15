@@ -1,6 +1,8 @@
 package de.seism0saurus.glacier.webservice;
 
 import de.seism0saurus.glacier.GlacierCookieProperties;
+import de.seism0saurus.glacier.share.application.ShareLinkActivityRegistry;
+import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.webservice.messaging.WallTopicAuthInterceptor;
@@ -14,6 +16,8 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.config.SimpleBrokerRegistration;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.StompWebSocketEndpointRegistration;
 import org.springframework.web.socket.config.annotation.WebMvcStompEndpointRegistry;
@@ -42,7 +46,7 @@ public class WebSocketConfigurationTest {
         WebSocketConfiguration config = new WebSocketConfiguration(
                 domain, cookieProps(secureCookies), new ShareLinkViewerCounter(), new ShareLinkCapPolicy(),
                 65536, 524288, 20000);
-        // Inject @Autowired interceptors via reflection (Spring normally does this)
+        // Inject @Autowired interceptors and SR-RELAY-05/06 deps via reflection (Spring normally does this)
         try {
             Field handshakeField = WebSocketConfiguration.class.getDeclaredField("handshakeRateLimitInterceptor");
             handshakeField.setAccessible(true);
@@ -51,6 +55,17 @@ public class WebSocketConfigurationTest {
             Field subscribeField = WebSocketConfiguration.class.getDeclaredField("subscribeRateLimitInterceptor");
             subscribeField.setAccessible(true);
             subscribeField.set(config, mock(SubscribeRateLimitInterceptor.class));
+
+            // SR-RELAY-05: inject shareLinkService mock (new constructor dep)
+            Field shareLinkServiceField = WebSocketConfiguration.class.getDeclaredField("shareLinkService");
+            shareLinkServiceField.setAccessible(true);
+            shareLinkServiceField.set(config, mock(ShareLinkService.class));
+
+            // SR-RELAY-06: inject registry mock (new constructor dep)
+            Field registryField = WebSocketConfiguration.class.getDeclaredField("shareLinkActivityRegistry");
+            registryField.setAccessible(true);
+            registryField.set(config, mock(ShareLinkActivityRegistry.class));
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to inject interceptor mocks", e);
         }
@@ -66,14 +81,14 @@ public class WebSocketConfigurationTest {
     public void testConfigureMessageBroker() {
         // Setup
         MessageBrokerRegistry mockRegistry = mock(MessageBrokerRegistry.class);
-        MessageBrokerRegistry simpleBrokerRegistration =
-                mock(MessageBrokerRegistry.class);
-        SimpleBrokerRegistration brokerRegistration =
-                mock(SimpleBrokerRegistration.class);
-        when(mockRegistry.enableSimpleBroker("/topic"))
-                .thenReturn(brokerRegistration);
-        when(mockRegistry.setApplicationDestinationPrefixes("/glacier"))
-                .thenReturn(simpleBrokerRegistration);
+        MessageBrokerRegistry simpleBrokerRegistration = mock(MessageBrokerRegistry.class);
+        SimpleBrokerRegistration brokerRegistration = mock(SimpleBrokerRegistration.class);
+        when(mockRegistry.enableSimpleBroker("/topic")).thenReturn(brokerRegistration);
+        when(mockRegistry.setApplicationDestinationPrefixes("/glacier")).thenReturn(simpleBrokerRegistration);
+        // SR-RELAY-19: configureMessageBroker now chains .setHeartbeatValue().setTaskScheduler()
+        // on the SimpleBrokerRegistration — stub the chainable returns to avoid NPE.
+        when(brokerRegistration.setHeartbeatValue(any(long[].class))).thenReturn(brokerRegistration);
+        when(brokerRegistration.setTaskScheduler(any(TaskScheduler.class))).thenReturn(brokerRegistration);
         WebSocketConfiguration webSocketConfiguration = createConfig("example.com", true);
 
         // Execute
@@ -82,6 +97,9 @@ public class WebSocketConfigurationTest {
         // Verify
         verify(mockRegistry, times(1)).enableSimpleBroker("/topic");
         verify(mockRegistry, times(1)).setApplicationDestinationPrefixes("/glacier");
+        // SR-RELAY-19: verify heartbeat is configured
+        verify(brokerRegistration, times(1)).setHeartbeatValue(new long[]{10000, 10000});
+        verify(brokerRegistration, times(1)).setTaskScheduler(any(TaskScheduler.class));
     }
 
 
@@ -139,14 +157,43 @@ public class WebSocketConfigurationTest {
     }
 
     /**
+     * SR-RELAY-19: verifies that the {@code stompHeartbeatScheduler} @Bean method produces a
+     * {@link ThreadPoolTaskScheduler} with pool size 1 and the expected thread-name prefix.
+     *
+     * <p>This guards against thread-pool leaks in repeated-context integration test runs:
+     * declaring the scheduler as a bean ensures Spring calls {@code destroy()} on shutdown.
+     * The test verifies the factory method configuration before {@code afterPropertiesSet()}
+     * (i.e., before {@code initialize()}) so it is independent of the running thread pool.
+     */
+    @Test
+    void stompHeartbeatSchedulerBean_isConfiguredCorrectly() {
+        WebSocketConfiguration config = createConfig("example.com", true);
+
+        ThreadPoolTaskScheduler scheduler = config.stompHeartbeatScheduler();
+
+        assertThat(scheduler).as("stompHeartbeatScheduler bean must not be null").isNotNull();
+        assertThat(scheduler.getPoolSize())
+                .as("SR-RELAY-19: pool size must be 1 (single scheduling thread for heartbeats)")
+                .isEqualTo(1);
+        assertThat(scheduler.getThreadNamePrefix())
+                .as("SR-RELAY-19: thread name prefix must be 'stomp-heartbeat-' for diagnostic traceability")
+                .isEqualTo("stomp-heartbeat-");
+    }
+
+    /**
      * Test that configureMessageBroker can handle different prefixes being set.
+     * SR-RELAY-19: also verifies that heartbeat value is always set to 10s regardless of other prefix config.
      */
     @Test
     public void testConfigureMessageBrokerWithDifferentPrefixes() {
         // Setup
         MessageBrokerRegistry mockRegistry = mock(MessageBrokerRegistry.class);
         SimpleBrokerRegistration brokerRegistration = mock(SimpleBrokerRegistration.class);
-        when(mockRegistry.enableSimpleBroker("/anotherTopic")).thenReturn(brokerRegistration);
+        // The config always uses "/topic" — stub that return, not "/anotherTopic"
+        when(mockRegistry.enableSimpleBroker("/topic")).thenReturn(brokerRegistration);
+        // SR-RELAY-19: chain stubs for heartbeat configuration
+        when(brokerRegistration.setHeartbeatValue(any(long[].class))).thenReturn(brokerRegistration);
+        when(brokerRegistration.setTaskScheduler(any(TaskScheduler.class))).thenReturn(brokerRegistration);
 
         WebSocketConfiguration webSocketConfiguration = createConfig("example.com", true);
 
@@ -156,5 +203,8 @@ public class WebSocketConfigurationTest {
         // Verify
         verify(mockRegistry, times(1)).enableSimpleBroker("/topic");
         verify(mockRegistry, times(1)).setApplicationDestinationPrefixes("/glacier");
+        // SR-RELAY-19: heartbeat must be configured
+        verify(brokerRegistration, times(1)).setHeartbeatValue(new long[]{10000, 10000});
+        verify(brokerRegistration, times(1)).setTaskScheduler(any(TaskScheduler.class));
     }
 }

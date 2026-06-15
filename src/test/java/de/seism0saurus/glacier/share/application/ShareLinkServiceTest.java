@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -60,6 +61,9 @@ class ShareLinkServiceTest {
     @Mock
     private ShareLinkRepository repository;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private ShareLinkLifetimePolicy lifetimePolicy;
     private ShareLinkCapPolicy capPolicy;
     private Clock fixedClock;
@@ -73,9 +77,7 @@ class ShareLinkServiceTest {
         lifetimePolicy.setTtl(TTL);
         capPolicy = new ShareLinkCapPolicy();
         tokenGenerator = new SecureRandomTokenGenerator();
-        // Pass null shareViewStompRelay — unit tests that do not test revocation notification
-        // use null to keep the dependency minimal (null-safe call site in revoke())
-        service = new ShareLinkServiceImpl(repository, tokenGenerator, lifetimePolicy, capPolicy, null, fixedClock);
+        service = new ShareLinkServiceImpl(repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher, fixedClock);
     }
 
     // ---------------------------------------------------------------------------
