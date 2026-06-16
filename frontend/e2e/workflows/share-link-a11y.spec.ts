@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { assertNoWcag22AaViolations, runAxeOnlyInChromium } from '../helper/a11y';
+import { assertNoWcag22AaViolationsLightAndDark, runAxeOnlyInChromium } from '../helper/a11y';
 
 const SHARE_TEST_URL = process.env['SHARE_TEST_URL'] || '/share/test-share-id-placeholder';
 
@@ -31,7 +31,7 @@ test.describe('Share link — accessibility', () => {
       });
 
       await runAxeOnlyInChromium(browserName, async () => {
-        await assertNoWcag22AaViolations(page);
+        await assertNoWcag22AaViolationsLightAndDark(page);
       });
     });
 

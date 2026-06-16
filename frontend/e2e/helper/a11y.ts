@@ -85,6 +85,35 @@ export async function assertNoWcag22AaViolations(
 }
 
 /**
+ * Runs the WCAG 2.2 AA axe scan twice: once in light, once in emulated dark
+ * (prefers-color-scheme: dark).  Both must pass.  Resets to light afterward.
+ *
+ * Use this helper for surfaces whose colors are driven by `prefers-color-scheme`
+ * (e.g. Angular Material `mat.theme()` with `theme-type: color-scheme` and
+ * `light-dark()` tokens) so that both palette variants are covered by the
+ * same WCAG 2.2 AA contrast gate.
+ *
+ * The helper intentionally reuses `assertNoWcag22AaViolations` so it inherits
+ * the same tag set (WCAG_22_AA_TAGS), impact threshold (serious/critical), and
+ * optional scope selector — no duplication of rule configuration.
+ *
+ * Must be called from inside a Playwright test already scoped to chromium
+ * (see `runAxeOnlyInChromium` below for the combined wrapper).
+ */
+export async function assertNoWcag22AaViolationsLightAndDark(
+  page: Page,
+  selector?: string,
+): Promise<void> {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await assertNoWcag22AaViolations(page, selector);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await assertNoWcag22AaViolations(page, selector);
+  // Reset to light so subsequent page interactions are not affected by the
+  // dark emulation left over from this scan.
+  await page.emulateMedia({ colorScheme: 'light' });
+}
+
+/**
  * Wraps a test body so the axe scan only executes in the chromium browser.
  * Non-chromium contexts skip immediately (zero cost, zero false positives).
  *
@@ -93,7 +122,7 @@ export async function assertNoWcag22AaViolations(
  * test('@a11y my state audit', async ({ page, browserName }) => {
  *   await page.goto('/');
  *   await runAxeOnlyInChromium(browserName, async () => {
- *     await assertNoWcag22AaViolations(page, '[data-testid="connection-status"]');
+ *     await assertNoWcag22AaViolationsLightAndDark(page, '[data-testid="connection-status"]');
  *   });
  * });
  * ```

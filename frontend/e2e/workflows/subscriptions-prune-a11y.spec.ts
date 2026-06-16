@@ -15,7 +15,7 @@
  */
 
 import {expect, test} from '@playwright/test';
-import {assertNoWcag22AaViolations} from '../helper/a11y';
+import {assertNoWcag22AaViolationsLightAndDark, runAxeOnlyInChromium} from '../helper/a11y';
 import {createTextToot} from '../helper/mastodon-client';
 
 const glacier_handle = process.env['GLACIER_HANDLE'] || '@glacier_e2e_test@proxy';
@@ -75,7 +75,7 @@ test.describe('A1–A5: Prune a11y (axe-core WCAG 2.2 AA)', () => {
   // ---------------------------------------------------------------------------
   // A4: No axe violations on wall with 3 toots
   // ---------------------------------------------------------------------------
-  test('A4: no serious/critical axe violations on wall with toots', async ({page}) => {
+  test('A4: no serious/critical axe violations on wall with toots', async ({page, browserName}) => {
     // Subscribe and get 3 toots (one per post — Mastodon deduplication applies)
     await page.getByPlaceholder('New hashtag').fill('glacierE2Etest');
     await page.getByPlaceholder('New hashtag').press('Enter');
@@ -86,14 +86,16 @@ test.describe('A1–A5: Prune a11y (axe-core WCAG 2.2 AA)', () => {
     await createTextToot(`Hi ${glacier_handle}.\nA4 axe toot 3.\n#glacierE2Etest`);
     await expect(page.locator('app-toot')).toHaveCount(3);
 
-    // Run axe-core on the full page (no include scope — scan the entire document)
-    await assertNoWcag22AaViolations(page);
+    // Run axe-core in light and emulated dark (XCUT-07: dual color-scheme gate)
+    await runAxeOnlyInChromium(browserName, async () => {
+      await assertNoWcag22AaViolationsLightAndDark(page);
+    });
   });
 
   // ---------------------------------------------------------------------------
   // A5: No axe violations on empty wall (after cancel-all)
   // ---------------------------------------------------------------------------
-  test('A5: no serious/critical axe violations on empty wall after cancel-all', async ({page}) => {
+  test('A5: no serious/critical axe violations on empty wall after cancel-all', async ({page, browserName}) => {
     // Subscribe to a hashtag and get a toot
     await page.getByPlaceholder('New hashtag').fill('glacierE2Etest');
     await page.getByPlaceholder('New hashtag').press('Enter');
@@ -107,8 +109,10 @@ test.describe('A1–A5: Prune a11y (axe-core WCAG 2.2 AA)', () => {
     await expect(page.locator("[id='hashtag-glaciere2etest']")).toHaveCount(0);
     await expect(page.locator('app-toot')).toHaveCount(0);
 
-    // Run axe-core on the empty wall state
-    await assertNoWcag22AaViolations(page);
+    // Run axe-core in light and emulated dark (XCUT-07: dual color-scheme gate)
+    await runAxeOnlyInChromium(browserName, async () => {
+      await assertNoWcag22AaViolationsLightAndDark(page);
+    });
   });
 
 });

@@ -8,7 +8,7 @@
  *     and revoke-confirmation state
  *   - Share-expired page  (/share/:id/expired)
  *
- * All scans use `assertNoWcag22AaViolations` + `runAxeOnlyInChromium` from
+ * All scans use `assertNoWcag22AaViolationsLightAndDark` + `runAxeOnlyInChromium` from
  * `helper/a11y.ts` (D-20: axe engine is browser-agnostic; running in 5
  * projects adds cost with zero additional signal).
  *
@@ -28,7 +28,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { assertNoWcag22AaViolations, runAxeOnlyInChromium } from '../helper/a11y';
+import { assertNoWcag22AaViolationsLightAndDark, runAxeOnlyInChromium } from '../helper/a11y';
 
 // ---------------------------------------------------------------------------
 // Header and Footer (main wall)
@@ -50,7 +50,7 @@ test.describe('XCUT-08: Header and Footer — axe WCAG 2.2 AA', () => {
   test('@a11y header: zero serious/critical WCAG 2.2 AA violations',
     async ({ page, browserName }) => {
       await runAxeOnlyInChromium(browserName, async () => {
-        await assertNoWcag22AaViolations(page, 'header');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'header');
       });
     });
 
@@ -61,7 +61,7 @@ test.describe('XCUT-08: Header and Footer — axe WCAG 2.2 AA', () => {
   test('@a11y footer: zero serious/critical WCAG 2.2 AA violations',
     async ({ page, browserName }) => {
       await runAxeOnlyInChromium(browserName, async () => {
-        await assertNoWcag22AaViolations(page, 'footer');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'footer');
       });
     });
 
@@ -105,7 +105,7 @@ test.describe('XCUT-08: GDPR / Legal Notice dialog — axe WCAG 2.2 AA', () => {
         // Scope the scan to the dialog container to avoid false positives
         // from the aria-hidden background content (MatDialog sets aria-hidden
         // on the rest of the DOM while the modal is open).
-        await assertNoWcag22AaViolations(page, 'mat-dialog-container');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'mat-dialog-container');
       });
 
       // Clean up: close the dialog so it does not bleed into subsequent tests
@@ -151,7 +151,7 @@ test.describe('XCUT-08: Share-create dialog — axe WCAG 2.2 AA', () => {
       await expect(page.getByTestId('create-button')).toBeVisible({ timeout: 5_000 });
 
       await runAxeOnlyInChromium(browserName, async () => {
-        await assertNoWcag22AaViolations(page, 'mat-dialog-container');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'mat-dialog-container');
       });
 
       // Clean up
@@ -191,7 +191,7 @@ test.describe('XCUT-08: Share-create dialog — axe WCAG 2.2 AA', () => {
       expect(shareUrl).toMatch(/\/share\/[A-Za-z0-9_-]{10,}/);
 
       await runAxeOnlyInChromium(browserName, async () => {
-        await assertNoWcag22AaViolations(page, 'mat-dialog-container');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'mat-dialog-container');
       });
 
       // Clean up: revoke the link to avoid leaving dangling test links,
@@ -248,7 +248,7 @@ test.describe('XCUT-08: Share-create dialog — axe WCAG 2.2 AA', () => {
       await runAxeOnlyInChromium(browserName, async () => {
         // Scan only the topmost dialog — the backdrop makes the share dialog
         // aria-hidden, so we scan the last (topmost) mat-dialog-container.
-        await assertNoWcag22AaViolations(page, 'mat-dialog-container:last-of-type');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'mat-dialog-container:last-of-type');
       });
 
       // Clean up: cancel the revoke, then close the share dialog
@@ -299,7 +299,7 @@ test.describe('XCUT-08: Share-expired page — axe WCAG 2.2 AA', () => {
 
       await runAxeOnlyInChromium(browserName, async () => {
         // Scan main landmark — contains all meaningful expired-page content.
-        await assertNoWcag22AaViolations(page, 'main');
+        await assertNoWcag22AaViolationsLightAndDark(page, 'main');
       });
     });
 
