@@ -1,3 +1,10 @@
+# Supply-chain note on the `cooldown` blocks below:
+#   `cooldown` only delays Dependabot VERSION updates (the scheduled "bump to latest"
+#   PRs configured here). Dependabot SECURITY updates — the ones opened in response to
+#   a published advisory for a dependency we actually use — are a separate pathway
+#   (enabled in repo Settings → Code security) and are NOT held back by the cooldown.
+#   So the 3-day maturity window blunts supply-chain attacks via fresh malicious
+#   releases without ever delaying an urgent CVE fix. See the dependency-vetting skill.
 version: 2
 updates:
   - package-ecosystem: "maven"

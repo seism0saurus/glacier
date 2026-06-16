@@ -15,7 +15,7 @@ jobs:
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up JDK 23 and cache (save)
         uses: ./.github/actions/setup-java-cache
         with:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: compile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up JDK 23 and cache (restore)
         uses: ./.github/actions/setup-java-cache
         with:
@@ -37,19 +37,19 @@ jobs:
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: surefire-results
           path: target/surefire-reports
       - name: Upload Jacoco reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jacoco-reports
           path: target/site/jacoco
       - name: Upload Jasmin reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: jasmin-reports
           path: frontend/coverage/glacier-frontend
@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 2
 
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload PITest reports
         if: steps.filter.outputs.java == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pit-reports
           path: target/pit-reports/
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up JDK 23 and cache (restore)
         uses: ./.github/actions/setup-java-cache
         with:
@@ -119,13 +119,13 @@ jobs:
       - name: Copy jar
         run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
       - name: Archive glacier jar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: glacier
           path: glacier.jar
           retention-days: 1
       - name: Upload CycloneDX SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom
           path: |
@@ -193,20 +193,20 @@ jobs:
             artifact_suffix: "-insecure"
             build_image: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier
           path: infrastructure/glacier
       - name: Use cache for node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-main-${{ hashFiles('~/.m2/frontend/node_modules') }}
           restore-keys: |
             ${{ runner.os }}-node_modules-main-
       - name: Use cache for ms-playwright
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: /home/runner/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-main-${{ hashFiles('~/.cache/ms-playwright') }}
@@ -224,7 +224,7 @@ jobs:
           docker save ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} -o glacier-image.tar
       - name: Upload image as artifact (standard leg only)
         if: matrix.build_image == true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: glacier-image
           path: infrastructure/glacier-image.tar
@@ -237,7 +237,7 @@ jobs:
             -o cyclonedx-json=sbom-image.json
       - name: Upload image SBOM (standard leg only)
         if: matrix.build_image == true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-image
           path: sbom-image.json
@@ -258,13 +258,13 @@ jobs:
             up --build --abort-on-container-exit playwright --exit-code-from playwright
       - name: Upload Playwright report (${{ matrix.variant }})
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report${{ matrix.artifact_suffix }}
           path: frontend/playwright-report
       - name: Upload Playwright Error screenshots (${{ matrix.variant }})
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-error-screenshots${{ matrix.artifact_suffix }}
           path: frontend/test-results
@@ -286,13 +286,13 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier
           path: infrastructure/glacier
       - name: Trivy filesystem scan (jar dependencies)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a5 # 0.30.0
         with:
           scan-type: fs
           scan-ref: infrastructure/glacier/
@@ -303,7 +303,7 @@ jobs:
           format: sarif
           output: trivy-fs-report.sarif
       - name: Upload Trivy filesystem SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         if: always()
         with:
           sarif_file: trivy-fs-report.sarif
@@ -320,9 +320,9 @@ jobs:
     env:
       GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier-image
           path: ./
@@ -344,7 +344,7 @@ jobs:
             "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}"
       - name: Upload Trivy image SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
           sarif_file: trivy-report.sarif
           category: trivy-image
@@ -366,9 +366,9 @@ jobs:
       GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
       REPOSITORY: "/home/runner/work/glacier/glacier/"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Download glacier jar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier
           path: infrastructure/glacier
@@ -424,7 +424,7 @@ jobs:
           python3 security/scripts/ws-bola-probe.py
       - name: Upload security artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: security-reports-main
           path: |
@@ -459,25 +459,74 @@ jobs:
   publish-image:
     runs-on: ubuntu-latest
     needs: [e2e, trivy-fs, trivy-image, zap-and-headers]
+    permissions:
+      contents: read       # read the repository
+      packages: write      # push the image + attestations to ghcr
+      id-token: write      # keyless OIDC identity for cosign + attestations (Sigstore/Fulcio)
+      attestations: write  # record provenance / SBOM attestations
     steps:
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier-image
+          path: ./
+      - name: Download image SBOM artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sbom-image
           path: ./
       - name: Load image into Docker
         run: |
           docker load -i glacier-image.tar
       - name: Tag Docker Image for Pushing
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} ghcr.io/seism0saurus/glacier:main
-          docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} ghcr.io/seism0saurus/glacier:latest
+          docker tag "ghcr.io/seism0saurus/glacier:${REF_NAME}" ghcr.io/seism0saurus/glacier:main
+          docker tag "ghcr.io/seism0saurus/glacier:${REF_NAME}" ghcr.io/seism0saurus/glacier:latest
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
       - name: Push Docker Image to GitHub Container Registry
+        id: push
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker push ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
+          docker push "ghcr.io/seism0saurus/glacier:${REF_NAME}"
           docker push ghcr.io/seism0saurus/glacier:main
           docker push ghcr.io/seism0saurus/glacier:latest
+          # Resolve the immutable content digest of the pushed image (identical for all three tags).
+          DIGEST=$(docker inspect --format='{{range .RepoDigests}}{{println .}}{{end}}' \
+            "ghcr.io/seism0saurus/glacier:${REF_NAME}" \
+            | grep '^ghcr.io/seism0saurus/glacier@' | head -1 | cut -d@ -f2)
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Pushed digest: ${DIGEST}"
+      # ── Supply-chain provenance: keyless signature + SLSA provenance + SBOM ──
+      # All keyless via the workflow's OIDC identity (Sigstore/Fulcio) — no long-lived keys.
+      # Consumers verify with:
+      #   cosign verify ghcr.io/seism0saurus/glacier@<digest> \
+      #     --certificate-identity-regexp 'https://github.com/seism0saurus/glacier/.*' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      #   cosign verify-attestation --type slsaprovenance ... ghcr.io/seism0saurus/glacier@<digest>
+      - name: Install cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
+      - name: Sign image (keyless)
+        run: cosign sign --yes ghcr.io/seism0saurus/glacier@${{ steps.push.outputs.digest }}
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ghcr.io/seism0saurus/glacier
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Attest image SBOM
+        uses: actions/attest-sbom@bd218ad0dbcb3e146bd073d1d9c6d78e08aa8a0b # v2.4.0
+        with:
+          subject-name: ghcr.io/seism0saurus/glacier
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: sbom-image.json
+          push-to-registry: true
 
   deploy:
     runs-on: ubuntu-latest

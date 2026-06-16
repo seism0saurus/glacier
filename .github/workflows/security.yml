@@ -39,10 +39,10 @@ jobs:
       GLACIER_IMAGE_TAG: ${{ github.ref_name }}
       REPOSITORY: "/home/runner/work/glacier/glacier/"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Download packaged jar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier
           path: infrastructure/glacier
@@ -115,7 +115,7 @@ jobs:
         run: docker manifest inspect ghcr.io/seism0saurus/glacier:${{ github.ref_name }} || (echo "Image not found for ${{ github.ref_name }}" && exit 1)
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a5 # 0.30.0
         with:
           image-ref: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
           format: "sarif"
@@ -127,7 +127,7 @@ jobs:
 
       - name: Upload Trivy SARIF to code-scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
           sarif_file: "trivy-report.sarif"
 
@@ -135,7 +135,7 @@ jobs:
         run: ls infrastructure/glacier/glacier.jar || (echo "Jar not found -- download artifact first" && exit 1)
 
       - name: Trivy filesystem scan (jar dependencies)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a5 # 0.30.0
         with:
           scan-type: fs
           scan-ref: infrastructure/glacier/
@@ -147,7 +147,7 @@ jobs:
           output: trivy-fs-report.sarif
 
       - name: Upload Trivy filesystem SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         if: always()
         with:
           sarif_file: trivy-fs-report.sarif
@@ -155,7 +155,7 @@ jobs:
 
       - name: Upload security artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: security-reports
           path: |
@@ -194,9 +194,9 @@ jobs:
       GLACIER_IMAGE_TAG: ${{ github.ref_name }}
       REPOSITORY: "/home/runner/work/glacier/glacier/"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: glacier
           path: infrastructure/glacier
@@ -239,7 +239,7 @@ jobs:
 
       - name: Upload full-scan reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: zap-full-scan-reports
           path: |
@@ -249,7 +249,7 @@ jobs:
 
       - name: Upload full-scan SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
           sarif_file: "infrastructure/security/zap-full-scan-sarif.sarif"
 
@@ -267,8 +267,8 @@ jobs:
     name: Frontend dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22.14.0'
           cache: 'npm'

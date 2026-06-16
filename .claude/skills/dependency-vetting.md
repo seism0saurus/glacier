@@ -40,7 +40,7 @@ This formalizes the `secure-tdd-implementer` "Dependency Hygiene" rule and maps 
 
 Don't rely on memory to honor criterion 7 — enforce it in the update tooling so PRs for too-fresh versions simply aren't opened:
 
-- **Dependabot**: add a `cooldown` block per ecosystem in `.github/dependabot.yaml` (e.g. `default-days: 3`, with a higher value acceptable for major bumps). This is the preferred channel since Glacier already uses Dependabot.
+- **Dependabot**: add a `cooldown` block per ecosystem in `.github/dependabot.yaml` (e.g. `default-days: 3`, with a higher value acceptable for major bumps). This is the preferred channel since Glacier already uses Dependabot. Note the cooldown delays **version** updates only — Dependabot **security** updates (advisory-driven) are a separate pathway and must NOT be delayed, so an urgent CVE fix is never held back by the maturity window.
 - **Renovate** (if ever adopted): `minimumReleaseAge: "3 days"`.
 - **Manual edits / agent-proposed bumps**: before pinning a version by hand, confirm its publish date — Maven Central, the npm registry page, or the GitHub release timestamp — and reject anything younger than 72 hours. State the publish date in the PR/summary alongside the other vetting facts.
 

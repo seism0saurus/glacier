@@ -405,6 +405,39 @@
                     </compilerArgs>
                 </configuration>
             </plugin>
+            <!--
+                Maven Enforcer — supply-chain guardrail (see dependency-vetting skill).
+                requireReleaseDeps fails the build if ANY dependency is a SNAPSHOT, i.e. a
+                mutable artifact that can change under us (the classic snapshot-mutation
+                supply-chain attack). The single documented exception is bigbone
+                (Sec-02 / ADR-SEC-02) — the only version published upstream — which is
+                excluded here. Adding any other SNAPSHOT now breaks the build by design.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.6.3</version>
+                <executions>
+                    <execution>
+                        <id>enforce-no-snapshot-deps</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireReleaseDeps>
+                                    <message>No SNAPSHOT dependencies allowed (supply-chain hardening). The only sanctioned exception is social.bigbone:bigbone — see the bigbone comment in this pom and ADR-SEC-02.</message>
+                                    <excludes>
+                                        <exclude>social.bigbone:bigbone</exclude>
+                                    </excludes>
+                                </requireReleaseDeps>
+                            </rules>
+                            <failFast>true</failFast>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
