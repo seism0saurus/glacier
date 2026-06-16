@@ -246,5 +246,6 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `glacier-structured-logging-logback` — AUDIT logger, sensitive-data-redaction rules (`LogScrubber` in Glacier), preventing log-based information leak.
 - `glacier-fallback-mode-discipline` — the threat model must cover all four operational modes (live / fallback / killswitch / insecure); security controls (rate limiting, auth, CSP) that hold in live mode but break under mode transitions are a known Glacier attack surface.
 - `angular-a11y-patterns` — a11y is adjacent to security (EAA/BFSG compliance for public services).
+- `dependency-vetting` — OWASP A06 (vulnerable/outdated components) lives here: any feature that pulls in a new dependency must justify it against the proven/maintained checklist, pin a CVE-clean version, and respect the documented `bigbone` SNAPSHOT exception.
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.

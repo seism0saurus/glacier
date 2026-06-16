@@ -47,6 +47,7 @@ This project ships domain-specific Claude Code skills under `.claude/skills/`. T
 
 Performance: `spring-virtual-threads` · `spring-http-client-resilience` · `spring-websocket-performance` · `spring-observability-micrometer`
 Security: `spring-security-hardening` · `spring-input-validation-ssrf` · `spring-error-handling-problem-details`
+Supply chain: `dependency-vetting` (proven/maintained dependency selection, version pinning, OWASP A06 — consult before adding/upgrading any Maven/npm/Action/Docker dependency)
 Frontend: `angular-material-theming` · `angular-a11y-patterns` · `angular-reactive-forms-ux` · `angular-karma-jasmine-testing` · `playwright-angular-a11y`
 
 Each agent under `.claude/agents/` declares a "Preferred Claude Code Skills" section listing which of these apply to its role. That agent-file section is the **authoritative** per-agent mapping, and the `/feature` command injects skill names into subagent prompts per Phase based on those sections.

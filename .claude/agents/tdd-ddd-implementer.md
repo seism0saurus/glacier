@@ -241,5 +241,6 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `angular-i18n-localize` — project-specific i18n conventions (explicit `@@id` patterns).
 - `glacier-fallback-mode-discipline` — mandatory for any change touching streaming (`WebSocketConfiguration`, `SubscriptionManagerImpl`), fallback path (`FallbackController`, `FallbackRateLimiter`, `*AuthGuard`), cache, or rate limiting; all four modes (live / fallback / killswitch / insecure) must stay correct.
 - `glacier-structured-logging-logback` — D-13 / SR-8 sensitive-data rules: `cookie`, `authorization`, wallId, and tokens must never reach the JSON encoder; route auth-failure and rate-limit events through the AUDIT logger; use `LogScrubber`.
+- `dependency-vetting` — mandatory before adding/upgrading any Maven or npm dependency: proven/well-established/maintained checklist, exact-version pinning (no SNAPSHOTs except documented `bigbone`), and reporting version/maintainer/license/CVE status in the implementation summary.
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.

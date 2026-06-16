@@ -236,6 +236,7 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `playwright-angular-a11y` — axe scans for implemented UI, WCAG-tag selection.
 - `playwright-e2e-patterns` — e2e verification via project routing, stable state-waits, page objects.
 - `glacier-fallback-mode-discipline` — mandatory for any Playwright spec under `frontend/e2e/workflows/fallback-*` or any UI change that affects fallback / killswitch mode presentation; the five Playwright projects (chromium / firefox / webkit / killswitch / insecure) are not interchangeable.
+- `dependency-vetting` — before adding any npm package to `frontend/package.json`, apply the proven/well-established/maintained checklist; prefer Angular / Angular Material / what's already on the classpath, pin exact versions, and report version/maintainer/license/CVE status. This complements the agent's "Proven Frameworks" principle.
 
 **Installed plugin tools:**
 

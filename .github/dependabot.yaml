@@ -6,6 +6,11 @@ updates:
     schedule:
       interval: "daily"
       time: "08:00"
+    # Supply-chain hardening: wait 3 days before opening a PR for any new release.
+    # Malicious versions are typically detected and yanked within 1-2 days; the
+    # cooldown lets that detect-and-fix cycle complete first. See dependency-vetting skill.
+    cooldown:
+      default-days: 3
     reviewers:
       - "seism0saurus"
     groups:
@@ -19,6 +24,8 @@ updates:
     schedule:
       interval: "daily"
       time: "10:00"
+    cooldown:
+      default-days: 3
     reviewers:
       - "seism0saurus"
     groups:
@@ -32,6 +39,8 @@ updates:
     schedule:
       interval: "daily"
       time: "12:00"
+    cooldown:
+      default-days: 3
     reviewers:
       - "seism0saurus"
 
@@ -41,5 +50,7 @@ updates:
     schedule:
       interval: "daily"
       time: "14:00"
+    cooldown:
+      default-days: 3
     reviewers:
       - "seism0saurus"

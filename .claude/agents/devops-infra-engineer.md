@@ -118,6 +118,7 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `playwright-e2e-patterns` — CI stability, project routing, stable state-waits, no-mock-in-e2e.
 - `glacier-structured-logging-logback` — JSON layout, MDC correlation, sensitive-data scrubbing (`LogScrubber` + AUDIT logger).
 - `glacier-fallback-mode-discipline` — CI pipelines and compose stacks must exercise all four operational modes (live / fallback / killswitch / insecure); mode-parameterized test jobs prevent a passing build that only validates the happy path.
+- `dependency-vetting` — applies to resilience libraries, CI actions, Dependabot ecosystems, and Docker base images: pin actions to SHAs, pin image tags/digests (no `:latest`), keep ecosystems registered in `.github/dependabot.yaml`, configure the 72-hour `cooldown` per ecosystem there to block too-fresh versions, and run dependency/CVE scanning so vulnerable components fail the build.
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.
 

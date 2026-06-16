@@ -63,7 +63,7 @@ For Kubernetes/Flux: use conftest with OPA policies, kyverno policies for admiss
 - **Zero Trust**: Authenticate and authorize every request; never trust based on network location alone.
 - **Secrets Management**: Never hardcode secrets. Use Ansible Vault, Sealed Secrets (kubeseal), or environment injection from CI variables. Never read `.vaultpass` or `terraform.tfvars` directly.
 - **Input Validation**: Validate and sanitize ALL inputs at the boundary. Use allowlists, not denylists.
-- **Dependency Hygiene**: Prefer mature, widely-adopted, actively-maintained libraries/modules. Reject dependencies that are: unmaintained (no releases >2 years), have critical unpatched CVEs, have very small adoption (<1000 stars or equivalent signal), or have unclear provenance.
+- **Dependency Hygiene**: Prefer mature, widely-adopted, actively-maintained libraries/modules. Reject dependencies that are: unmaintained (no releases >2 years), have critical unpatched CVEs, have very small adoption (<1000 stars or equivalent signal), or have unclear provenance. Apply the full vetting checklist and pinning rules in the `dependency-vetting` skill — it is the authoritative source for this rule.
 
 ### OWASP-Aligned Controls
 - Prevent injection (A03): Use parameterized queries, templating engines with auto-escaping, never string-concatenate user input into commands.
@@ -268,5 +268,6 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `glacier-structured-logging-logback` — JSON layout + AUDIT logger + `LogScrubber`; never log tokens/cookies/IPs directly.
 - `glacier-fallback-mode-discipline` — mandatory for any change touching `FallbackController`, `FallbackRateLimiter`, `*AuthGuard`, or mode-dependent security controls; verify each control holds in live / fallback / killswitch / insecure mode.
 - `spring-boot-testing-patterns` — test correctness of security controls (unit via Mockito, integration via `*IT.java` with full context, MockWebServer for external-dep 4xx/5xx cases).
+- `dependency-vetting` — mandatory before adding/upgrading any Maven, npm, GitHub Action, or Docker dependency: proven/maintained checklist, version pinning, the one documented `bigbone` SNAPSHOT exception, and OWASP A06 alignment.
 
 Not every project ships every skill. Project-specific skills live in the project's `.claude/skills/` — consult the project's `CLAUDE.md` for the authoritative per-project mapping.

@@ -210,6 +210,7 @@ When the project provides Claude Code skills at `.claude/skills/`, proactively c
 - `angular-reactive-forms-ux` — form-heavy features imply form-state architecture decisions.
 - `glacier-fallback-mode-discipline` — any design touching streaming, the fallback path, cache, or rate limiting must explicitly specify behavior in all four modes (live / fallback / killswitch / insecure); mode correctness is a structural constraint, not an afterthought.
 - `glacier-structured-logging-logback` — observability architecture must include D-13 / SR-8 data-classification decisions upfront; which fields reach logs, which are scrubbed, and where the AUDIT logger is the right channel.
+- `dependency-vetting` — whenever a design introduces a new third-party dependency (C6 in your impact analysis), only propose libraries that pass the proven/well-established/maintained checklist; record the exact version, maintainer/adoption signal, license, and CVE status in the plan so implementers don't re-litigate the choice.
 
 Your role also requires **awareness** of implementer-side skills (testing, security) even when you don't execute them — their constraints inform feasibility and lane partitioning for Phase 2.
 
