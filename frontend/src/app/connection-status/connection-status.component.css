@@ -3,21 +3,22 @@
  *
  * Design tokens
  * -------------
- * Heights and colours use CSS custom properties so a future dark-mode theme
- * (D-A4) can override them via a single :root {} block without touching this
- * file.
+ * Heights and colours use CSS custom properties so dark-mode can be handled
+ * via light-dark() pairs on each --chip-bg/--chip-fg custom property without
+ * touching the layout rules.
  *
- * WCAG 2.2 AA contrast
- * --------------------
- * All foreground/background pairs are verified at ≥ 4.5:1 for normal text.
- * Graphical elements (icons) are verified at ≥ 3:1.
- * Exact hex pairs used:
- *   WEBSOCKET:    #166534 / #dcfce7   — 8.3:1
- *   PROBING:      #713f12 / #fef9c3   — 7.1:1
- *   FALLBACK:     #7c2d12 / #ffedd5   — 7.4:1
- *   OFFLINE:      #7f1d1d / #fee2e2   — 7.8:1
- *   KILLSWITCHED: #374151 / #f3f4f6   — 9.2:1
- *   INSECURE:     #7f1d1d / #fee2e2   — 7.8:1
+ * WCAG 2.2 AA contrast — light values UNCHANGED; dark values added (XCUT-07)
+ * --------------------------------------------------------------------------
+ * All foreground/background pairs verified at ≥ 4.5:1 for normal text.
+ * Graphical elements (icons) verified at ≥ 3:1.
+ * Contrast ratios (axe-verified in CI):
+ *
+ *   WEBSOCKET:    light #166534/#dcfce7 — 8.3:1   |  dark #7ee2a6/#0c3a1f — 8.12:1
+ *   PROBING:      light #713f12/#fef9c3 — 7.1:1   |  dark #f0d98a/#3a2e0a — 9.52:1
+ *   FALLBACK:     light #7c2d12/#ffedd5 — 7.4:1   |  dark #f5b78a/#3a1e0c — 8.77:1
+ *   OFFLINE:      light #7f1d1d/#fee2e2 — 7.8:1   |  dark #f5a3a3/#3a1010 — 8.44:1
+ *   KILLSWITCHED: light #374151/#f3f4f6 — 9.2:1   |  dark #cbd3dc/#20262e — 10.08:1
+ *   INSECURE:     light #7f1d1d/#fee2e2 — 7.8:1   |  dark #f5a3a3/#3a1010 — 8.44:1
  */
 
 :host {
@@ -59,43 +60,43 @@
    State-specific colours
    ------------------------------------------------------------------- */
 .connection-chip--websocket {
-  --chip-bg:   #dcfce7;
-  --chip-fg:   #166534;
+  --chip-bg: light-dark(#dcfce7, #0c3a1f);
+  --chip-fg: light-dark(#166534, #7ee2a6);
   background-color: var(--chip-bg);
   color: var(--chip-fg);
 }
 
 .connection-chip--probing {
-  --chip-bg:   #fef9c3;
-  --chip-fg:   #713f12;
+  --chip-bg: light-dark(#fef9c3, #3a2e0a);
+  --chip-fg: light-dark(#713f12, #f0d98a);
   background-color: var(--chip-bg);
   color: var(--chip-fg);
 }
 
 .connection-chip--fallback {
-  --chip-bg:   #ffedd5;
-  --chip-fg:   #7c2d12;
+  --chip-bg: light-dark(#ffedd5, #3a1e0c);
+  --chip-fg: light-dark(#7c2d12, #f5b78a);
   background-color: var(--chip-bg);
   color: var(--chip-fg);
 }
 
 .connection-chip--offline {
-  --chip-bg:   #fee2e2;
-  --chip-fg:   #7f1d1d;
+  --chip-bg: light-dark(#fee2e2, #3a1010);
+  --chip-fg: light-dark(#7f1d1d, #f5a3a3);
   background-color: var(--chip-bg);
   color: var(--chip-fg);
 }
 
 .connection-chip--killswitched {
-  --chip-bg:   #f3f4f6;
-  --chip-fg:   #374151;
+  --chip-bg: light-dark(#f3f4f6, #20262e);
+  --chip-fg: light-dark(#374151, #cbd3dc);
   background-color: var(--chip-bg);
   color: var(--chip-fg);
 }
 
 .connection-chip--insecure {
-  --chip-bg:   #fee2e2;
-  --chip-fg:   #7f1d1d;
+  --chip-bg: light-dark(#fee2e2, #3a1010);
+  --chip-fg: light-dark(#7f1d1d, #f5a3a3);
   background-color: var(--chip-bg);
   color: var(--chip-fg);
 }
