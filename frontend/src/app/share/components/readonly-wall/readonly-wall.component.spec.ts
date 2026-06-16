@@ -5,7 +5,7 @@ import {
   tick,
 } from '@angular/core/testing';
 import { provideRouter, ActivatedRoute, Router } from '@angular/router';
-import { BehaviorSubject, Subject, of } from 'rxjs';
+import { BehaviorSubject, Subject, of, NEVER } from 'rxjs';
 import { ReadonlyWallComponent } from './readonly-wall.component';
 import { ReadonlyWallService } from '../../services/readonly-wall.service';
 import { ReadonlyWallStompClient } from '../../services/readonly-wall-stomp-client.service';
@@ -45,9 +45,12 @@ describe('ReadonlyWallComponent', () => {
   const tootsSubject = new BehaviorSubject<ReadonlyTootView[]>([]);
   const catalogLoadedSubject = new BehaviorSubject<boolean>(false);
   let transportModeSubject: BehaviorSubject<ViewerTransportMode>;
+  // VIEW-01: expired$ subject shared across tests; reset in beforeEach
+  let expiredSubject: Subject<void>;
 
   beforeEach(async () => {
     transportModeSubject = new BehaviorSubject<ViewerTransportMode>(ViewerTransportMode.PROBING);
+    expiredSubject = new Subject<void>();
 
     wallServiceSpy = jasmine.createSpyObj<ReadonlyWallService>(
       'ReadonlyWallService',
@@ -58,6 +61,8 @@ describe('ReadonlyWallComponent', () => {
         hashtags: ['glacier'],
         expiresAt: '2026-04-29T12:00:00Z',
         shareId: 'test-share-id',
+        // VIEW-01: expose expired$ so the component can subscribe to it
+        expired$: expiredSubject.asObservable(),
       }
     );
 
@@ -278,5 +283,99 @@ describe('ReadonlyWallComponent', () => {
     // wallServiceSpy.hashtags is ['glacier']
     // The component should have subscribed tootEvents$('glacier')
     expect(stompClientSpy.tootEvents$).toHaveBeenCalledWith('glacier');
+  });
+
+  // ---- VIEW-01: expired$ from service triggers announce-then-navigate ----
+  // Security requirement: revocation must reach the UI in ALL transport modes,
+  // including fallback polling mode where STOMP is unavailable.
+  // Component is the sole owner of announce-then-navigate (ADR-RELAY-05).
+
+  describe('VIEW-01 expired$ from wallService triggers announce-then-navigate', () => {
+
+    it('VIEW-01 expired$_announces_assertively — expired$ emit triggers assertive LiveAnnouncer', fakeAsync(() => {
+      const routerSpy = jasmine.createSpyObj<Router>('Router', ['navigate']);
+      (component as unknown as { router: Router }).router = routerSpy;
+
+      // Emit expiry from the service (fallback polling discovered revocation)
+      expiredSubject.next();
+      fixture.detectChanges();
+
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledWith(
+        jasmine.any(String),
+        'assertive',
+      );
+
+      tick(1100);
+      expect(routerSpy.navigate).toHaveBeenCalledWith(
+        ['/share', 'test-share-id', 'expired'],
+      );
+    }));
+
+    it('VIEW-01 expired$_navigates_after_delay — navigate fires after ~1000ms delay (WCAG 2.2.1/3.2.5)', fakeAsync(() => {
+      const routerSpy = jasmine.createSpyObj<Router>('Router', ['navigate']);
+      (component as unknown as { router: Router }).router = routerSpy;
+
+      expiredSubject.next();
+      fixture.detectChanges();
+
+      // Must NOT navigate immediately
+      expect(routerSpy.navigate).not.toHaveBeenCalled();
+
+      tick(1000);
+      expect(routerSpy.navigate).toHaveBeenCalledWith(
+        ['/share', 'test-share-id', 'expired'],
+      );
+    }));
+
+    it('VIEW-01 expired$_fires_exactly_once — expired$ + transportMode$ EXPIRED together fire only once announce+navigate', fakeAsync(() => {
+      // Guard: both expired$ and STOMP EXPIRED must not double-fire announce/navigate.
+      // The expiryHandled guard inside triggerExpiry() must ensure exactly one announce
+      // and one navigate regardless of how many signals arrive.
+      const routerSpy = jasmine.createSpyObj<Router>('Router', ['navigate']);
+      (component as unknown as { router: Router }).router = routerSpy;
+
+      // Both signals fire "simultaneously"
+      expiredSubject.next();
+      transportModeSubject.next(ViewerTransportMode.EXPIRED);
+      fixture.detectChanges();
+
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledTimes(1);
+
+      tick(1500);
+      expect(routerSpy.navigate).toHaveBeenCalledTimes(1);
+    }));
+
+    it('VIEW-01 expired$_repeated_emission_fires_once — multiple expired$ emissions trigger only one announce+navigate', fakeAsync(() => {
+      const routerSpy = jasmine.createSpyObj<Router>('Router', ['navigate']);
+      (component as unknown as { router: Router }).router = routerSpy;
+
+      expiredSubject.next();
+      expiredSubject.next(); // duplicate emission
+      fixture.detectChanges();
+
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledTimes(1);
+
+      tick(1500);
+      expect(routerSpy.navigate).toHaveBeenCalledTimes(1);
+    }));
+
+    it('VIEW-01 transportMode$_EXPIRED_still_announces_and_navigates — STOMP EXPIRED path still works', fakeAsync(() => {
+      // This ensures the existing STOMP-expiry path is not accidentally broken.
+      const routerSpy = jasmine.createSpyObj<Router>('Router', ['navigate']);
+      (component as unknown as { router: Router }).router = routerSpy;
+
+      transportModeSubject.next(ViewerTransportMode.EXPIRED);
+      fixture.detectChanges();
+
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledWith(
+        jasmine.any(String),
+        'assertive',
+      );
+
+      tick(1100);
+      expect(routerSpy.navigate).toHaveBeenCalledWith(
+        ['/share', 'test-share-id', 'expired'],
+      );
+    }));
   });
 });

@@ -1,12 +1,14 @@
 import { Injectable, OnDestroy } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import {
   BehaviorSubject,
   Observable,
+  Subject,
   Subscription,
   interval,
   EMPTY,
+  of,
 } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 import {
@@ -42,6 +44,24 @@ export class ReadonlyWallService implements OnDestroy {
   /** Whether the catalog has finished loading. */
   readonly catalogLoaded$: BehaviorSubject<boolean> = new BehaviorSubject(false);
 
+  /**
+   * VIEW-01: Expiry signal for the fallback polling path.
+   *
+   * Emits once when a poll response confirms the share link is no longer active.
+   * The component (ReadonlyWallComponent) is the sole owner of announce-then-navigate
+   * (ADR-RELAY-05); this service only emits — it never navigates.
+   *
+   * Disambiguation: a 404 on /rest/share/{id}/messages is ambiguous:
+   *   - killswitch (glacier.fallback.enabled=false) also returns 404.
+   *   - revoked/expired links return 404.
+   * Before emitting, the service re-fetches the catalog.  If the catalog returns
+   * 200 (state=active), the link is still alive and the killswitch is on — do not expire.
+   * If the catalog returns 404, the link is genuinely inactive — emit expired$.
+   *
+   * Completed on destroy().
+   */
+  readonly expired$: Observable<void>;
+
   /** The share ID currently displayed. */
   shareId = '';
   hashtags: string[] = [];
@@ -49,10 +69,15 @@ export class ReadonlyWallService implements OnDestroy {
 
   private pollingSubscription: Subscription | null = null;
 
+  /** Backing Subject for expired$. Completed in destroy(). */
+  private readonly expiredSubject = new Subject<void>();
+
   constructor(
     private http: HttpClient,
     private router: Router,
-  ) {}
+  ) {
+    this.expired$ = this.expiredSubject.asObservable();
+  }
 
   /**
    * Loads the catalog for a share link and populates initial toots.
@@ -110,6 +135,17 @@ export class ReadonlyWallService implements OnDestroy {
    *
    * NOTE: Polling targets /rest/share/{shareId}/messages — NEVER /rest/messages
    * (the sharer-side endpoint).
+   *
+   * VIEW-01 — Expiry disambiguation (glacier-fallback-mode-discipline):
+   * A 404 on /messages is ambiguous: it may mean the link is revoked/expired,
+   * OR the global killswitch is on (glacier.fallback.enabled=false also returns 404).
+   * On a 404, the service re-fetches the catalog:
+   *   - catalog 404 → link is genuinely inactive → emit expired$ once and stop polling.
+   *   - catalog 200 (active) → killswitch is on; the link is still live → keep polling
+   *     (the poll will continue to get 404s until the killswitch is lifted or WS recovers).
+   * Transient errors (5xx, network failure) are swallowed — polling continues.
+   *
+   * OWASP A01: revocation must be enforced in all transport modes, not just the WS path.
    */
   startFallbackPolling(): void {
     if (this.pollingSubscription) {
@@ -126,7 +162,30 @@ export class ReadonlyWallService implements OnDestroy {
             .join('&');
           const url = `/rest/share/${this.shareId}/messages?${params}&since=${since}`;
           return this.http.get<ReadonlyTootView[]>(url).pipe(
-            catchError(() => EMPTY),
+            catchError((err: HttpErrorResponse) => {
+              if (err.status === 404) {
+                // VIEW-01: disambiguate killswitch vs genuine revocation/expiry.
+                // Re-fetch the catalog — if it returns 404, the link is gone; emit expired$.
+                // If it returns 200, the killswitch is active; keep polling silently.
+                this.http.get<ShareCatalog>(`/rest/share/${this.shareId}/catalog`).pipe(
+                  catchError(() => {
+                    // Catalog also returned an error (404 or network) — link is not active.
+                    this.stopPollingAndExpire();
+                    return EMPTY;
+                  }),
+                ).subscribe((catalog) => {
+                  if (catalog.state !== 'active') {
+                    // Catalog returned 200 but with a non-active state (shouldn't happen
+                    // with current backend, but guard anyway).
+                    this.stopPollingAndExpire();
+                  }
+                  // catalog.state === 'active' → killswitch scenario; do nothing.
+                });
+              }
+              // All errors (404 after disambiguation start, 5xx, network) return EMPTY
+              // so the polling interval continues.
+              return EMPTY;
+            }),
           );
         }),
       )
@@ -134,6 +193,17 @@ export class ReadonlyWallService implements OnDestroy {
         toots.forEach((t) => this.handleToot(t));
         since = Date.now();
       });
+  }
+
+  /**
+   * VIEW-01: Stops polling and emits expired$ once.
+   * Called when catalog disambiguation confirms the link is no longer active.
+   */
+  private stopPollingAndExpire(): void {
+    this.stopFallbackPolling();
+    if (!this.expiredSubject.closed) {
+      this.expiredSubject.next();
+    }
   }
 
   /** Stops fallback polling. Called on component destroy. */
@@ -193,6 +263,10 @@ export class ReadonlyWallService implements OnDestroy {
     this.stopFallbackPolling();
     this.toots$.complete();
     this.catalogLoaded$.complete();
+    // VIEW-01: complete expired$ so subscribers do not leak
+    if (!this.expiredSubject.closed) {
+      this.expiredSubject.complete();
+    }
   }
 
   ngOnDestroy(): void {

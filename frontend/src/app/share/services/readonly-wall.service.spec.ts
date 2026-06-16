@@ -9,6 +9,8 @@ import { BehaviorSubject, Subject } from 'rxjs';
 import { ReadonlyWallService } from './readonly-wall.service';
 import { ReadonlyTootView, ShareCatalog } from '../model/readonly-toot-view';
 import { PruneResult } from '../../model/wall-message';
+// VIEW-01: expired$ signal tests use this import
+// (no additional imports required — Subject is already imported above)
 
 /**
  * Unit tests for ReadonlyWallService (viewer side).
@@ -320,6 +322,193 @@ describe('ReadonlyWallService', () => {
       expect(toots.length).toBe(1);
 
       discardPeriodicTasks();
+    }));
+  });
+
+  // ---- VIEW-01: fallback polling expiry disambiguation ----
+  // Security requirement: a 404 on /rest/share/{id}/messages during fallback
+  // polling must be disambiguated before declaring the link expired.
+  // - If catalog confirms the link is not-active (404) → emit expired$ and stop polling.
+  // - If catalog confirms the link is still active (200) → killswitch is on; keep polling.
+  // - Transient errors (500/network) → keep polling, no expiry.
+  // OWASP A01: access-control enforcement; glacier-fallback-mode-discipline invariant.
+
+  describe('VIEW-01 expiry disambiguation during fallback polling', () => {
+    it('exposes an expired$ observable on the service', () => {
+      // expired$ must exist as a readable Observable so the component can subscribe
+      expect(service.expired$).toBeDefined();
+      expect(typeof service.expired$.subscribe).toBe('function');
+    });
+
+    it('VIEW-01 poll_404_active_catalog — messages 404 when catalog says active does NOT emit expired$ (killswitch)', fakeAsync(() => {
+      // Arrange: initialize with an active catalog
+      service.initialize(SHARE_ID);
+      const catalogReq = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogReq.flush(mockCatalog); // state=active
+      tick();
+
+      service.startFallbackPolling();
+
+      let expiredEmitted = false;
+      service.expired$.subscribe(() => { expiredEmitted = true; });
+
+      // First poll fires after 5 s
+      tick(5000);
+
+      // messages endpoint returns 404 (killswitch scenario)
+      const msgReq = httpMock.expectOne(
+        (req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`)
+      );
+      msgReq.flush(null, { status: 404, statusText: 'Not Found' });
+      tick();
+
+      // Disambiguation: service re-fetches catalog — catalog says active (200)
+      const catalogCheck = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogCheck.flush(mockCatalog); // state=active → killswitch, NOT expiry
+      tick();
+
+      // Must NOT have emitted expiry — link is still active
+      expect(expiredEmitted).toBeFalse();
+
+      discardPeriodicTasks();
+    }));
+
+    it('VIEW-01 poll_404_inactive_catalog — messages 404 when catalog says not-active emits expired$ once and stops polling', fakeAsync(() => {
+      // Arrange
+      service.initialize(SHARE_ID);
+      const catalogReq = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogReq.flush(mockCatalog);
+      tick();
+
+      service.startFallbackPolling();
+
+      let expiredCount = 0;
+      service.expired$.subscribe(() => { expiredCount++; });
+
+      // First poll fires
+      tick(5000);
+
+      const msgReq = httpMock.expectOne(
+        (req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`)
+      );
+      msgReq.flush(null, { status: 404, statusText: 'Not Found' });
+      tick();
+
+      // Catalog check — catalog also returns 404 (link revoked/expired)
+      const catalogCheck = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogCheck.flush(null, { status: 404, statusText: 'Not Found' });
+      tick();
+
+      expect(expiredCount).toBe(1);
+
+      // Polling must have stopped — a second tick should produce NO new poll request
+      tick(5000);
+      httpMock.expectNone((req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`));
+    }));
+
+    it('VIEW-01 poll_404_emits_exactly_once — expired$ emits only once even if polling fires multiple 404s', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const catalogReq = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogReq.flush(mockCatalog);
+      tick();
+
+      service.startFallbackPolling();
+
+      let expiredCount = 0;
+      service.expired$.subscribe(() => { expiredCount++; });
+
+      // First poll — 404 → catalog confirms revoked
+      tick(5000);
+      httpMock.expectOne((req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`))
+        .flush(null, { status: 404, statusText: 'Not Found' });
+      tick();
+      httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`)
+        .flush(null, { status: 404, statusText: 'Not Found' });
+      tick();
+
+      // Polling has stopped — second tick must produce nothing
+      tick(5000);
+      httpMock.expectNone((req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`));
+      expect(expiredCount).toBe(1);
+    }));
+
+    it('VIEW-01 poll_500_keeps_polling — transient 500 does NOT emit expired$ and keeps polling', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const catalogReq = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogReq.flush(mockCatalog);
+      tick();
+
+      service.startFallbackPolling();
+
+      let expiredEmitted = false;
+      service.expired$.subscribe(() => { expiredEmitted = true; });
+
+      // First poll → transient server error
+      tick(5000);
+      httpMock.expectOne((req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`))
+        .flush(null, { status: 500, statusText: 'Internal Server Error' });
+      tick();
+
+      // No catalog disambiguation request for 5xx
+      httpMock.expectNone(`/rest/share/${SHARE_ID}/catalog`);
+
+      // Polling continues — second poll fires
+      tick(5000);
+      const secondPoll = httpMock.match(
+        (req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`)
+      );
+      expect(secondPoll.length).toBe(1);
+      secondPoll[0].flush([]);
+      tick();
+
+      expect(expiredEmitted).toBeFalse();
+
+      discardPeriodicTasks();
+    }));
+
+    it('VIEW-01 poll_network_error_keeps_polling — network error does NOT emit expired$ and keeps polling', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const catalogReq = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogReq.flush(mockCatalog);
+      tick();
+
+      service.startFallbackPolling();
+
+      let expiredEmitted = false;
+      service.expired$.subscribe(() => { expiredEmitted = true; });
+
+      // First poll → network error
+      tick(5000);
+      httpMock.expectOne((req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`))
+        .error(new ProgressEvent('error'));
+      tick();
+
+      // Polling continues — second poll fires
+      tick(5000);
+      const secondPoll = httpMock.match(
+        (req) => req.url.startsWith(`/rest/share/${SHARE_ID}/messages`)
+      );
+      expect(secondPoll.length).toBe(1);
+      secondPoll[0].flush([]);
+      tick();
+
+      expect(expiredEmitted).toBeFalse();
+
+      discardPeriodicTasks();
+    }));
+
+    it('VIEW-01 expired$_completes_on_destroy — expired$ completes when destroy() is called', fakeAsync(() => {
+      service.initialize(SHARE_ID);
+      const catalogReq = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      catalogReq.flush(mockCatalog);
+      tick();
+
+      let completed = false;
+      service.expired$.subscribe({ complete: () => { completed = true; } });
+
+      service.destroy();
+
+      expect(completed).toBeTrue();
     }));
   });
 

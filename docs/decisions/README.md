@@ -244,4 +244,9 @@ When writing a new ADR, add a row here in the acceptance commit.
 | [2026-05-15-implementation-share-view-stomp-relay-migration.md](2026-05-15-implementation-share-view-stomp-relay-migration.md) | P2: Registry + events + handshake reorder + Angular ReadonlyWallStompClient; 1742 unit + 383 IT + 616 Karma — 0 failures; BUILD SUCCESS |
 | [2026-06-15-acceptance-share-view-stomp-relay-migration.md](2026-06-15-acceptance-share-view-stomp-relay-migration.md) | P3: PASSED — 2 blocking findings fixed (SEC-ACC-01 counter-leak refund on `register()` throw; SEC-ACC-02 exponential reconnect backoff); SR-RELAY 23/23, 7/7 ArchUnit; 1743 unit + 383 IT + 618 Karma, 0 failures; live-relay Playwright e2e to run in CI before merge |
 
+### Accessibility & Usability Audit (`a11y-ux-audit`)
+| File | Summary |
+|---|---|
+| [2026-06-16-a11y-ux-audit.md](2026-06-16-a11y-ux-audit.md) | Audit: full-app WCAG 2.2 AA + Nielsen review (4 parallel ux-ui-designer audits). 1 Critical (VIEW-01 FALLBACK revoke never detected), German-source i18n inversion (GDPR page + chrome render English), share-viewer live-semantics gaps, axe coverage holes. Remediation sequenced; Critical fixed first. |
+
 ---

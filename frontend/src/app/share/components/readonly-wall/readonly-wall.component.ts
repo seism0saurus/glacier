@@ -158,6 +158,16 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
 
   private subscription = new Subscription();
 
+  /**
+   * VIEW-01: Guard flag ensuring triggerExpiry() fires exactly once
+   * regardless of how many signals arrive (STOMP EXPIRED, expired$ from
+   * fallback polling, or both simultaneously).
+   *
+   * WCAG 2.2.1 / 3.2.5: announce before navigate; 1 000 ms delay preserves
+   * reading time for screen-reader users.
+   */
+  private expiryHandled = false;
+
   get toots$() { return this.wallService.toots$; }
   get catalogLoaded$() { return this.wallService.catalogLoaded$; }
   get expiresAt() { return this.wallService.expiresAt; }
@@ -220,14 +230,20 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
           // STOMP reconnected — stop HTTP polling if it was active
           this.wallService.stopFallbackPolling();
         } else if (mode === ViewerTransportMode.EXPIRED) {
-          // Control frame received (revoked/expired) — announce and navigate
-          const expiryMsg = $localize`:@@share.connection.expired.announce:Dieser Link ist abgelaufen oder wurde widerrufen.`;
-          this.liveAnnouncer.announce(expiryMsg, 'assertive');
-          // WCAG 2.2.1 / 3.2.5: delay navigation so screen readers can read
-          setTimeout(() => {
-            this.router.navigate(['/share', shareId, 'expired']);
-          }, 1000);
+          // STOMP control frame received (revoked/expired) — announce and navigate.
+          // Delegates to triggerExpiry() which is guarded against double-firing.
+          this.triggerExpiry(shareId);
         }
+      }),
+    );
+
+    // VIEW-01: Subscribe to the fallback-polling expiry signal.
+    // When the service confirms the link is revoked/expired via HTTP polling
+    // disambiguation, the component takes over announce-then-navigate (ADR-RELAY-05).
+    // triggerExpiry() is guarded so STOMP EXPIRED + expired$ together fire only once.
+    this.subscription.add(
+      this.wallService.expired$.subscribe(() => {
+        this.triggerExpiry(shareId);
       }),
     );
 
@@ -240,6 +256,34 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
         }
       }),
     );
+  }
+
+  /**
+   * VIEW-01: Announce-then-navigate for link expiry/revocation.
+   *
+   * Guarded by expiryHandled so it fires exactly once even when both the
+   * STOMP EXPIRED path and the fallback-polling expired$ signal arrive.
+   *
+   * WCAG 2.2.1 / 3.2.5: announces assertively first, then navigates after
+   * 1 000 ms to give screen readers time to read the announcement.
+   *
+   * ADR-RELAY-05: the COMPONENT is the sole owner of announce-then-navigate;
+   * neither ReadonlyWallService nor ReadonlyWallStompClient navigate.
+   *
+   * @param shareId - The share link ID used to build the expired route.
+   */
+  private triggerExpiry(shareId: string): void {
+    if (this.expiryHandled) {
+      return;
+    }
+    this.expiryHandled = true;
+
+    const expiryMsg = $localize`:@@share.connection.expired.announce:Dieser Link ist abgelaufen oder wurde widerrufen.`;
+    this.liveAnnouncer.announce(expiryMsg, 'assertive');
+    // WCAG 2.2.1 / 3.2.5: delay navigation so screen readers can read announcement
+    setTimeout(() => {
+      this.router.navigate(['/share', shareId, 'expired']);
+    }, 1000);
   }
 
   ngOnDestroy(): void {

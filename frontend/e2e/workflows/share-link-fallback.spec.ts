@@ -4,6 +4,11 @@
  * Simulates WebSocket unavailability: viewer switches to HTTP polling.
  * Toot posted via Mastodon should appear on readonly wall within poll interval.
  *
+ * VIEW-01: Also verifies that when the sharer revokes the link while the viewer
+ * is in fallback-polling mode, the viewer is redirected to the /expired route
+ * within a poll-interval + buffer.  This is the main security invariant of VIEW-01:
+ * revocation MUST reach the viewer in all transport modes, not just via STOMP.
+ *
  * Backend endpoints wired in Phase 3. Tests enabled.
  */
 
@@ -53,6 +58,70 @@ test.describe('Share link — fallback polling', () => {
     await expect(viewerPage.getByText(content.substring(0, 30))).toBeVisible({
       timeout: 15_000,
     });
+
+    await sharerContext.close();
+    await viewerContext.close();
+  });
+
+  /**
+   * VIEW-01: Revocation must propagate to the viewer in fallback-polling mode.
+   *
+   * Security invariant: when the sharer revokes a link while the viewer is in
+   * FALLBACK mode (WebSocket blocked), the viewer MUST navigate to /expired
+   * within one poll-interval (5 s) + processing buffer.
+   *
+   * The test blocks WebSocket connections on the viewer context to force HTTP
+   * polling, then has the sharer revoke the link via the QR dialog.  The
+   * viewer's next poll returns 404 on /messages; the disambiguation re-fetch of
+   * /catalog also returns 404 (revoked); the component announces and navigates.
+   *
+   * glacier-fallback-mode-discipline: this is a chromium-project test because
+   * it requires fallback polling (WS blocked by route abort) with a standard
+   * backend (glacier.fallback.enabled=true).  It does NOT belong in the
+   * killswitch project — the killswitch scenario is different (backend flag off,
+   * catalog still returns active).
+   */
+  test('VIEW-01 viewer in fallback mode navigates to /expired after sharer revokes link', async ({ browser }) => {
+    const sharerContext = await browser.newContext();
+    const sharerPage = await sharerContext.newPage();
+
+    // Sharer: create a share link for a unique hashtag
+    await sharerPage.goto('/');
+    const hashtag = `glacierfallbackrevoke${Date.now()}`;
+    await sharerPage.getByRole('textbox', { name: /hashtag/i }).fill(hashtag);
+    await sharerPage.getByRole('button', { name: /abonnieren/i }).click();
+
+    await sharerPage.getByTestId('qr-badge-button').click();
+    await sharerPage.getByTestId('create-button').click();
+
+    const urlInput = sharerPage.getByTestId('share-url-input');
+    await expect(urlInput).toBeVisible({ timeout: 10_000 });
+    const shareUrl = await urlInput.inputValue();
+
+    // Viewer context: block WebSocket to force fallback polling
+    const viewerContext = await browser.newContext();
+    await viewerContext.route('**/share-view-ws', (route) => route.abort());
+
+    const viewerPage = await viewerContext.newPage();
+    await viewerPage.goto(shareUrl);
+
+    // Wait for viewer to load the catalog and enter fallback polling
+    await expect(viewerPage.getByTestId('share-feed')).toHaveAttribute(
+      'aria-busy', 'false', { timeout: 20_000 }
+    );
+
+    // Sharer: revoke the link
+    // The share URL is still open — click revoke in the dialog
+    await sharerPage.getByTestId('qr-badge-button').click();
+    await sharerPage.getByRole('button', { name: /revoke/i }).click();
+    await sharerPage.getByRole('button', { name: /confirm/i }).click();
+
+    // Wait for the revoke confirmation in the sharer's dialog
+    await expect(sharerPage.getByText(/revoked/i)).toBeVisible({ timeout: 5_000 });
+
+    // VIEW-01: Viewer must navigate to the /expired route within
+    // one poll cycle (5 s) + catalog re-fetch + 1 s announce delay + buffer = 15 s.
+    await expect(viewerPage).toHaveURL(/\/share\/.*\/expired/, { timeout: 15_000 });
 
     await sharerContext.close();
     await viewerContext.close();
