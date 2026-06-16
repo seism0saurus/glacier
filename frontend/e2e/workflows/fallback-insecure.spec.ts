@@ -17,7 +17,7 @@
  */
 
 import {expect, test} from '@playwright/test';
-import {assertNoWcag22AaViolations} from '../helper/a11y';
+import {assertNoWcag22AaViolationsLightAndDark} from '../helper/a11y';
 
 test.describe('Insecure connection mode', () => {
 
@@ -94,8 +94,9 @@ test.describe('Insecure connection mode', () => {
       const indicator = page.locator('[data-testid="connection-status"]');
       await expect(indicator).toHaveClass(/connection-chip--insecure/, {timeout: 15_000});
 
-      // assertNoWcag22AaViolations applies .withTags([...WCAG_22_AA_TAGS]) and
-      // fails on serious/critical violations only (D-20, playwright-angular-a11y skill).
-      await assertNoWcag22AaViolations(page, '[data-testid="connection-status"]');
+      // assertNoWcag22AaViolationsLightAndDark applies .withTags([...WCAG_22_AA_TAGS]) and
+      // fails on serious/critical violations in both light and dark color schemes (D-20,
+      // ACPT-01 XCUT-07: gates the new dark-mode colors added to connection-status.component.css).
+      await assertNoWcag22AaViolationsLightAndDark(page, '[data-testid="connection-status"]');
     });
 });

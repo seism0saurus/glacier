@@ -13,7 +13,7 @@
 
 import {expect, test} from '@playwright/test';
 import * as fs from 'fs';
-import {assertNoWcag22AaViolations} from '../helper/a11y';
+import {assertNoWcag22AaViolationsLightAndDark} from '../helper/a11y';
 
 const DYNAMIC_YML = process.env['TRAEFIK_DYNAMIC_YML_PATH']
   || '/home/ulrich.viefhaus/git/seism0saurus/glacier/infrastructure/dynamic.yml';
@@ -125,9 +125,10 @@ test.describe('Kill-switch mode', () => {
         // Wait for KILLSWITCHED state (after 3-attempt cycle + one 404 poll)
         await expect(indicator).toHaveClass(/connection-chip--killswitched/, {timeout: 60_000});
 
-        // assertNoWcag22AaViolations applies .withTags([...WCAG_22_AA_TAGS]) and
-        // fails on serious/critical violations only (D-20).
-        await assertNoWcag22AaViolations(page, '[data-testid="connection-status"]');
+        // assertNoWcag22AaViolationsLightAndDark applies .withTags([...WCAG_22_AA_TAGS]) and
+        // fails on serious/critical violations in both light and dark color schemes (D-20,
+        // ACPT-01 XCUT-07: gates the new dark-mode colors added to connection-status.component.css).
+        await assertNoWcag22AaViolationsLightAndDark(page, '[data-testid="connection-status"]');
       } finally {
         writeDynamicYml(originalConfig);
       }

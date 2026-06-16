@@ -25,7 +25,7 @@
 
 import {expect, test} from '@playwright/test';
 import * as fs from 'fs';
-import {assertNoWcag22AaViolations, runAxeOnlyInChromium} from '../helper/a11y';
+import {assertNoWcag22AaViolationsLightAndDark, runAxeOnlyInChromium} from '../helper/a11y';
 
 const DYNAMIC_YML = process.env['TRAEFIK_DYNAMIC_YML_PATH']
   || '/home/ulrich.viefhaus/git/seism0saurus/glacier/infrastructure/dynamic.yml';
@@ -100,7 +100,7 @@ test.describe('Connection indicator UX and accessibility', () => {
         .toHaveClass(/connection-chip--websocket/, {timeout: 10_000});
 
       await runAxeOnlyInChromium(browserName, async () => {
-        await assertNoWcag22AaViolations(page, INDICATOR);
+        await assertNoWcag22AaViolationsLightAndDark(page, INDICATOR);
       });
     });
 
@@ -125,7 +125,7 @@ test.describe('Connection indicator UX and accessibility', () => {
           .toHaveClass(/connection-chip--probing/, {timeout: 10_000});
 
         await runAxeOnlyInChromium(browserName, async () => {
-          await assertNoWcag22AaViolations(page, INDICATOR);
+          await assertNoWcag22AaViolationsLightAndDark(page, INDICATOR);
         });
       } finally {
         writeDynamicYml(originalConfig);
@@ -147,7 +147,7 @@ test.describe('Connection indicator UX and accessibility', () => {
           .toHaveClass(/connection-chip--fallback/, {timeout: 45_000});
 
         await runAxeOnlyInChromium(browserName, async () => {
-          await assertNoWcag22AaViolations(page, INDICATOR);
+          await assertNoWcag22AaViolationsLightAndDark(page, INDICATOR);
         });
       } finally {
         writeDynamicYml(originalConfig);
@@ -183,8 +183,9 @@ test.describe('Connection indicator UX and accessibility', () => {
           .toHaveClass(/connection-chip--offline/, {timeout: 60_000});
 
         await runAxeOnlyInChromium(browserName, async () => {
-          // Scan the full page to also catch the session-expired banner (D-17)
-          await assertNoWcag22AaViolations(page);
+          // Scan the full page to also catch the session-expired banner (D-17).
+          // Dual-scheme scan (ACPT-01 XCUT-07): gates dark-mode colors on the indicator + banner.
+          await assertNoWcag22AaViolationsLightAndDark(page);
         });
       } finally {
         writeDynamicYml(originalConfig);
