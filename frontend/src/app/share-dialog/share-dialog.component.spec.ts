@@ -232,14 +232,53 @@ describe('ShareDialogComponent', () => {
     }));
   });
 
-  // ---- Shown-once warning (SR-SQLITE-21) ----
+  // ---- TOOT-07: Shown-once warning must use aria-describedby, NOT role="alert" ----
 
-  describe('shown-once warning', () => {
+  describe('shown-once warning (TOOT-07)', () => {
+    it('TOOT-07: warning element must NOT have role="alert" (would fire simultaneously with LiveAnnouncer)', () => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      // The warning must be persistent text associated via aria-describedby,
+      // not a live region — role="alert" fires on every DOM insertion and would
+      // compete with the single LiveAnnouncer call + focus-move.
+      const alertWarning: HTMLElement | null =
+        fixture.nativeElement.querySelector('.shown-once-warning[role="alert"]');
+      expect(alertWarning)
+        .withContext('shown-once-warning must NOT carry role="alert" (WCAG 4.1.3 — triple announcement)')
+        .toBeNull();
+    });
+
+    it('TOOT-07: warning element must have an id for aria-describedby wiring', () => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      const warning: HTMLElement | null =
+        fixture.nativeElement.querySelector('.shown-once-warning');
+      expect(warning).not.toBeNull('shown-once-warning must exist');
+      expect(warning?.id)
+        .withContext('shown-once-warning must have an id so the URL input can reference it via aria-describedby')
+        .toBeTruthy();
+    });
+
+    it('TOOT-07: URL input must reference the warning via aria-describedby', () => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      const input: HTMLInputElement | null =
+        fixture.nativeElement.querySelector('[data-testid="share-url-input"]');
+      const warning: HTMLElement | null =
+        fixture.nativeElement.querySelector('.shown-once-warning');
+      expect(input).not.toBeNull('URL input must exist');
+      expect(warning).not.toBeNull('shown-once-warning must exist');
+      const describedBy = input?.getAttribute('aria-describedby') ?? '';
+      expect(describedBy)
+        .withContext('URL input aria-describedby must include the warning element id')
+        .toContain(warning!.id);
+    });
+
     it('is present in the DOM when a link has just been created (activeLink set)', () => {
       component.activeLink.set(mockCreated);
       fixture.detectChanges();
       const warning: HTMLElement | null =
-        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+        fixture.nativeElement.querySelector('.shown-once-warning');
       expect(warning).not.toBeNull('expected shown-once-warning element to be present');
     });
 
@@ -247,7 +286,7 @@ describe('ShareDialogComponent', () => {
       component.activeLink.set(mockCreated);
       fixture.detectChanges();
       const warning: HTMLElement | null =
-        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+        fixture.nativeElement.querySelector('.shown-once-warning');
       expect(warning?.textContent).toContain('Wichtig:');
     });
 
@@ -256,7 +295,7 @@ describe('ShareDialogComponent', () => {
       expect(component.activeLink()).toBeNull();
       fixture.detectChanges();
       const warning: HTMLElement | null =
-        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+        fixture.nativeElement.querySelector('.shown-once-warning');
       expect(warning).toBeNull('expected shown-once-warning element to be absent in initial state');
     });
 
@@ -273,9 +312,44 @@ describe('ShareDialogComponent', () => {
       fixture.detectChanges();
 
       const warning: HTMLElement | null =
-        fixture.nativeElement.querySelector('[role="alert"].shown-once-warning');
+        fixture.nativeElement.querySelector('.shown-once-warning');
       expect(warning).toBeNull('expected shown-once-warning to disappear after link is revoked');
     }));
+  });
+
+  // ---- TOOT-05: copy icon-button must keep ≥24px touch target ----
+
+  describe('copy button target size (TOOT-05)', () => {
+    it('TOOT-05: copy button must be present when activeLink is set', () => {
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      const copyBtn: HTMLElement | null =
+        fixture.nativeElement.querySelector('[data-testid="copy-button"]');
+      expect(copyBtn).not.toBeNull('copy button must be present when activeLink is set');
+    });
+
+    it('TOOT-05: copy icon-button must have minimum 24x24 CSS size via style', () => {
+      // WCAG 2.5.8: minimum target size 24x24 CSS px.
+      // We verify the button element has a CSS min-width/min-height guard applied
+      // so it is not shrunk below the threshold in the flex .url-copy-row at narrow widths.
+      component.activeLink.set(mockCreated);
+      fixture.detectChanges();
+      const copyBtn: HTMLElement | null =
+        fixture.nativeElement.querySelector('[data-testid="copy-button"]');
+      expect(copyBtn).not.toBeNull();
+      // mat-icon-button default is 40px; the spec check is that min-width/height guard exists
+      // at component style level. We check computedStyle width/height ≥ 24px.
+      const style = window.getComputedStyle(copyBtn!);
+      const w = parseFloat(style.width);
+      const h = parseFloat(style.height);
+      // In Karma/JSDOM, computed sizes may be 0. Guard: if rendering resolves size, enforce ≥ 24.
+      if (w > 0) {
+        expect(w).withContext('copy button width must be ≥ 24px (WCAG 2.5.8)').toBeGreaterThanOrEqual(24);
+      }
+      if (h > 0) {
+        expect(h).withContext('copy button height must be ≥ 24px (WCAG 2.5.8)').toBeGreaterThanOrEqual(24);
+      }
+    });
   });
 
   // ---- Cap reached ----

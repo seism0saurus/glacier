@@ -31,7 +31,11 @@
 }
 
 .button:hover {
-  background-color: #3293a3;
+  /* SHELL-09: Previous hover background #3293a3 on #123342 text yielded 3.7:1 (< 4.5:1 WCAG AA).
+     Replaced with #3daabb which yields 4.86:1 — passes AA for normal text.
+     The value is slightly darker than the normal state (#4acad7 = 6.79:1) so the
+     hover is still visually distinct, while meeting the minimum contrast ratio. */
+  background-color: #3daabb;
 }
 
 /* Focus-visible: visible keyboard focus ring without removing mouse-click outline  */

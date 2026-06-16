@@ -38,6 +38,7 @@ import * as QRCode from 'qrcode';
       class="qr-badge"
       type="button"
       [attr.aria-label]="ariaLabel"
+      aria-haspopup="dialog"
       data-testid="qr-badge-button"
       (click)="openDialog.emit()"
       (keydown.enter)="openDialog.emit()"

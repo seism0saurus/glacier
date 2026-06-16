@@ -73,6 +73,16 @@ describe('QrCodeComponent', () => {
     expect(canvas.getAttribute('aria-hidden')).toBe('true');
   });
 
+  // ---- TOOT-04: aria-haspopup="dialog" on modal trigger ----
+
+  it('TOOT-04: button must have aria-haspopup="dialog" to indicate modal opens', () => {
+    fixture.detectChanges();
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('[data-testid="qr-badge-button"]');
+    expect(btn.getAttribute('aria-haspopup'))
+      .withContext('QR badge button must declare aria-haspopup="dialog" (WCAG 4.1.2)')
+      .toBe('dialog');
+  });
+
   // ---- Event emission ----
 
   it('emits openDialog on button click', () => {

@@ -1,13 +1,20 @@
 <!--
   Skip link — visually hidden, becomes visible on keyboard focus.
   Allows keyboard-only users to bypass the header and jump directly to the main
-  toot feed (#toots in wall.component.html).  The @@skip.link.label key is
-  defined in messages.en.json and sourced from the German-source runtime catalog
-  (angular-i18n-localize skill).
+  content landmark (#main-content).
+  SHELL-01: <main id="main-content" tabindex="-1"> wraps the wall so the skip
+  link actually moves focus (tabindex="-1" makes it programmatically focusable).
+  SHELL-02: Skip link href updated from #toots to #main-content.
+  The @@skip.link.label key is defined in messages.en.json (angular-i18n-localize).
 -->
-<a class="skip-link" href="#toots" i18n="@@skip.link.label">Zum Hauptinhalt springen</a>
+<a class="skip-link" href="#main-content" i18n="@@skip.link.label">Zum Hauptinhalt springen</a>
 <app-header></app-header>
 <app-hashtag></app-hashtag>
 <app-migration-banner></app-migration-banner>
-<app-wall></app-wall>
+<!-- SHELL-01: <main> landmark wraps the primary wall content.
+     tabindex="-1" is required so that clicking the skip link above both
+     scrolls to AND moves keyboard focus to this element (WCAG 2.4.1). -->
+<main id="main-content" tabindex="-1">
+  <app-wall></app-wall>
+</main>
 <app-footer></app-footer>

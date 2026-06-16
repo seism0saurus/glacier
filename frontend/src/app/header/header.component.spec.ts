@@ -143,4 +143,14 @@ describe('HeaderComponent', () => {
     component.openShareDialog();
     expect(mockDialog.open).toHaveBeenCalledTimes(1);
   });
+
+  // TOOT-04: share button must announce it opens a dialog
+  it('TOOT-04: share button must have aria-haspopup="dialog" (WCAG 4.1.2)', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    const btn = compiled.querySelector('[data-testid="share-button"]');
+    expect(btn).withContext('share button must exist').toBeTruthy();
+    expect(btn?.getAttribute('aria-haspopup'))
+      .withContext('share button must declare aria-haspopup="dialog" so AT announces modal opening')
+      .toBe('dialog');
+  });
 });

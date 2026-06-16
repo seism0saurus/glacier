@@ -17,16 +17,27 @@
     via @media (prefers-reduced-motion: reduce) in the CSS.
 -->
 
-<!-- Visually-hidden live region for screen-reader announcements (D-15) -->
+<!-- Visually-hidden live region for screen-reader announcements (D-15).
+     SHELL-07: aria-label removed — having both aria-label and a text node
+     causes screen readers to announce the content twice (once for the text
+     node, once for the label). The text node is the correct and sufficient
+     mechanism for a polite live region. -->
 <span
   class="sr-only"
   role="status"
   aria-live="polite"
   aria-atomic="true"
-  [attr.aria-label]="liveRegionText"
 >{{ liveRegionText }}</span>
 
-<!-- Chip-pill button that opens the detail popover -->
+<!-- Chip-pill button that opens the detail popover.
+     SHELL-06: [attr.aria-haspopup] removed from template.
+     MatMenuTrigger (Angular Material 19) already emits both
+     [attr.aria-haspopup]="menu ? 'menu' : null" and
+     [attr.aria-expanded]="menuOpen" via its own host bindings.
+     Overriding with a static [attr.aria-haspopup]="'menu'" would
+     prevent Material from setting it to null when no menu is attached
+     and would mask the aria-expanded="true/false" toggle.
+     The directive handles both attributes correctly — no template override needed. -->
 <button
   type="button"
   class="connection-chip"
@@ -34,7 +45,6 @@
   [attr.data-testid]="'connection-status'"
   [matMenuTriggerFor]="detailMenu"
   [attr.aria-label]="chipLabel + ' — ' + chipDetail"
-  [attr.aria-haspopup]="'menu'"
 >
   <!-- Icon -->
   <mat-icon
@@ -47,9 +57,14 @@
   <span class="connection-chip__label">{{ chipLabel }}</span>
 </button>
 
-<!-- Popover detail menu (D-15, D-17) -->
+<!-- Popover detail menu (D-15, D-17).
+     SHELL-06: role="document" removed from the content wrapper.
+     role="document" inside a mat-menu creates an invalid ARIA role nesting
+     (document is a landmark role, not valid inside a menu context).
+     The content is plain prose and needs no structural role — the <div>
+     wrapper is purely presentational. -->
 <mat-menu #detailMenu="matMenu" class="connection-status-menu">
-  <div class="connection-menu__content" role="document">
+  <div class="connection-menu__content">
     <p class="connection-menu__detail">{{ chipDetail }}</p>
 
     <!-- Reload CTA — shown for OFFLINE and KILLSWITCHED (D-17) -->

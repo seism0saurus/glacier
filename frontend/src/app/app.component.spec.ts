@@ -117,16 +117,52 @@ describe('AppComponent', () => {
     expect(compiled.querySelector('app-footer')).toBeTruthy();
   });
 
-  // A11Y-F-04: Skip link
-  it('should have a skip link as the first child pointing to #toots', () => {
+  // SHELL-01: <main> landmark must wrap the wall content
+  it('SHELL-01: should contain a <main> landmark element', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const main = compiled.querySelector('main');
+    expect(main).withContext('<main> landmark must be present for keyboard/AT navigation').toBeTruthy();
+  });
+
+  it('SHELL-01: <main> landmark must have id="main-content"', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const main = compiled.querySelector('main');
+    expect(main?.id).withContext('<main> id must be "main-content" for skip link target').toBe('main-content');
+  });
+
+  it('SHELL-01: <main> landmark must have tabindex="-1" to receive programmatic focus', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const main = compiled.querySelector('main');
+    expect(main?.getAttribute('tabindex'))
+      .withContext('<main> must have tabindex="-1" so skip link activation moves focus')
+      .toBe('-1');
+  });
+
+  it('SHELL-01: <main> landmark must contain app-wall', () => {
+    const fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const compiled = fixture.nativeElement as HTMLElement;
+    const main = compiled.querySelector('main');
+    const wall = main?.querySelector('app-wall');
+    expect(wall).withContext('<main> must wrap app-wall').toBeTruthy();
+  });
+
+  // SHELL-02: Skip link must target #main-content (the new <main>)
+  it('SHELL-02: should have a skip link as the first child pointing to #main-content', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const compiled = fixture.nativeElement as HTMLElement;
     const skipLink = compiled.querySelector('.skip-link') as HTMLAnchorElement | null;
     expect(skipLink).withContext('skip link element must exist').toBeTruthy();
     expect(skipLink?.getAttribute('href'))
-      .withContext('skip link must point to the main toot feed')
-      .toBe('#toots');
+      .withContext('skip link must point to the <main> landmark (#main-content)')
+      .toBe('#main-content');
   });
 
   it('should render the skip link before the header (first interactive element)', () => {

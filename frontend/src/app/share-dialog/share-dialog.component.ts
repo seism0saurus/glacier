@@ -77,7 +77,16 @@ import {
             [ariaLabel]="qrAriaLabel"
           ></app-qr-code>
 
-          <!-- URL copy field -->
+          <!-- URL copy field.
+               TOOT-07: The URL input is described by the shown-once warning
+               below via aria-describedby="share-url-shown-once-hint" so AT
+               reads the hint when the input receives focus. This replaces the
+               previous role="alert" which fired simultaneously with the
+               LiveAnnouncer call and focus-move, producing triple announcement.
+               TOOT-05: The copy icon-button has a CSS min-size guard
+               (min-width/min-height: 40px via mat-icon-button default, plus
+               the .copy-btn-min-size class below) to ensure ≥24px target at
+               narrow flex widths (WCAG 2.5.8). -->
           <div class="url-copy-row">
             <mat-form-field appearance="outline" class="url-field">
               <mat-label i18n="@@share.dialog.url.label">Link kopieren</mat-label>
@@ -85,6 +94,7 @@ import {
                 matInput
                 readonly
                 [value]="activeLink()!.readonlyUrl"
+                aria-describedby="share-url-shown-once-hint"
                 data-testid="share-url-input"
               />
             </mat-form-field>
@@ -93,15 +103,24 @@ import {
               type="button"
               (click)="copyUrl()"
               [attr.aria-label]="copyButtonLabel"
+              class="copy-btn-min-size"
               data-testid="copy-button"
             >
               <mat-icon fontIcon="content_copy"></mat-icon>
             </button>
           </div>
 
-          <!-- Shown-once warning (SR-SQLITE-21): URL is only displayed at creation time -->
+          <!-- Shown-once warning (SR-SQLITE-21): URL is only displayed at creation time.
+               TOOT-07: Changed from role="alert" to a persistent help text element.
+               role="alert" fired on DOM insertion, simultaneously with the single
+               LiveAnnouncer.announce() call in createLink() and the focus-move to the
+               URL input, causing ~3 simultaneous announcements.
+               Now: persistent text with id="share-url-shown-once-hint", associated
+               with the URL input above via aria-describedby. AT reads it when the
+               input receives focus. The LiveAnnouncer call in createLink() remains
+               the sole dynamic announcement. -->
           <p
-            role="alert"
+            id="share-url-shown-once-hint"
             class="shown-once-warning"
             i18n="@@share.dialog.url.shown-once.warning"
           >Wichtig: Dieser Link wird nur jetzt angezeigt und kann später nicht erneut abgerufen werden. Bitte kopiere ihn jetzt.</p>
@@ -198,6 +217,11 @@ import {
     .created-link { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
     .url-copy-row { display: flex; align-items: center; gap: 8px; }
     .url-field { flex: 1; }
+    /* TOOT-05: ensure copy icon-button never shrinks below WCAG 2.5.8 minimum
+       target size (24 × 24 CSS px) when the flex row is at narrow widths.
+       mat-icon-button default is 40px; this guard prevents flex-shrink: 0 being
+       overridden by ancestor flex rules in narrow containers. */
+    .copy-btn-min-size { flex-shrink: 0; min-width: 40px; min-height: 40px; }
     .shown-once-warning { font-size: 0.875rem; font-weight: 500; color: var(--mat-sys-error, #b3261e); margin: 0; }
     .expiry-text { font-size: 0.875rem; margin: 0; }
     .cap-message { color: var(--mat-sys-error, red); }

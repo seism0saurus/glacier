@@ -9,12 +9,17 @@
     Positioned between the h1 and the connection-status chip to keep the
     primary action visible without crowding the status indicator.
   -->
+  <!--
+    TOOT-04: aria-haspopup="dialog" added so AT announces that activating
+    this button will open a modal dialog (WCAG 4.1.2 Name/Role/Value).
+  -->
   <button
     mat-icon-button
     type="button"
     (click)="openShareDialog()"
     i18n-aria-label="@@header.share.button.aria"
     aria-label="Wand teilen"
+    aria-haspopup="dialog"
     data-testid="share-button"
   >
     <mat-icon aria-hidden="true">share</mat-icon>

@@ -110,6 +110,12 @@ When writing a new ADR, add a row here in the acceptance commit.
 
 ## Frontend / UX / a11y / i18n
 
+### Structural A11y Fixes — Shell & Share Dialog Batch 1 (`a11y-structural-batch-1`)
+| File | Summary |
+|---|---|
+| [2026-06-16-a11y-ux-audit.md](2026-06-16-a11y-ux-audit.md) | Audit: WCAG 2.2 AA + Nielsen a11y/UX audit across all 24 Angular components |
+| [2026-06-16-a11y-structural-batch-1.md](2026-06-16-a11y-structural-batch-1.md) | P2: SHELL-01/02 `<main>` landmark + skip link; SHELL-07 live-region double-announce; SHELL-06 `role="document"` + Material aria-expanded; SHELL-09 hover contrast; TOOT-04 `aria-haspopup="dialog"`; TOOT-05 copy-button min-size; TOOT-07 shown-once `aria-describedby` |
+
 ### Share Link with QR Code (`share-link-qr`)
 | File | Summary |
 |---|---|
