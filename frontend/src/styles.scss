@@ -26,11 +26,47 @@ html {
     typography: Roboto,
     density: 0,
   ));
+
+  // ── Brand surface overrides ─────────────────────────────────────────────────
+  // The generated MD3 neutral surface tokens are overridden here with the
+  // Glacier brand's pale-cyan (light) / deep-teal-tinted (dark) values.
+  // light-dark() picks the first value when color-scheme resolves to light
+  // and the second when it resolves to dark — no media query needed.
+  //
+  // Wrapped in `& {}` to opt into Sass's upcoming mixed-declarations
+  // behaviour (declarations after nested rules, see sass-lang.com/d/mixed-decls).
+  & {
+    --mat-sys-background: light-dark(#d3ecf0, #0e2329);
+    --mat-sys-surface: light-dark(#d3ecf0, #0e2329);
+    --mat-sys-surface-container-low: light-dark(#ffffff, #122b32);
+    --mat-sys-surface-container: light-dark(#eaf6f8, #15323a);
+    --mat-sys-surface-container-high: light-dark(#dceef1, #1c3d46);
+    --mat-sys-on-surface: light-dark(#123342, #d6eaed);
+    --mat-sys-on-surface-variant: light-dark(#3f5560, #9fb4ba);
+    --mat-sys-outline: light-dark(#10303f, #46606a);
+    --mat-sys-outline-variant: light-dark(#9cc3cc, #2c4a54);
+  }
 }
 
-html, body {
+// Body background and text driven entirely by the MD3 surface tokens —
+// these respond to dark mode automatically via the overrides above.
+body {
+  background-color: var(--mat-sys-background);
+  color: var(--mat-sys-on-surface);
   margin: 0;
   height: calc(100% - 8px);
+}
+
+// Link colours use the primary token so they adapt to the teal palette in
+// both light and dark modes.
+a {
+  color: var(--mat-sys-primary);
+}
+
+a:hover {
+  // Blend primary 80% with on-surface 20% for a subtle darkening/lightening
+  // hover effect without hardcoding hex values.
+  color: color-mix(in srgb, var(--mat-sys-primary) 80%, var(--mat-sys-on-surface));
 }
 
 @font-face {
