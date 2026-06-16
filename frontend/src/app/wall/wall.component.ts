@@ -53,7 +53,22 @@ export const pruneLeaveAnimation = trigger('pruneLeave', [
 })
 export class WallComponent implements OnInit, OnDestroy {
 
-  toots: WallMessage[] = [];
+  /**
+   * Backing signal for the toot list. {@link columnToots} is a computed() that reads
+   * {@link toots}; backing the field with a signal makes that computed track changes
+   * so live emissions from getCreatedEvents re-render the grid without a resize/reload.
+   * The array-typed get/set accessors keep the existing `this.toots = [...]` /
+   * `this.toots.length` API (and unit tests) unchanged.
+   */
+  private readonly _toots: WritableSignal<WallMessage[]> = signal<WallMessage[]>([]);
+
+  get toots(): WallMessage[] {
+    return this._toots();
+  }
+
+  set toots(value: WallMessage[]) {
+    this._toots.set(value);
+  }
   // @ts-ignore
   rowHeight: number;
   private serviceSubscription: Subscription | null = null;

@@ -390,6 +390,37 @@ describe('WallComponent', () => {
     expect(component.toots[0].id).toBe('2');
   });
 
+  /**
+   * Regression test for the live-update rendering bug.
+   *
+   * A toot arriving via getCreatedEvents AFTER the initial render must appear in
+   * columnToots() without a window resize or page reload. columnToots() is a
+   * computed() signal; before the fix it read the non-signal `toots` field, so it
+   * only recomputed when the _columns signal changed. Live emissions were stored
+   * but never rendered until a resize/reload — exactly the symptom seen on the wall
+   * (message in localStorage, zero app-toot in the DOM until refresh).
+   */
+  it('wall_rendersTootArrivingLiveAfterInitialRender_withoutResizeOrReload', () => {
+    const live$ = new BehaviorSubject<WallMessage[]>([]);
+    mockSubscriptionService.getCreatedEvents.and.returnValue(live$.asObservable());
+
+    // Re-subscribe to the controllable stream and render once so columnToots()
+    // is evaluated and cached.
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    // Act: a new toot arrives live — no onResize(), no re-init.
+    live$.next([{id: 'LIVE-99', url: 'url99', hashtags: ['test']}] as WallMessage[]);
+    fixture.detectChanges();
+
+    // Assert: the computed grid reflects the live-added toot.
+    const renderedIds = (component as unknown as { columnToots(): WallMessage[][] })
+      .columnToots()
+      .flat()
+      .map((t) => t.id);
+    expect(renderedIds).toContain('LIVE-99');
+  });
+
   // ---------------------------------------------------------------------------
   // P1-18 mobile column reflow — already tested in onResize block above.
   // ---------------------------------------------------------------------------
