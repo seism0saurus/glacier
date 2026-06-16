@@ -3,11 +3,13 @@ import {
   OnInit,
   OnDestroy,
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatIconModule } from '@angular/material/icon';
 import { Subscription } from 'rxjs';
 import { ReadonlyWallService } from '../../services/readonly-wall.service';
 import { ReadonlyWallStompClient } from '../../services/readonly-wall-stomp-client.service';
@@ -22,8 +24,17 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
  * - `role="feed"` on the toot list with `aria-busy` while loading.
  * - Skip links to feed and status banner.
  * - Persistent "Schreibgeschützte Ansicht" banner (not dismissible).
- * - Polite live region announces new toots without interrupting reading.
+ * - Polite live region announces NEW toots (not the initial catalog hydration).
+ * - Transport status indicator (VIEW-03): role="status" region shows LIVE/PROBING/FALLBACK.
  * - H1 heading for page structure.
+ *
+ * VIEW-02: Announcement suppresses initial catalog hydration; uses plural
+ *   @@share.feed.new-toots.announce key when several arrive together.
+ * VIEW-03: role="status" aria-live="polite" transport indicator bound to
+ *   stompClient.transportMode$; does NOT announce EXPIRED (that path is
+ *   handled assertively by triggerExpiry()).
+ * VIEW-04: feedLabel computes the plural branch in TS to avoid raw ICU syntax
+ *   reaching the aria-label.
  *
  * State management:
  * - ReadonlyWallService is provided per-component (not root) to allow teardown.
@@ -43,6 +54,7 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
   imports: [
     CommonModule,
     MatProgressSpinnerModule,
+    MatIconModule,
     ReadonlyTootComponent,
   ],
   template: `
@@ -77,7 +89,28 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
         }
       </section>
 
-      <!-- Polite live region for new toot announcements (UX plan §1.2 Step 6) -->
+      <!--
+        VIEW-03: Transport status indicator.
+        role="status" implies aria-live="polite" and aria-atomic="true".
+        Bound to currentTransportMode; text+icon (not color alone) per WCAG 1.3.3/1.4.1.
+        EXPIRED mode is deliberately excluded — that path uses an assertive
+        LiveAnnouncer call in triggerExpiry() to avoid double-announcing.
+      -->
+      @if (showTransportStatus) {
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          class="transport-status"
+          [class]="'transport-status transport-status--' + currentTransportMode.toLowerCase()"
+          data-testid="transport-status"
+        >
+          <mat-icon aria-hidden="true" [fontIcon]="transportStatusIcon"></mat-icon>
+          <span>{{ transportStatusLabel }}</span>
+        </div>
+      }
+
+      <!-- Polite live region for new toot announcements (VIEW-02) -->
       <div
         aria-live="polite"
         aria-atomic="false"
@@ -142,6 +175,19 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
       color: var(--mat-sys-on-surface-variant, #666);
       margin: 0;
     }
+    /* VIEW-03: transport status indicator — text+icon, no color-only meaning */
+    .transport-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      font-size: 0.75rem;
+      background: var(--mat-sys-surface-container-low, #fafafa);
+      border-bottom: 1px solid var(--mat-sys-outline-variant, #ddd);
+    }
+    .transport-status--live { color: var(--mat-sys-primary, #1976d2); }
+    .transport-status--probing { color: var(--mat-sys-secondary, #666); }
+    .transport-status--fallback { color: var(--mat-sys-tertiary, #e65100); }
     .visually-hidden {
       position: absolute;
       width: 1px;
@@ -151,6 +197,9 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
       clip: rect(0,0,0,0);
       white-space: nowrap;
       border: 0;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .transport-status { transition: none; }
     }
   `],
 })
@@ -168,15 +217,86 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
    */
   private expiryHandled = false;
 
+  /**
+   * VIEW-02: Track whether the initial catalog hydration emission has been
+   * observed. The BehaviorSubject replays its current value on subscription,
+   * so the first emission is always the catalog snapshot — it must NOT trigger
+   * a "new toot" announcement.
+   */
+  initialLoadDone = false;
+
+  /**
+   * VIEW-02: Count of toots from the previous emission, used to compute how
+   * many genuinely-new toots arrived and select the correct plural form.
+   */
+  previousTootCount = 0;
+
+  /**
+   * VIEW-03: Current transport mode exposed for template binding.
+   * Starts at PROBING (the initial state of ReadonlyWallStompClient).
+   */
+  currentTransportMode: ViewerTransportMode = ViewerTransportMode.PROBING;
+
   get toots$() { return this.wallService.toots$; }
   get catalogLoaded$() { return this.wallService.catalogLoaded$; }
   get expiresAt() { return this.wallService.expiresAt; }
 
   liveAnnouncement = '';
 
+  /**
+   * VIEW-03: Show the transport indicator for LIVE/PROBING/FALLBACK.
+   * EXPIRED is intentionally excluded — that mode triggers an assertive
+   * announce-then-navigate and must not double-announce via the polite region.
+   */
+  get showTransportStatus(): boolean {
+    return this.currentTransportMode !== ViewerTransportMode.EXPIRED;
+  }
+
+  /**
+   * VIEW-03: Icon name for the current transport mode (text+icon, not color alone).
+   */
+  get transportStatusIcon(): string {
+    switch (this.currentTransportMode) {
+      case ViewerTransportMode.LIVE:     return 'wifi';
+      case ViewerTransportMode.PROBING:  return 'sync';
+      case ViewerTransportMode.FALLBACK: return 'sync_problem';
+      default:                           return 'sync';
+    }
+  }
+
+  /**
+   * VIEW-03: Human-readable label for the current transport mode.
+   * Uses i18n keys @@share.connection.live.label / .probing.label / .fallback.label.
+   */
+  get transportStatusLabel(): string {
+    switch (this.currentTransportMode) {
+      case ViewerTransportMode.LIVE:
+        return $localize`:@@share.connection.live.label:Live`;
+      case ViewerTransportMode.PROBING:
+        return $localize`:@@share.connection.probing.label:Verbinde…`;
+      case ViewerTransportMode.FALLBACK:
+        return $localize`:@@share.connection.fallback.label:Fallback-Modus`;
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * VIEW-04: Compute the feed aria-label without raw ICU brace syntax.
+   *
+   * The $localize ICU template is NOT expanded at runtime by the runtime
+   * loader — it would reach the aria-label as literal "{count, plural, …}".
+   * Instead, we compute the count branch in TypeScript and use plain string
+   * keys that the runtime catalog CAN substitute.
+   */
   get feedLabel(): string {
     const count = this.wallService.hashtags.length;
-    return $localize`:@@share.feed.label:{count, plural, one {Toots von # Hashtag} other {Toots von # Hashtags}}`.replace('{count}', String(count)).replace('#', String(count));
+    if (count === 1) {
+      // Singular branch: "Toots von 1 Hashtag"
+      return $localize`:@@share.feed.label.one:Toots von 1 Hashtag`;
+    }
+    // Plural branch: "Toots von N Hashtags" with simple named-param substitution
+    return $localize`:@@share.feed.label.other:Toots von ${count} Hashtags`;
   }
 
   get formattedExpiry(): string {
@@ -198,6 +318,7 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
     private wallService: ReadonlyWallService,
     private stompClient: ReadonlyWallStompClient,
     private liveAnnouncer: LiveAnnouncer,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -234,6 +355,12 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
           // Delegates to triggerExpiry() which is guarded against double-firing.
           this.triggerExpiry(shareId);
         }
+
+        // VIEW-03: Update the transport status indicator.
+        // EXPIRED is kept in currentTransportMode for other logic but the
+        // showTransportStatus getter gates out the polite region for EXPIRED.
+        this.currentTransportMode = mode;
+        this.cdr.markForCheck();
       }),
     );
 
@@ -247,13 +374,36 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
       }),
     );
 
-    // Announce new toots as they arrive (batched — UX plan §1.2 Step 6)
+    // VIEW-02: Announce new toots as they arrive.
+    // Suppresses the initial BehaviorSubject emission (catalog hydration).
+    // Batches multiple simultaneous arrivals into a count-based announcement using
+    // the existing plural key @@share.feed.new-toots.announce.
     this.subscription.add(
       this.wallService.toots$.subscribe((toots) => {
-        if (toots.length > 0) {
-          const latest = toots[0];
-          this.liveAnnouncement = $localize`:@@share.feed.new-toot.announce:Neuer Toot von ${latest.authorAcct}`;
+        if (!this.initialLoadDone) {
+          // First emission is always the catalog snapshot — record the count and skip.
+          this.previousTootCount = toots.length;
+          this.initialLoadDone = true;
+          return;
         }
+
+        const newCount = toots.length - this.previousTootCount;
+        if (newCount > 0) {
+          if (newCount === 1) {
+            // Single new toot: use the singular key with author name
+            const latest = toots[0];
+            this.liveAnnouncement = $localize`:@@share.feed.new-toot.announce:Neuer Toot von ${latest.authorAcct}`;
+          } else {
+            // Multiple new toots: use plural count announcement
+            // Runtime catalog substitutes {count} via named-param replacement.
+            this.liveAnnouncement = newCount === 1
+              ? $localize`:@@share.feed.new-toots.announce.one:${newCount} neuer Toot`
+              : $localize`:@@share.feed.new-toots.announce.other:${newCount} neue Toots`;
+          }
+          this.cdr.markForCheck();
+        }
+
+        this.previousTootCount = toots.length;
       }),
     );
   }

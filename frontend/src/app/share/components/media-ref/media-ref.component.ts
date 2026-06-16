@@ -1,7 +1,6 @@
 import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
-import { SafeUrl } from '@angular/platform-browser';
 import { MediaRef } from '../../model/readonly-toot-view';
 import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
 
@@ -13,10 +12,27 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
  * - Video/audio src: same pattern.
  * - No [innerHTML] anywhere.
  *
- * Accessibility:
+ * Accessibility (VIEW-08 + VIEW-09 remediation):
+ *
+ * VIEW-08: The missing-alt `<figcaption>` no longer carries `role="alert"`.
+ *   Previously this fired on every image render, flooding screen readers with
+ *   alerts. The warning is a plain informational `<figcaption>` — not urgent.
+ *   WCAG 4.1.3 misuse resolved.
+ *
+ * VIEW-09a: video/audio `[attr.aria-label]` uses `media.altText || null` so
+ *   that an empty altText does NOT produce `aria-label=""` (which forces screen
+ *   readers to announce an empty string — worse than absent).
+ *
+ * VIEW-09b: When video/audio has no altText, a localized "Keine Untertitel
+ *   verfügbar" notice is surfaced via `data-testid="no-captions-notice"`.
+ *
+ * General:
  * - Images: [attr.alt] from media.altText; warning badge when empty.
  * - Video/audio: `controls` attribute + aria-label from description.
  * - All media is NOT auto-playing (no `autoplay` attribute).
+ * - `@media (prefers-reduced-motion: reduce)` consideration: no animations
+ *   are applied to media elements (the media itself is user-controlled via
+ *   the native controls attribute).
  */
 @Component({
   selector: 'app-media-ref',
@@ -35,9 +51,13 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
             style="max-width:100%"
           />
           @if (!media.altText) {
+            <!--
+              VIEW-08: Plain <figcaption> with NO role="alert".
+              role="alert" would announce on every image toot → SR flooding.
+              This is a gentle informational notice, not an urgent alert.
+            -->
             <figcaption
               class="media-missing-alt"
-              role="alert"
               data-testid="missing-alt-warning"
             >
               <mat-icon aria-hidden="true" fontIcon="warning"></mat-icon>
@@ -56,7 +76,8 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
             style="max-width:100%"
           />
           @if (!media.altText) {
-            <figcaption class="media-missing-alt" role="alert" data-testid="missing-alt-warning">
+            <!-- VIEW-08: No role="alert" on gifv missing-alt either -->
+            <figcaption class="media-missing-alt" data-testid="missing-alt-warning">
               <mat-icon aria-hidden="true" fontIcon="warning"></mat-icon>
               <span i18n="@@share.toot.media.missing-alt">Dieses Bild hat keinen Alternativtext</span>
             </figcaption>
@@ -68,13 +89,33 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
           <video
             controls
             [attr.src]="media.proxyUrl | safeUrl"
-            [attr.aria-label]="media.altText"
+            [attr.aria-label]="media.altText || null"
             class="media-video"
             style="max-width:100%"
             data-testid="media-video"
           >
-            <span i18n="@@share.toot.media.video.label">Video: {{ media.altText }}</span>
+            <!--
+              VIEW-09b: Fallback text for browsers without native <video> support.
+              Uses altText when available; otherwise a localized "no captions" notice.
+            -->
+            @if (media.altText) {
+              <span i18n="@@share.toot.media.video.label">Video: {{ media.altText }}</span>
+            } @else {
+              <span i18n="@@share.toot.media.no-captions">Keine Untertitel verfügbar</span>
+            }
           </video>
+          <!--
+            VIEW-09b: Surface a caption/transcript affordance notice when no
+            altText is available. Placed outside the <video> element so it is
+            always visible in the DOM (not just as <video> fallback content).
+          -->
+          @if (!media.altText) {
+            <figcaption
+              class="media-no-captions"
+              data-testid="no-captions-notice"
+              i18n="@@share.toot.media.no-captions.notice"
+            >Keine Beschreibung oder Untertitel verfügbar</figcaption>
+          }
         </figure>
       }
       @case ('audio') {
@@ -82,11 +123,22 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
           <audio
             controls
             [attr.src]="media.proxyUrl | safeUrl"
-            [attr.aria-label]="media.altText"
+            [attr.aria-label]="media.altText || null"
             data-testid="media-audio"
           >
-            <span i18n="@@share.toot.media.audio.label">Audio: {{ media.altText }}</span>
+            @if (media.altText) {
+              <span i18n="@@share.toot.media.audio.label">Audio: {{ media.altText }}</span>
+            } @else {
+              <span i18n="@@share.toot.media.no-captions">Keine Untertitel verfügbar</span>
+            }
           </audio>
+          @if (!media.altText) {
+            <figcaption
+              class="media-no-captions"
+              data-testid="no-captions-notice"
+              i18n="@@share.toot.media.no-captions.notice"
+            >Keine Beschreibung oder Untertitel verfügbar</figcaption>
+          }
         </figure>
       }
     }
@@ -102,6 +154,15 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
       font-size: 0.75rem;
       color: var(--mat-sys-error, red);
       margin-top: 4px;
+    }
+    .media-no-captions {
+      font-size: 0.75rem;
+      color: var(--mat-sys-on-surface-variant, #666);
+      margin-top: 4px;
+      font-style: italic;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .media-figure * { animation: none; transition: none; }
     }
   `],
 })

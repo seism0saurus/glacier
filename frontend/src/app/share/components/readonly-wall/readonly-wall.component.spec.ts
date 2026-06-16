@@ -378,4 +378,187 @@ describe('ReadonlyWallComponent', () => {
       );
     }));
   });
+
+  // ---- VIEW-02: Announce only genuinely-new toots, suppress initial hydration ----
+  // WCAG 4.1.3: live announcements must not flood with false "new toot" notices
+  // on page load. The initial BehaviorSubject emission is the catalog snapshot
+  // and must NOT trigger an announcement.
+
+  describe('VIEW-02 announce only genuinely-new toots', () => {
+
+    it('VIEW-02 no_announcement_on_initial_load — initial toots$ emission does NOT announce a new toot', () => {
+      // beforeEach already triggered ngOnInit. The component's initialLoadDone is
+      // now true (first emission was the empty BehaviorSubject value).
+      // Reset to "pre-load" state to simulate the catalog hydration scenario.
+      (component as unknown as { initialLoadDone: boolean }).initialLoadDone = false;
+      (component as unknown as { previousTootCount: number }).previousTootCount = 0;
+      (component as unknown as { liveAnnouncement: string }).liveAnnouncement = '';
+
+      const mockToots = [mockToot, { ...mockToot, id: 'toot-2' }, { ...mockToot, id: 'toot-3' }];
+
+      // Simulate catalog hydration (first real emission — should be suppressed)
+      tootsSubject.next(mockToots);
+      fixture.detectChanges();
+
+      // The live-region text must remain empty (no "Neuer Toot" announced on hydration)
+      const liveRegion = fixture.nativeElement.querySelector('[data-testid="live-region"]');
+      expect(liveRegion.textContent.trim()).toBe('');
+    });
+
+    it('VIEW-02 announces_single_new_toot — one new toot after catalog loads announces a message', fakeAsync(() => {
+      // The component's initialLoadDone is true after ngOnInit.
+      // previousTootCount was set to 0 (empty initial BehaviorSubject emission).
+      // Emit 1 toot — newCount = 1-0 = 1 — should announce.
+      (component as unknown as { previousTootCount: number }).previousTootCount = 0;
+
+      const newToot = { ...mockToot, id: 'toot-new' };
+      tootsSubject.next([newToot]);
+      fixture.detectChanges();
+
+      const liveRegion = fixture.nativeElement.querySelector('[data-testid="live-region"]');
+      expect(liveRegion.textContent.trim()).not.toBe('');
+    }));
+
+    it('VIEW-02 announces_multiple_new_toots_as_count — 3 new toots produces a count announcement (uses plural key)', fakeAsync(() => {
+      // initialLoadDone is already true from ngOnInit.
+      // Set previousTootCount to 1 to simulate "1 toot already displayed".
+      (component as unknown as { previousTootCount: number }).previousTootCount = 1;
+
+      const toot2 = { ...mockToot, id: 'toot-2' };
+      const toot3 = { ...mockToot, id: 'toot-3' };
+      const toot4 = { ...mockToot, id: 'toot-4' };
+      tootsSubject.next([toot4, toot3, toot2, mockToot]);
+      fixture.detectChanges();
+
+      const liveRegion = fixture.nativeElement.querySelector('[data-testid="live-region"]');
+      // Should mention "3" (the count of new arrivals = 4-1)
+      expect(liveRegion.textContent).toContain('3');
+    }));
+
+    it('VIEW-02 no_announcement_when_count_unchanged — toots$ emission with same length does not announce', () => {
+      // initialLoadDone is true; previousTootCount = 1; emitting 1 toot = no change
+      (component as unknown as { previousTootCount: number }).previousTootCount = 1;
+      (component as unknown as { liveAnnouncement: string }).liveAnnouncement = '';
+
+      // Emit with same count as previousTootCount (1-1=0 new)
+      tootsSubject.next([mockToot]);
+      fixture.detectChanges();
+
+      const liveRegion = fixture.nativeElement.querySelector('[data-testid="live-region"]');
+      expect(liveRegion.textContent.trim()).toBe('');
+    });
+  });
+
+  // ---- VIEW-03: Transport status indicator ----
+  // WCAG 1.3.3 / 1.4.1 / 4.1.3: transport state must be conveyed not by color
+  // alone, must be visible and announced. Does NOT duplicate EXPIRED announcement.
+
+  describe('VIEW-03 transport status indicator', () => {
+
+    it('VIEW-03 renders_transport_status_region — a role="status" region is present', () => {
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      expect(statusRegion).not.toBeNull();
+    });
+
+    it('VIEW-03 status_region_is_aria_live_polite — aria-live="polite" on transport status', () => {
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      // role="status" implies aria-live="polite" but we verify explicit attribute or role
+      expect(
+        statusRegion.getAttribute('role') === 'status' ||
+        statusRegion.getAttribute('aria-live') === 'polite'
+      ).toBeTrue();
+    });
+
+    it('VIEW-03 LIVE_mode_shows_live_label — LIVE mode shows "Live" label text', () => {
+      transportModeSubject.next(ViewerTransportMode.LIVE);
+      fixture.detectChanges();
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      expect(statusRegion.textContent).toMatch(/Live/i);
+    });
+
+    it('VIEW-03 PROBING_mode_shows_probing_label — PROBING mode shows connecting label', () => {
+      transportModeSubject.next(ViewerTransportMode.PROBING);
+      fixture.detectChanges();
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      // The text must be non-empty (PROBING label)
+      expect(statusRegion.textContent.trim()).not.toBe('');
+    });
+
+    it('VIEW-03 FALLBACK_mode_shows_fallback_label — FALLBACK mode shows fallback label text', () => {
+      transportModeSubject.next(ViewerTransportMode.FALLBACK);
+      fixture.detectChanges();
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      expect(statusRegion.textContent.trim()).not.toBe('');
+    });
+
+    it('VIEW-03 EXPIRED_mode_does_NOT_update_transport_status — EXPIRED mode defers to the assertive expiry announce', () => {
+      const routerSpy = jasmine.createSpyObj<Router>('Router', ['navigate']);
+      (component as unknown as { router: Router }).router = routerSpy;
+
+      transportModeSubject.next(ViewerTransportMode.EXPIRED);
+      fixture.detectChanges();
+
+      // The transport status region must NOT contain an "expired" label
+      // (expiry is handled by the assertive LiveAnnouncer call in triggerExpiry())
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      // Either it's hidden or it doesn't announce EXPIRED in the polite region
+      // — it must not contain the expiry message text
+      expect(statusRegion?.textContent ?? '').not.toMatch(/abgelaufen|expired/i);
+    });
+
+    it('VIEW-03 status_has_text_not_color_only — transport status renders visible text label', () => {
+      transportModeSubject.next(ViewerTransportMode.LIVE);
+      fixture.detectChanges();
+      const statusRegion = fixture.nativeElement.querySelector('[data-testid="transport-status"]');
+      // Must not be empty — no color-only indication
+      expect(statusRegion.textContent.trim().length).toBeGreaterThan(0);
+    });
+  });
+
+  // ---- VIEW-04: feedLabel must not contain raw ICU brace syntax ----
+  // WCAG 4.1.2 (accessible name): aria-label computed from feedLabel must produce
+  // clean human-readable text for count 0, 1, and 2+ (plural forms).
+
+  describe('VIEW-04 feedLabel ICU expansion', () => {
+
+    // Helper: override the read-only 'hashtags' property defined as a getter on the spy.
+    // jasmine.createSpyObj defines it as an accessor on the prototype, so we must use
+    // Object.defineProperty on the instance to shadow it in each test.
+    function overrideHashtags(tags: string[]): void {
+      Object.defineProperty(wallServiceSpy, 'hashtags', { get: () => tags, configurable: true });
+    }
+
+    it('VIEW-04 feedLabel_count_0_no_braces — feedLabel for 0 hashtags does not contain "{" or "}"', () => {
+      overrideHashtags([]);
+      const label = component.feedLabel;
+      expect(label).not.toContain('{');
+      expect(label).not.toContain('}');
+    });
+
+    it('VIEW-04 feedLabel_count_1_no_braces — feedLabel for 1 hashtag is the singular form with no ICU syntax', () => {
+      overrideHashtags(['glacier']);
+      const label = component.feedLabel;
+      expect(label).not.toContain('{');
+      expect(label).not.toContain('}');
+    });
+
+    it('VIEW-04 feedLabel_count_2_no_braces — feedLabel for 2 hashtags is the plural form with no ICU syntax', () => {
+      overrideHashtags(['glacier', 'tech']);
+      const label = component.feedLabel;
+      expect(label).not.toContain('{');
+      expect(label).not.toContain('}');
+    });
+
+    it('VIEW-04 feedLabel_count_1_contains_count_number — feedLabel for 1 hashtag contains "1"', () => {
+      overrideHashtags(['glacier']);
+      const label = component.feedLabel;
+      expect(label).toContain('1');
+    });
+
+    it('VIEW-04 feedLabel_count_3_contains_count_number — feedLabel for 3 hashtags contains "3"', () => {
+      overrideHashtags(['a', 'b', 'c']);
+      const label = component.feedLabel;
+      expect(label).toContain('3');
+    });
+  });
 });

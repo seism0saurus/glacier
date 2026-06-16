@@ -1,5 +1,5 @@
 <iframe *ngIf="url"
-        #iframe id="{{uuid}}"
+        #iframe [id]="iframeId"
         [title]="iframeTitle"
         (load)="configureIframe(iframe)"
         (error)="handleError(iframe)"

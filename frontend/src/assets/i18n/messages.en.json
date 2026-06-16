@@ -108,5 +108,21 @@
   "share.connection.fallback.label": "Fallback mode",
   "share.connection.expired.label": "Expired",
   "share.connection.expired.announce": "This link has expired or been revoked.",
-  "share.connection.status.changed": "Connection status: {status}"
+  "share.connection.status.changed": "Connection status: {status}",
+
+  "share.feed.label.one": "Toots from 1 hashtag",
+  "share.feed.label.other": "Toots from {count} hashtags",
+
+  "share.feed.new-toots.announce.one": "{count} new toot",
+  "share.feed.new-toots.announce.other": "{count} new toots",
+
+  "share.toot.cw.collapsed.announce": "Content hidden",
+
+  "share.toot.poll.total.one": "1 vote",
+  "share.toot.poll.total.other": "{n} votes",
+  "share.toot.poll.leading": "★",
+  "share.toot.poll.leading.suffix": " (Leading)",
+
+  "share.toot.media.no-captions": "No captions available",
+  "share.toot.media.no-captions.notice": "No description or captions available"
 }

@@ -97,5 +97,21 @@
   "share.connection.fallback.label": "Fallback-Modus",
   "share.connection.expired.label": "Abgelaufen",
   "share.connection.expired.announce": "Dieser Link ist abgelaufen oder wurde widerrufen.",
-  "share.connection.status.changed": "Verbindungsstatus: {status}"
+  "share.connection.status.changed": "Verbindungsstatus: {status}",
+
+  "share.feed.label.one": "Toots von 1 Hashtag",
+  "share.feed.label.other": "Toots von {count} Hashtags",
+
+  "share.feed.new-toots.announce.one": "{count} neuer Toot",
+  "share.feed.new-toots.announce.other": "{count} neue Toots",
+
+  "share.toot.cw.collapsed.announce": "Inhalt ausgeblendet",
+
+  "share.toot.poll.total.one": "1 Stimme",
+  "share.toot.poll.total.other": "{n} Stimmen",
+  "share.toot.poll.leading": "★",
+  "share.toot.poll.leading.suffix": " (Führend)",
+
+  "share.toot.media.no-captions": "Keine Untertitel verfügbar",
+  "share.toot.media.no-captions.notice": "Keine Beschreibung oder Untertitel verfügbar"
 }

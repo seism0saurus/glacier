@@ -143,6 +143,164 @@ describe('TootComponent', () => {
     expect(spyAddEventListener).toHaveBeenCalledWith('message', jasmine.any(Function));
   });
 
+  // ---- TOOT-12: listener-leak and duplicate-id fixes ----
+
+  /**
+   * TOOT-12 — Listener cleanup on destroy.
+   *
+   * Arrange: configure an iframe so the component registers a global message listener.
+   * Act: destroy the component via ngOnDestroy.
+   * Assert: window.removeEventListener is called with 'message' and the same handler
+   *         reference that was registered via addEventListener, so the OS removes exactly
+   *         the right listener.
+   *
+   * Red gate: before the fix, TootComponent has no ngOnDestroy and never calls
+   * removeEventListener, so this test fails with "removeEventListener not called".
+   */
+  it('TOOT-12: should remove the message listener from window on ngOnDestroy (listener-leak fix)', () => {
+    const addedListeners: { type: string; handler: EventListenerOrEventListenerObject }[] = [];
+    const removedListeners: { type: string; handler: EventListenerOrEventListenerObject }[] = [];
+
+    spyOn(window, 'addEventListener').and.callFake((type: string, handler: EventListenerOrEventListenerObject) => {
+      addedListeners.push({ type, handler });
+    });
+    spyOn(window, 'removeEventListener').and.callFake((type: string, handler: EventListenerOrEventListenerObject) => {
+      removedListeners.push({ type, handler });
+    });
+
+    const iframe = document.createElement('iframe') as HTMLIFrameElement;
+    iframe.src = testUrlString;
+    component.configureIframe(iframe);
+
+    expect(addedListeners.length).toBe(1);
+    expect(addedListeners[0].type).toBe('message');
+
+    component.ngOnDestroy();
+
+    expect(removedListeners.length).toBe(1);
+    expect(removedListeners[0].type).toBe('message');
+    // Critically: the same function reference must be removed, not a different closure.
+    expect(removedListeners[0].handler).toBe(addedListeners[0].handler);
+  });
+
+  /**
+   * TOOT-12 — Handler does not fire after ngOnDestroy.
+   *
+   * Arrange: configure an iframe so the component registers a global message listener,
+   *          then destroy the component.
+   * Act: dispatch a 'message' event that would have caused a height mutation.
+   * Assert: the iframe height remains unchanged, confirming the handler was unregistered.
+   *
+   * Red gate: before the fix, the anonymous closure stays attached to window forever, so
+   * the iframe would still be mutated after destroy.
+   */
+  it('TOOT-12: should not mutate iframe height after ngOnDestroy (handler truly removed)', () => {
+    const iframe = document.createElement('iframe') as HTMLIFrameElement;
+    // Give the iframe the id that matches the message the component sends.
+    // After the fix, the iframe id will include an instance suffix, so we read
+    // it back from the element after configureIframe sets/uses it.
+    iframe.src = testUrlString;
+    document.body.appendChild(iframe);
+
+    component.configureIframe(iframe);
+    const registeredId = iframe.id; // read the actual id after configuration
+
+    component.ngOnDestroy();
+
+    // Now send a message that would have set the height — after destroy it should be ignored.
+    const msg = new MessageEvent('message', {
+      data: { type: 'setHeight', id: registeredId, height: '999px' },
+      source: iframe.contentWindow ?? undefined,
+    });
+    window.dispatchEvent(msg);
+
+    expect(iframe.height).not.toBe('999px');
+
+    document.body.removeChild(iframe);
+  });
+
+  /**
+   * TOOT-12 — Unique iframe id per component instance.
+   *
+   * Arrange: create two TootComponent instances sharing the same uuid.
+   * Act: configure an iframe for each.
+   * Assert: the two iframe ids are distinct, so there are no duplicate DOM ids and AT
+   *         tools can unambiguously address each frame.
+   *
+   * Red gate: before the fix, both iframes get id === uuid, causing duplicate DOM ids.
+   */
+  it('TOOT-12: should produce distinct iframe ids for two instances sharing the same uuid (duplicate-id fix)', () => {
+    // Create a second component instance alongside the one from beforeEach.
+    const fixture2 = TestBed.createComponent(TootComponent);
+    const component2 = fixture2.componentInstance;
+    component2.url = testSafeUrl;
+    component2.uuid = testUuid; // deliberately same uuid as component
+    fixture2.detectChanges();
+
+    const iframe1 = document.createElement('iframe') as HTMLIFrameElement;
+    iframe1.src = testUrlString;
+    const iframe2 = document.createElement('iframe') as HTMLIFrameElement;
+    iframe2.src = testUrlString;
+
+    component.configureIframe(iframe1);
+    component2.configureIframe(iframe2);
+
+    expect(iframe1.id).toBeTruthy();
+    expect(iframe2.id).toBeTruthy();
+    expect(iframe1.id).not.toBe(iframe2.id);
+
+    fixture2.destroy();
+  });
+
+  /**
+   * TOOT-12 — Height listener respects its own iframe only (id-filter still works).
+   *
+   * After the unique-id fix the ids contain an instance suffix, so we must verify the
+   * existing id-mismatch guard still works: a message addressed to instance A's id must
+   * NOT mutate instance B's iframe.
+   *
+   * Arrange: two components, each with its own iframe and distinct id.
+   * Act: dispatch a message with instance-A's id.
+   * Assert: only iframe-A height is set; iframe-B remains unchanged.
+   *
+   * Red gate: if the id-filter were accidentally broken by the suffix change, both
+   * iframes would get mutated.
+   */
+  it('TOOT-12: should only resize the matching iframe when ids differ across instances', () => {
+    const fixture2 = TestBed.createComponent(TootComponent);
+    const component2 = fixture2.componentInstance;
+    component2.url = testSafeUrl;
+    component2.uuid = testUuid;
+    fixture2.detectChanges();
+
+    const iframe1 = document.createElement('iframe') as HTMLIFrameElement;
+    iframe1.src = testUrlString;
+    const iframe2 = document.createElement('iframe') as HTMLIFrameElement;
+    iframe2.src = testUrlString;
+
+    component.configureIframe(iframe1);
+    component2.configureIframe(iframe2);
+
+    const idForIframe1 = iframe1.id;
+
+    // Both listeners are now live; send a message matching iframe1's id.
+    const listener1 = component['boundHeightListener'];
+    const validMessage = {
+      data: { type: 'setHeight', id: idForIframe1, height: '400px' },
+      source: iframe1.contentWindow,
+    } as unknown as MessageEvent;
+
+    listener1(validMessage);
+
+    expect(iframe1.height).toBe('400px');
+    // iframe2's listener should reject this message because id !== iframe2.id
+    const listener2 = component2['boundHeightListener'];
+    listener2(validMessage);
+    expect(iframe2.height).toBe('');
+
+    fixture2.destroy();
+  });
+
   it('should update the height of the iframe if data is valid', () => {
     const iframe = document.createElement('iframe') as HTMLIFrameElement;
     iframe.id = 'testIframe';
@@ -256,9 +414,12 @@ describe('TootComponent', () => {
       writable: false,
     });
     component.configureIframe(iframe);
+    // After TOOT-12 the id sent in the postMessage is the collision-free iframeId
+    // (uuid + instance suffix), not the bare uuid.  The recipient Mastodon embed
+    // echoes back the same id in its response, so the height-listener filter works.
     expect(iframe.contentWindow!.postMessage).toHaveBeenCalledWith({
       type: 'setHeight',
-      id: testUuid,
+      id: component.iframeId,
     }, testUrlString as WindowPostMessageOptions);
   });
 

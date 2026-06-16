@@ -1,6 +1,5 @@
 import {
   Component,
-  OnInit,
   AfterViewInit,
   ElementRef,
   ViewChild,
@@ -13,11 +12,18 @@ import { MatButtonModule } from '@angular/material/button';
 /**
  * Static page shown when a share link has expired or been revoked.
  *
- * Accessibility:
- * - Focus lands on the H1 heading on init (UX plan §1.2).
- * - No "error" framing — friendly message with no blame.
- * - "Zur Startseite" link for users to continue navigating.
+ * Accessibility (VIEW-06 remediation):
+ * - Focus lands on the H1 heading on init so screen readers announce the page
+ *   title immediately (UX plan §1.2).
+ * - The focus move is guarded: if `headingRef` is absent (e.g. the component
+ *   is destroyed before AfterViewInit fires), the call is skipped silently.
+ * - No assertive live region on this page — the assertive announcement was
+ *   already made by ReadonlyWallComponent before navigation (announce-then-
+ *   navigate pattern, ADR-RELAY-05). Re-announcing here would double-announce.
+ * - "Zur Startseite" link gives users a clear exit — no dead-end page.
+ * - Friendly, blame-free message ("nicht mehr aktiv", not "error").
  * - No data fetching — completely static.
+ * - Anti-enumeration: 404 and revoked are treated identically (expiry page).
  */
 @Component({
   selector: 'app-share-expired',
@@ -71,11 +77,21 @@ import { MatButtonModule } from '@angular/material/button';
 })
 export class ShareExpiredComponent implements AfterViewInit {
 
-  @ViewChild('heading') headingRef!: ElementRef<HTMLHeadingElement>;
+  @ViewChild('heading') headingRef?: ElementRef<HTMLHeadingElement>;
 
+  /**
+   * VIEW-06: Move focus to the H1 heading so screen readers announce the page.
+   *
+   * Guard: headingRef may be absent if the ViewChild query finds nothing
+   * (e.g. under test conditions or if the template is changed). The optional
+   * chain (?.) prevents a TypeError in those scenarios.
+   *
+   * No duplicate assertive announcement: ReadonlyWallComponent already called
+   * LiveAnnouncer.announce(..., 'assertive') before navigating here. Calling
+   * focus() on a tabindex="-1" heading triggers a polite screen-reader read
+   * of the heading text, which is the correct behaviour (orientation, not alarm).
+   */
   ngAfterViewInit(): void {
-    // Move focus to heading so screen readers announce immediately
-    // (UX plan §1.2: "focus starts on heading")
-    this.headingRef.nativeElement.focus();
+    this.headingRef?.nativeElement?.focus();
   }
 }
