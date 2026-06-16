@@ -22,3 +22,6 @@
 /.jqwik-database
 target/jqwik-database/
 target/pit-reports/
+
+# Superpowers brainstorming companion artifacts
+.superpowers/
