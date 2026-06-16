@@ -20,6 +20,7 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import java.net.URI;
 import java.security.Principal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -89,7 +90,8 @@ class ShareViewPrincipalHandlerTest {
         org.mockito.Mockito.lenient().when(registry.register(any(), any(), any(), any()))
                 .thenReturn(true);
 
-        handler = new ShareViewPrincipalHandler(true, viewerCounter, capPolicy, shareLinkService, registry);
+        handler = new ShareViewPrincipalHandler(true, viewerCounter, capPolicy, shareLinkService, registry,
+                Clock.systemUTC());
     }
 
     @Test

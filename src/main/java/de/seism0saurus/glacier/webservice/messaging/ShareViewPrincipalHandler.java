@@ -23,11 +23,14 @@ import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 import java.net.URI;
 import java.security.Principal;
 import java.security.SecureRandom;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static de.seism0saurus.glacier.util.LogScrubber.hash8;
 
@@ -101,9 +104,36 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Base64.Encoder BASE64_URL = Base64.getUrlEncoder().withoutPadding();
 
+    /**
+     * Debounce window for the {@code viewer.handshake_rejected} AUDIT line (SEC-ACC-03).
+     *
+     * <p>Repeated rejects from the same (ip, shareLinkId) key within this window are suppressed
+     * in the AUDIT log. The handshake outcome (null principal / HTTP 403) is UNCHANGED.
+     * 60 seconds matches the fixed-window token-bucket period used by the other interceptors
+     * ({@link HandshakeRateLimitInterceptor}, {@link SubscribeRateLimitInterceptor}).
+     *
+     * <p>OWASP API4:2023 — Unrestricted Resource Consumption (log amplification).
+     * C9 (OWASP Proactive Controls) — security events logged without amplification.
+     */
+    private static final Duration AUDIT_REJECT_DEBOUNCE = Duration.ofSeconds(60);
+
     private final boolean secureCookies;
     private final ShareLinkViewerCounter viewerCounter;
     private final ShareLinkCapPolicy capPolicy;
+
+    /**
+     * Clock for AUDIT reject debounce timing (SEC-ACC-03).
+     * Injected so tests can substitute a fixed/mutable clock for deterministic assertion.
+     */
+    private final Clock clock;
+
+    /**
+     * Debounce map for {@code viewer.handshake_rejected} AUDIT emissions (SEC-ACC-03).
+     * Key: {@code ip + ":" + shareLinkId-hash8}, or {@code ip + ":sentinel"} for the
+     * unbound-sentinel path. Maps to the instant of the last emitted AUDIT line.
+     * Grows with distinct (ip, linkId) pairs seen — negligible at Glacier scale.
+     */
+    private final ConcurrentHashMap<String, Instant> auditRejectDebounce = new ConcurrentHashMap<>();
 
     /**
      * SR-RELAY-05: share-link service used to resolve a link ID before incrementing the counter.
@@ -129,18 +159,22 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
      * @param shareLinkService service for resolving links before counter increment (SR-RELAY-05);
      *                         must be {@code @Lazy} at the injection site to avoid circular deps
      * @param registry         routing table for registering active viewer sessions (SR-RELAY-06)
+     * @param clock            clock for AUDIT reject debounce timing (SEC-ACC-03); use
+     *                         {@link Clock#systemUTC()} in production, a fixed/mutable clock in tests
      */
     public ShareViewPrincipalHandler(
             final boolean secureCookies,
             final ShareLinkViewerCounter viewerCounter,
             final ShareLinkCapPolicy capPolicy,
             @Lazy final ShareLinkService shareLinkService,
-            final ShareLinkActivityRegistry registry) {
+            final ShareLinkActivityRegistry registry,
+            final Clock clock) {
         this.secureCookies = secureCookies;
         this.viewerCounter = viewerCounter;
         this.capPolicy = capPolicy;
         this.shareLinkService = shareLinkService;
         this.registry = registry;
+        this.clock = clock;
     }
 
     @Override
@@ -159,7 +193,13 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
         // If the URI had no valid shareLinkId, skip resolve() entirely — no real link
         // can ever match the sentinel, so the resolve call would be wasted I/O.
         if (isUnboundSentinel(boundShareLinkId)) {
-            AUDIT.info("viewer.handshake_rejected reason=missing_share_link_id");
+            // SEC-ACC-03: debounce the AUDIT line per source IP to prevent log amplification.
+            // The handshake outcome (sentinel principal returned) is UNCHANGED.
+            // OWASP API4:2023 — Unrestricted Resource Consumption (log amplification).
+            String ip = extractRemoteIp(request);
+            if (shouldEmitRejectAudit(ip, "sentinel")) {
+                AUDIT.info("viewer.handshake_rejected reason=missing_share_link_id");
+            }
             // Return the sentinel-bound principal; the topic interceptor will block SUBSCRIBE.
             // We do NOT call resolve() or increment() for an unbound sentinel.
             String sentinelViewerId = mintNewShareViewerId();
@@ -169,11 +209,17 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
         // ---- Step 3: resolve the share link (SR-RELAY-05) --------------------------
         // C1 — access control check applied BEFORE any resource allocation (counter increment).
         // Returning Optional.empty() means the link is expired, revoked, or unknown.
-        Instant now = Instant.now();
+        Instant now = clock.instant();
         Optional<ShareLink> activeLinkOpt = shareLinkService.resolve(boundShareLinkId, now);
         if (activeLinkOpt.isEmpty()) {
-            AUDIT.info("viewer.handshake_rejected reason=link_not_active shareId-hash={}",
-                    boundShareLinkId.hash8());
+            // SEC-ACC-03: debounce the AUDIT line per (ip, shareLinkId) key to prevent log
+            // amplification by an attacker looping with a revoked/expired link.
+            // Handshake outcome (null / HTTP 403) is UNCHANGED. OWASP API4:2023.
+            String ip = extractRemoteIp(request);
+            if (shouldEmitRejectAudit(ip, boundShareLinkId.hash8())) {
+                AUDIT.info("viewer.handshake_rejected reason=link_not_active shareId-hash={}",
+                        boundShareLinkId.hash8());
+            }
             // Returning null causes DefaultHandshakeHandler to reject with HTTP 403 (fail-closed).
             return null;
         }
@@ -405,5 +451,52 @@ public class ShareViewPrincipalHandler extends DefaultHandshakeHandler {
         // A well-formed but semantically empty ID that no real link can match.
         // 43 URL-safe base64 chars of zeros — cannot be a real share link.
         return ShareLinkId.fromUrlPath(UNBOUND_SENTINEL_TOKEN);
+    }
+
+    /**
+     * Extracts the client's remote IP address from the given request.
+     *
+     * <p>Returns {@code "unknown"} when the request is not a {@link ServletServerHttpRequest}
+     * or when {@code getRemoteAddr()} returns null — consistent with the fail-open pattern
+     * used by {@link HandshakeRateLimitInterceptor} and {@link SubscribeRateLimitInterceptor}.
+     *
+     * @param request the WebSocket upgrade request
+     * @return the remote IP string, or {@code "unknown"} when not available
+     */
+    private static String extractRemoteIp(final ServerHttpRequest request) {
+        if (request instanceof ServletServerHttpRequest servletRequest) {
+            String remoteAddr = servletRequest.getServletRequest().getRemoteAddr();
+            if (remoteAddr != null && !remoteAddr.isBlank()) {
+                return remoteAddr;
+            }
+        }
+        return "unknown";
+    }
+
+    /**
+     * Returns {@code true} if the {@code viewer.handshake_rejected} AUDIT line should be emitted
+     * for the given (ip, shareLinkIdKey) pair, and records the emission timestamp.
+     *
+     * <p>Suppresses repeated AUDIT emissions from the same key within {@link #AUDIT_REJECT_DEBOUNCE}
+     * to prevent log amplification by an attacker looping the reject path (SEC-ACC-03,
+     * OWASP API4:2023 — Unrestricted Resource Consumption).
+     *
+     * <p>The handshake outcome (null principal / HTTP 403) is NEVER affected by this method —
+     * only the AUDIT emission is throttled.
+     *
+     * @param ip              the client's source IP (may be {@code "unknown"}); keyed as-is
+     * @param shareLinkIdKey  a non-sensitive key fragment for the share link
+     *                        (use {@code shareLinkId.hash8()} or {@code "sentinel"})
+     * @return {@code true} if the AUDIT line should be emitted (first occurrence or debounce elapsed)
+     */
+    private boolean shouldEmitRejectAudit(final String ip, final String shareLinkIdKey) {
+        String debounceKey = ip + ":" + shareLinkIdKey;
+        Instant now = clock.instant();
+        Instant last = auditRejectDebounce.get(debounceKey);
+        if (last == null || Duration.between(last, now).compareTo(AUDIT_REJECT_DEBOUNCE) >= 0) {
+            auditRejectDebounce.put(debounceKey, now);
+            return true;
+        }
+        return false;
     }
 }

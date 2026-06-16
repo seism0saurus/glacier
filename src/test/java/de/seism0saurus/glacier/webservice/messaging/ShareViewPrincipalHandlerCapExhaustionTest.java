@@ -19,6 +19,7 @@ import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.web.socket.WebSocketHandler;
 
 import java.net.URI;
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.Optional;
 
@@ -68,7 +69,7 @@ class ShareViewPrincipalHandlerCapExhaustionTest {
         ShareLinkCapPolicy capPolicy = new ShareLinkCapPolicy();
         capPolicy.setMaxViewersPerLink(CAP);
         handler = new ShareViewPrincipalHandler(
-                false, viewerCounter, capPolicy, shareLinkService, registry);
+                false, viewerCounter, capPolicy, shareLinkService, registry, Clock.systemUTC());
     }
 
     /**

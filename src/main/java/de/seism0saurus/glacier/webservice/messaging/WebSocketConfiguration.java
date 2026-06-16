@@ -13,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+
+import java.time.Clock;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -81,6 +83,13 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     @Autowired
     private SubscribeRateLimitInterceptor subscribeRateLimitInterceptor;
 
+    /**
+     * SEC-ACC-03: clock for AUDIT reject debounce timing in {@link ShareViewPrincipalHandler}.
+     * Injected from the {@link de.seism0saurus.glacier.GlacierApplication#clock()} bean.
+     */
+    @Autowired
+    private Clock clock;
+
     public WebSocketConfiguration(
             @Value(value = "${glacier.domain}") String glacierDomain,
             final GlacierCookieProperties cookieProps,
@@ -110,8 +119,11 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
      */
     @Bean
     public ShareViewPrincipalHandler shareViewPrincipalHandler() {
+        // SEC-ACC-03: clock injected for AUDIT reject debounce timing so that
+        // repeated rejects from the same (ip, shareLinkId) key are suppressed within
+        // a 60-second window without affecting the handshake outcome (fail-closed preserved).
         return new ShareViewPrincipalHandler(
-                secureCookies, viewerCounter, capPolicy, shareLinkService, shareLinkActivityRegistry);
+                secureCookies, viewerCounter, capPolicy, shareLinkService, shareLinkActivityRegistry, clock);
     }
 
     /**

@@ -22,6 +22,7 @@ import org.springframework.web.socket.WebSocketHandler;
 
 import java.net.URI;
 import java.security.Principal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
@@ -91,7 +92,7 @@ class ShareViewPrincipalHandlerOrderingTest {
         capPolicy = new ShareLinkCapPolicy();
         capPolicy.setMaxViewersPerLink(TEST_CAP);
         handler = new ShareViewPrincipalHandler(
-                false, viewerCounter, capPolicy, shareLinkService, registry);
+                false, viewerCounter, capPolicy, shareLinkService, registry, Clock.systemUTC());
     }
 
     // -----------------------------------------------------------------------
