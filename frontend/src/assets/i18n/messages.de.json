@@ -132,5 +132,21 @@
   "share.toot.poll.leading.suffix": " (Führend)",
 
   "share.toot.media.no-captions": "Keine Untertitel verfügbar",
-  "share.toot.media.no-captions.notice": "Keine Beschreibung oder Untertitel verfügbar"
+  "share.toot.media.no-captions.notice": "Keine Beschreibung oder Untertitel verfügbar",
+
+  "hashtag.add.duplicate.snackbar": "Hashtag '{tag}' ist bereits in der Liste.",
+  "hashtag.add.empty.snackbar": "Bitte gib einen gültigen Hashtag ein.",
+  "hashtag.clear.tags.undo.snackbar": "Alle Hashtags entfernt.",
+  "hashtag.clear.tags.undo.action": "Rückgängig",
+  "hashtag.clear.toots.confirm.snackbar": "Alle Toots wirklich löschen?",
+  "hashtag.clear.toots.confirm.action": "Löschen",
+
+  "share.dialog.copy.fallback.announce": "Link kopiert",
+  "share.dialog.copy.keyboard.hint": "Markiert — bitte mit Strg+C kopieren",
+  "share.dialog.revoke.in-progress.announce": "Widerrufe Link…",
+  "share.dialog.revoke.failed.announce": "Widerruf fehlgeschlagen. Bitte erneut versuchen.",
+  "share.dialog.revoke.button.label": "Widerrufen",
+  "share.dialog.revoke.button.label.aria": "Link {ordinal} widerrufen — läuft ab am {date}",
+
+  "share.feed.empty.message": "Noch keine Toots — neue Einträge erscheinen hier live, sobald sie eintreffen."
 }

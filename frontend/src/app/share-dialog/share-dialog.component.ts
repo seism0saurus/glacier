@@ -155,20 +155,25 @@ import {
             class="section-heading"
             i18n="@@share.dialog.active-links.heading"
           >Aktive Links</h2>
-          @for (link of existingLinks(); track link.shareLinkId) {
+          @for (link of existingLinks(); track link.shareLinkId; let i = $index) {
             <div class="link-row" data-testid="link-row">
               <span class="link-expiry">{{ formatExpiry(link.expiresAt) }}</span>
+              <!--
+                TOOT-14: multiple "Widerrufen" buttons are indistinguishable to AT
+                (SR-SQLITE-21: URL not shown). Give each button a unique aria-label
+                that encodes an ordinal and creation-date so AT users can tell them
+                apart. The URL is intentionally absent from the label per SR-SQLITE-21.
+              -->
               <button
                 mat-stroked-button
                 type="button"
                 color="warn"
                 (click)="confirmRevoke(link.shareLinkId)"
-                [attr.aria-describedby]="'expiry-' + link.shareLinkId"
-                i18n="@@share.dialog.revoke"
-              >Widerrufen</button>
-              <span [id]="'expiry-' + link.shareLinkId" class="visually-hidden">
-                {{ formatExpiry(link.expiresAt) }}
-              </span>
+                [attr.aria-label]="revokeButtonLabel(i, link.expiresAt)"
+                data-testid="revoke-row-button"
+              >
+                <span i18n="@@share.dialog.revoke.button.label">Widerrufen</span>
+              </button>
             </div>
           }
         </section>
@@ -304,6 +309,7 @@ export class ShareDialogComponent implements OnInit {
     if (!url) return;
 
     if (navigator.clipboard?.writeText) {
+      // Secure path: use the async Clipboard API.
       navigator.clipboard.writeText(url).then(() => {
         this.liveAnnouncer.announce(
           $localize`:@@share.dialog.copied.announce:Link kopiert`,
@@ -311,9 +317,31 @@ export class ShareDialogComponent implements OnInit {
         );
       });
     } else {
-      // Graceful fallback for insecure transport (no Clipboard API)
+      // TOOT-06: Insecure-transport fallback (no Clipboard API — a first-class
+      // Glacier mode per glacier-fallback-mode-discipline).
+      // Previously only called select(), with no copy attempt and no announcement.
+      // Now:
+      //   1. select() the input for visual feedback.
+      //   2. Attempt document.execCommand('copy') (legacy synchronous API).
+      //   3. Announce success or a keyboard-copy instruction to AT users.
       const input = document.querySelector<HTMLInputElement>('[data-testid="share-url-input"]');
       input?.select();
+
+      const copied = input ? document.execCommand('copy') : false;
+
+      if (copied) {
+        this.liveAnnouncer.announce(
+          $localize`:@@share.dialog.copy.fallback.announce:Link kopiert`,
+          'polite',
+        );
+      } else {
+        // Neither API worked; announce a keyboard-copy instruction so keyboard /
+        // AT users know what to do next (WCAG 3.3.1 — error identification).
+        this.liveAnnouncer.announce(
+          $localize`:@@share.dialog.copy.keyboard.hint:Markiert — bitte mit Strg+C kopieren`,
+          'polite',
+        );
+      }
     }
   }
 
@@ -327,6 +355,13 @@ export class ShareDialogComponent implements OnInit {
   }
 
   private executeRevoke(shareLinkId: string): void {
+    // TOOT-11: announce in-progress state before the HTTP call completes so AT
+    // users know the action is underway (WCAG 4.1.3 / Nielsen #1).
+    this.liveAnnouncer.announce(
+      $localize`:@@share.dialog.revoke.in-progress.announce:Widerrufe Link…`,
+      'polite',
+    );
+
     this.shareLinkService.revokeShareLink(shareLinkId).subscribe({
       complete: () => {
         // Remove from local lists
@@ -347,13 +382,38 @@ export class ShareDialogComponent implements OnInit {
             $localize`:@@share.dialog.revoke.already-expired.announce:Link war bereits abgelaufen und wurde entfernt`,
             'polite',
           );
-          // Clean up from list anyway
+          // 404: link is already gone — clean up from list
           this.existingLinks.update((list) =>
             list.filter((l) => l.shareLinkId !== shareLinkId)
+          );
+        } else {
+          // TOOT-11: non-404 failure (500 / network error).
+          // Keep the row in the list — DO NOT optimistically remove it.
+          // Announce a generic failure so AT users can retry.
+          this.liveAnnouncer.announce(
+            $localize`:@@share.dialog.revoke.failed.announce:Widerruf fehlgeschlagen. Bitte erneut versuchen.`,
+            'assertive',
           );
         }
       },
     });
+  }
+
+  /**
+   * TOOT-14: Generates a unique accessible label for a "Widerrufen" button in
+   * the active-links list, so screen-reader users can tell buttons apart.
+   *
+   * SR-SQLITE-21: the link URL must NOT appear in the label. We use an ordinal
+   * (1-based) and the expiry date as the human label. Example:
+   *   "Link 1 widerrufen — läuft ab am 15.06.2026"
+   *
+   * @param index - 0-based index of the link in existingLinks()
+   * @param expiresAt - ISO date string for the link's expiry
+   */
+  revokeButtonLabel(index: number, expiresAt: string): string {
+    const ordinal = index + 1;
+    const formattedDate = this.formatExpiry(expiresAt);
+    return $localize`:@@share.dialog.revoke.button.label.aria:Link ${ordinal} widerrufen — läuft ab am ${formattedDate}`;
   }
 
   formatExpiry(isoDate: string): string {

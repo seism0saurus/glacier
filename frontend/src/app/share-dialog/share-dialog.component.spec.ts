@@ -380,6 +380,205 @@ describe('ShareDialogComponent', () => {
     });
   });
 
+  // ---- TOOT-06: insecure-transport clipboard fallback — execCommand + LiveAnnouncer ----
+
+  describe('TOOT-06 — insecure-transport clipboard fallback', () => {
+    beforeEach(() => {
+      // Remove the Clipboard API to simulate insecure transport
+      Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      component.activeLink.set(mockCreated);
+    });
+
+    it('TOOT-06: copyUrl() attempts document.execCommand("copy") when clipboard API is absent', () => {
+      // Arrange: create a mock input element
+      const inputEl = document.createElement('input');
+      inputEl.setAttribute('data-testid', 'share-url-input');
+      document.body.appendChild(inputEl);
+      const execCommandSpy = spyOn(document, 'execCommand').and.returnValue(true);
+
+      component.copyUrl();
+
+      expect(execCommandSpy).toHaveBeenCalledWith('copy');
+      document.body.removeChild(inputEl);
+    });
+
+    it('TOOT-06: copyUrl() announces "Link kopiert" when execCommand succeeds', () => {
+      const inputEl = document.createElement('input');
+      inputEl.setAttribute('data-testid', 'share-url-input');
+      document.body.appendChild(inputEl);
+      spyOn(document, 'execCommand').and.returnValue(true);
+
+      component.copyUrl();
+
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledWith(
+        jasmine.stringMatching(/Link kopiert/),
+        'polite',
+      );
+      document.body.removeChild(inputEl);
+    });
+
+    it('TOOT-06: copyUrl() announces a keyboard-copy instruction when both APIs fail', () => {
+      const inputEl = document.createElement('input');
+      inputEl.setAttribute('data-testid', 'share-url-input');
+      document.body.appendChild(inputEl);
+      spyOn(document, 'execCommand').and.returnValue(false);
+
+      component.copyUrl();
+
+      // Must announce an instruction to use Ctrl+C
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledWith(
+        jasmine.stringMatching(/Strg\+C|markiert/i),
+        'polite',
+      );
+      document.body.removeChild(inputEl);
+    });
+
+    it('TOOT-06: copyUrl() announces a fallback message when no input element is found', () => {
+      // No input element in DOM
+      spyOn(document, 'execCommand').and.returnValue(false);
+
+      component.copyUrl();
+
+      // Must still announce something — not just silently fail
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalled();
+    });
+  });
+
+  // ---- TOOT-11: revoke failure handling — in-progress + generic error announcement ----
+
+  describe('TOOT-11 — revoke failure announcement', () => {
+    beforeEach(() => {
+      component.existingLinks.set(mockExistingLinks);
+    });
+
+    it('TOOT-11: executeRevoke announces in-progress state before the HTTP call completes', fakeAsync(() => {
+      // Arrange: make revokeShareLink hang (never complete)
+      const { Subject: RxSubject } = require('rxjs');
+      const revokeSubject = new (require('rxjs').Subject)();
+      shareLinkServiceSpy.revokeShareLink.and.returnValue(revokeSubject.asObservable());
+
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+
+      component.confirmRevoke('existing1');
+      tick();
+
+      // In-progress announcement must fire before completion
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledWith(
+        jasmine.stringMatching(/widerrufe|widerruf/i),
+        'polite',
+      );
+    }));
+
+    it('TOOT-11: executeRevoke announces a generic failure on non-404 error', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+      shareLinkServiceSpy.revokeShareLink.and.returnValue(
+        throwError(() => ({ status: 500 }))
+      );
+
+      component.confirmRevoke('existing1');
+      tick();
+
+      expect(liveAnnouncerSpy.announce).toHaveBeenCalledWith(
+        jasmine.stringMatching(/fehlgeschlagen|Fehler/i),
+        'assertive',
+      );
+    }));
+
+    it('TOOT-11: executeRevoke KEEPS the link row on non-404 failure (no optimistic removal)', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+      shareLinkServiceSpy.revokeShareLink.and.returnValue(
+        throwError(() => ({ status: 500 }))
+      );
+
+      component.confirmRevoke('existing1');
+      tick();
+      fixture.detectChanges();
+
+      // Link must remain in existingLinks — not removed on 500
+      expect(component.existingLinks().some(l => l.shareLinkId === 'existing1')).toBeTrue();
+    }));
+
+    it('TOOT-11: executeRevoke still removes the 404 link from the list (existing behavior preserved)', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+      shareLinkServiceSpy.revokeShareLink.and.returnValue(
+        throwError(() => ({ status: 404 }))
+      );
+
+      component.confirmRevoke('existing1');
+      tick();
+      fixture.detectChanges();
+
+      expect(component.existingLinks().some(l => l.shareLinkId === 'existing1')).toBeFalse();
+    }));
+  });
+
+  // ---- TOOT-14: distinguishable "Widerrufen" button accessible names ----
+
+  describe('TOOT-14 — unique accessible names for revoke buttons', () => {
+    beforeEach(() => {
+      shareLinkServiceSpy.listShareLinks.and.returnValue(of([
+        { shareLinkId: 'link1', expiresAt: '2026-05-01T00:00:00Z', readonlyUrl: 'https://example.com/share/link1' },
+        { shareLinkId: 'link2', expiresAt: '2026-06-15T00:00:00Z', readonlyUrl: 'https://example.com/share/link2' },
+      ]));
+      component.ngOnInit();
+      fixture.detectChanges();
+    });
+
+    it('TOOT-14: each revoke button has a non-empty aria-label', () => {
+      const revokeButtons: NodeListOf<HTMLButtonElement> =
+        fixture.nativeElement.querySelectorAll('[data-testid="revoke-row-button"]');
+      expect(revokeButtons.length).toBeGreaterThan(0);
+      revokeButtons.forEach((btn) => {
+        const label = btn.getAttribute('aria-label');
+        expect(label).withContext('revoke button must have aria-label').toBeTruthy();
+        expect(label!.length).withContext('revoke button aria-label must be non-empty').toBeGreaterThan(0);
+      });
+    });
+
+    it('TOOT-14: each revoke button has a UNIQUE accessible name', () => {
+      const revokeButtons: NodeListOf<HTMLButtonElement> =
+        fixture.nativeElement.querySelectorAll('[data-testid="revoke-row-button"]');
+      expect(revokeButtons.length).toBeGreaterThanOrEqual(2);
+      const labels = Array.from(revokeButtons).map(btn => btn.getAttribute('aria-label') ?? '');
+      const uniqueLabels = new Set(labels);
+      expect(uniqueLabels.size)
+        .withContext('each revoke button must have a distinct aria-label')
+        .toBe(labels.length);
+    });
+  });
+
+  // ---- TOOT-06/11/14 i18n catalog completeness ----
+
+  describe('TOOT-06/11/14 i18n catalog completeness', () => {
+    const REQUIRED_KEYS = [
+      'share.dialog.copy.fallback.announce',
+      'share.dialog.copy.keyboard.hint',
+      'share.dialog.revoke.in-progress.announce',
+      'share.dialog.revoke.failed.announce',
+      'share.dialog.revoke.button.label',
+    ] as const;
+
+    for (const key of REQUIRED_KEYS) {
+      it(`messages.en.json must contain key '${key}'`, async () => {
+        const response = await fetch('/assets/i18n/messages.en.json');
+        const catalog: Record<string, string> = await response.json();
+        expect(catalog[key])
+          .withContext(`messages.en.json is missing TOOT-06/11/14 key '${key}'`)
+          .toBeDefined();
+        expect(typeof catalog[key]).toBe('string');
+        expect(catalog[key].length).toBeGreaterThan(0);
+      });
+    }
+  });
+
   // ---- TOOT-13: formatExpiry uses injected LOCALE_ID ----
 
   describe('TOOT-13 formatExpiry uses injected LOCALE_ID', () => {

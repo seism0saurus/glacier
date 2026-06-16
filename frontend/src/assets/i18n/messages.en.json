@@ -136,5 +136,21 @@
   "share.toot.poll.leading.suffix": " (Leading)",
 
   "share.toot.media.no-captions": "No captions available",
-  "share.toot.media.no-captions.notice": "No description or captions available"
+  "share.toot.media.no-captions.notice": "No description or captions available",
+
+  "hashtag.add.duplicate.snackbar": "Hashtag '{tag}' is already in the list.",
+  "hashtag.add.empty.snackbar": "Please enter a valid hashtag.",
+  "hashtag.clear.tags.undo.snackbar": "All hashtags removed.",
+  "hashtag.clear.tags.undo.action": "Undo",
+  "hashtag.clear.toots.confirm.snackbar": "Really delete all toots?",
+  "hashtag.clear.toots.confirm.action": "Delete",
+
+  "share.dialog.copy.fallback.announce": "Link copied",
+  "share.dialog.copy.keyboard.hint": "Selected — please press Ctrl+C to copy",
+  "share.dialog.revoke.in-progress.announce": "Revoking link…",
+  "share.dialog.revoke.failed.announce": "Revocation failed. Please try again.",
+  "share.dialog.revoke.button.label": "Revoke",
+  "share.dialog.revoke.button.label.aria": "Revoke link {ordinal} — expires on {date}",
+
+  "share.feed.empty.message": "No toots yet — new entries will appear here live as they arrive."
 }

@@ -564,6 +564,100 @@ describe('ReadonlyWallComponent', () => {
     });
   });
 
+  // ---- VIEW-10: skip-link targets need tabindex="-1" for focus to land ----
+  // WCAG 2.4.1: bypass blocks. Activating a skip link must move keyboard focus
+  // to the target element, not just scroll. tabindex="-1" makes non-focusable
+  // elements programmatically focusable via fragment navigation.
+
+  describe('VIEW-10 — skip-link targets have tabindex="-1"', () => {
+    it('VIEW-10: #share-feed section has tabindex="-1"', () => {
+      const feedSection = fixture.nativeElement.querySelector('#share-feed');
+      expect(feedSection).not.toBeNull('share-feed section must exist');
+      expect(feedSection.getAttribute('tabindex'))
+        .withContext('#share-feed must have tabindex="-1" so skip links can move focus there')
+        .toBe('-1');
+    });
+
+    it('VIEW-10: #share-status section has tabindex="-1"', () => {
+      const statusSection = fixture.nativeElement.querySelector('#share-status');
+      expect(statusSection).not.toBeNull('share-status section must exist');
+      expect(statusSection.getAttribute('tabindex'))
+        .withContext('#share-status must have tabindex="-1" so skip links can move focus there')
+        .toBe('-1');
+    });
+  });
+
+  // ---- VIEW-12: empty-state block when catalog loaded with zero toots ----
+  // Silently empty feed confuses users — a polite role="status" message reassures
+  // them that live toots will appear when they arrive.
+
+  describe('VIEW-12 — empty-state block on catalog loaded with zero toots', () => {
+    it('VIEW-12: empty-state element is NOT shown while catalog is loading', () => {
+      catalogLoadedSubject.next(false);
+      tootsSubject.next([]);
+      fixture.detectChanges();
+
+      const emptyState = fixture.nativeElement.querySelector('[data-testid="share-feed-empty"]');
+      expect(emptyState).toBeNull('empty-state must not appear while loading');
+    });
+
+    it('VIEW-12: empty-state element is shown when catalog loaded and toots list is empty', () => {
+      catalogLoadedSubject.next(true);
+      tootsSubject.next([]);
+      fixture.detectChanges();
+
+      const emptyState = fixture.nativeElement.querySelector('[data-testid="share-feed-empty"]');
+      expect(emptyState)
+        .withContext('empty-state must appear when feed is loaded but empty')
+        .not.toBeNull();
+    });
+
+    it('VIEW-12: empty-state element has role="status" for polite announcement', () => {
+      catalogLoadedSubject.next(true);
+      tootsSubject.next([]);
+      fixture.detectChanges();
+
+      const emptyState = fixture.nativeElement.querySelector('[data-testid="share-feed-empty"]');
+      expect(emptyState?.getAttribute('role'))
+        .withContext('empty-state must have role="status" for polite live-region behaviour')
+        .toBe('status');
+    });
+
+    it('VIEW-12: empty-state element is NOT shown when toots are present', () => {
+      catalogLoadedSubject.next(true);
+      tootsSubject.next([mockToot]);
+      fixture.detectChanges();
+
+      const emptyState = fixture.nativeElement.querySelector('[data-testid="share-feed-empty"]');
+      expect(emptyState).toBeNull('empty-state must not appear when toots are present');
+    });
+
+    it('VIEW-12: empty-state element contains non-empty reassurance text', () => {
+      catalogLoadedSubject.next(true);
+      tootsSubject.next([]);
+      fixture.detectChanges();
+
+      const emptyState = fixture.nativeElement.querySelector('[data-testid="share-feed-empty"]');
+      expect(emptyState?.textContent?.trim().length)
+        .withContext('empty-state must contain reassurance text')
+        .toBeGreaterThan(0);
+    });
+  });
+
+  // ---- VIEW-12 i18n catalog completeness ----
+
+  describe('VIEW-12 i18n catalog completeness', () => {
+    it('messages.en.json must contain key share.feed.empty.message', async () => {
+      const response = await fetch('/assets/i18n/messages.en.json');
+      const catalog: Record<string, string> = await response.json();
+      expect(catalog['share.feed.empty.message'])
+        .withContext('messages.en.json is missing VIEW-12 key share.feed.empty.message')
+        .toBeDefined();
+      expect(typeof catalog['share.feed.empty.message']).toBe('string');
+      expect(catalog['share.feed.empty.message'].length).toBeGreaterThan(0);
+    });
+  });
+
   // ---- VIEW-11: formattedExpiry uses injected LOCALE_ID ----
 
   describe('VIEW-11 formattedExpiry uses injected LOCALE_ID', () => {

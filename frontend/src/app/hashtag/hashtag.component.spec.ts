@@ -149,9 +149,22 @@ describe('HashtagComponent', () => {
   });
 
   describe('clearToots()', () => {
-    it('should call clearAllToots', () => {
+    it('should NOT call clearAllToots immediately (SHELL-12: confirm-snackbar introduced)', () => {
+      // SHELL-12: clearToots() now shows a confirm-snackbar instead of clearing immediately.
+      // clearAllToots is only called after the user activates the confirm action.
+      // This test verifies the SHELL-12 behavior: no direct clearAllToots on click.
+      const snackBar = TestBed.inject(MatSnackBar);
+      spyOn(snackBar, 'open').and.returnValue({
+        onAction: () => ({ subscribe: () => {} }),
+        afterDismissed: () => ({ subscribe: () => {} }),
+        dismiss: jasmine.createSpy('dismiss'),
+        instance: {},
+        containerInstance: {},
+      } as any);
+
       component.clearToots();
-      expect(mockSubscriptionService.clearAllToots).toHaveBeenCalled();
+
+      expect(mockSubscriptionService.clearAllToots).not.toHaveBeenCalled();
     });
   });
 
@@ -454,5 +467,143 @@ describe('HashtagComponent', () => {
       expect(result).toBeTruthy();
       expect(result).toContain('glacier');
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // SHELL-11: snackbar feedback on duplicate/empty hashtag rejection
+  // WCAG 3.3.1 — error identification
+  // -------------------------------------------------------------------------
+  describe('SHELL-11 — snackbar on duplicate/empty rejection', () => {
+    it('SHELL-11: add() shows a snackbar when a duplicate hashtag is entered', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.callThrough();
+
+      component.hashtags = ['test'];
+      const duplicateEvent = {value: '#Test', chipInput: {clear: jasmine.createSpy('clear')}} as any;
+      component.add(duplicateEvent);
+
+      expect(openSpy).toHaveBeenCalled();
+      const callArgs = openSpy.calls.mostRecent().args;
+      // Message must be non-empty
+      expect(typeof callArgs[0]).toBe('string');
+      expect((callArgs[0] as string).length).toBeGreaterThan(0);
+    });
+
+    it('SHELL-11: add() shows a snackbar when an empty/whitespace hashtag is entered', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.callThrough();
+
+      const emptyEvent = {value: '   ', chipInput: {clear: jasmine.createSpy('clear')}} as any;
+      component.add(emptyEvent);
+
+      expect(openSpy).toHaveBeenCalled();
+      const callArgs = openSpy.calls.mostRecent().args;
+      expect(typeof callArgs[0]).toBe('string');
+      expect((callArgs[0] as string).length).toBeGreaterThan(0);
+    });
+
+    it('SHELL-11: add() does NOT show a snackbar when a new valid hashtag is added', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.callThrough();
+
+      const validEvent = {value: 'newhashtag', chipInput: {clear: jasmine.createSpy('clear')}} as any;
+      component.add(validEvent);
+
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
+    it('SHELL-11: dead hashtag field "Enter a hashtag" is removed from the component', () => {
+      // The field hashtag: string = "Enter a hashtag" was unused dead code (SHELL-11).
+      // It must no longer exist as an instance property.
+      expect((component as any).hashtag).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SHELL-12: Undo for clearTags, confirm for clearToots (destructive actions)
+  // -------------------------------------------------------------------------
+  describe('SHELL-12 — Undo for clearTags, confirm for clearToots', () => {
+
+    // clearTags(): Undo snackbar — restores subscriptions within snackbar window
+    it('SHELL-12: clearTags() shows a snackbar with a "Rückgängig" action button', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.callThrough();
+
+      component.hashtags = ['test1', 'test2'];
+      component.clearTags();
+
+      expect(openSpy).toHaveBeenCalled();
+      // Second argument (action label) must be the undo label
+      const callArgs = openSpy.calls.mostRecent().args;
+      expect(typeof callArgs[1]).toBe('string');
+      expect((callArgs[1] as string).length).toBeGreaterThan(0);
+    });
+
+    it('SHELL-12: clearTags() clears the hashtags immediately', () => {
+      component.hashtags = ['test1', 'test2'];
+      component.clearTags();
+      expect(component.hashtags.length).toBe(0);
+    });
+
+    it('SHELL-12: clearTags() still unsubscribes all tags', () => {
+      component.hashtags = ['test1', 'test2'];
+      component.clearTags();
+      expect(mockSubscriptionService.unsubscribeHashtag).toHaveBeenCalledWith('test1');
+      expect(mockSubscriptionService.unsubscribeHashtag).toHaveBeenCalledWith('test2');
+    });
+
+    // clearToots(): confirm-snackbar — only clears after user confirms
+    it('SHELL-12: clearToots() shows a snackbar before clearing (confirm step)', () => {
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.callThrough();
+
+      component.clearToots();
+
+      expect(openSpy).toHaveBeenCalled();
+    });
+
+    it('SHELL-12: clearToots() does NOT call clearAllToots before user confirms', () => {
+      // clearToots now shows a confirm-snackbar; clearAllToots should only fire
+      // after the user activates the confirm action.
+      const snackBar = TestBed.inject(MatSnackBar);
+      // Intercept open() but do NOT call the onAction() callback
+      spyOn(snackBar, 'open').and.returnValue({
+        onAction: () => ({ subscribe: () => {} }),
+        afterDismissed: () => ({ subscribe: () => {} }),
+        dismiss: jasmine.createSpy('dismiss'),
+        instance: {},
+        containerInstance: {},
+      } as any);
+
+      component.clearToots();
+
+      expect(mockSubscriptionService.clearAllToots).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // SHELL-12 i18n catalog keys for SHELL-11 and SHELL-12 strings
+  // -------------------------------------------------------------------------
+  describe('SHELL-11/12 i18n catalog completeness', () => {
+    const REQUIRED_SHELL_11_12_KEYS = [
+      'hashtag.add.duplicate.snackbar',
+      'hashtag.add.empty.snackbar',
+      'hashtag.clear.tags.undo.snackbar',
+      'hashtag.clear.tags.undo.action',
+      'hashtag.clear.toots.confirm.snackbar',
+      'hashtag.clear.toots.confirm.action',
+    ] as const;
+
+    for (const key of REQUIRED_SHELL_11_12_KEYS) {
+      it(`messages.en.json must contain key '${key}'`, async () => {
+        const response = await fetch('/assets/i18n/messages.en.json');
+        const catalog: Record<string, string> = await response.json();
+        expect(catalog[key])
+          .withContext(`messages.en.json is missing SHELL-11/12 key '${key}'`)
+          .toBeDefined();
+        expect(typeof catalog[key]).toBe('string');
+        expect(catalog[key].length).toBeGreaterThan(0);
+      });
+    }
   });
 });

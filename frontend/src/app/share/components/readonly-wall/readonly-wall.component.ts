@@ -70,12 +70,18 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
       <h1 id="share-wall-heading" class="visually-hidden" i18n="@@share.wall.heading">Wand-Feed</h1>
 
       <!-- Readonly banner -->
+      <!--
+        VIEW-10: tabindex="-1" makes this section programmatically focusable so
+        the "Zur Statusinfo springen" skip link actually moves keyboard focus here
+        when activated (WCAG 2.4.1 — bypass blocks).
+      -->
       <section
         id="share-status"
         role="region"
         aria-labelledby="share-banner"
         class="share-banner"
         data-testid="share-banner"
+        tabindex="-1"
       >
         <h2
           id="share-banner"
@@ -121,12 +127,18 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
       >{{ liveAnnouncement }}</div>
 
       <!-- Toot feed -->
+      <!--
+        VIEW-10: tabindex="-1" makes this section programmatically focusable so
+        the "Zum Feed springen" skip link actually moves keyboard focus here
+        when activated (WCAG 2.4.1 — bypass blocks).
+      -->
       <section
         id="share-feed"
         role="feed"
         [attr.aria-busy]="!(catalogLoaded$ | async)"
         [attr.aria-label]="feedLabel"
         data-testid="share-feed"
+        tabindex="-1"
       >
         @if (!(catalogLoaded$ | async)) {
           <mat-progress-spinner
@@ -135,6 +147,20 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
             aria-label="Lade Toots…"
           ></mat-progress-spinner>
         } @else {
+          <!--
+            VIEW-12: empty-state block shown when the catalog has loaded but no
+            toots have arrived yet. role="status" (aria-live="polite") reassures
+            users that new toots will appear live — they are NOT on a broken page.
+            Shown only when (toots$ | async)?.length === 0.
+          -->
+          @if ((toots$ | async)?.length === 0) {
+            <p
+              role="status"
+              class="feed-empty-state"
+              data-testid="share-feed-empty"
+              i18n="@@share.feed.empty.message"
+            >Noch keine Toots — neue Einträge erscheinen hier live, sobald sie eintreffen.</p>
+          }
           @for (toot of toots$ | async; track toot.id) {
             <app-readonly-toot [toot]="toot"></app-readonly-toot>
           }
@@ -190,6 +216,14 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
     .transport-status--live { color: var(--mat-sys-primary, #1976d2); }
     .transport-status--probing { color: var(--mat-sys-secondary, #666); }
     .transport-status--fallback { color: var(--mat-sys-tertiary, #e65100); }
+    /* VIEW-12: empty-state message when feed is loaded but has no toots yet */
+    .feed-empty-state {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--mat-sys-on-surface-variant, #666);
+      font-size: 0.875rem;
+      margin: 0;
+    }
     .visually-hidden {
       position: absolute;
       width: 1px;

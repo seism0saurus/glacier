@@ -55,7 +55,7 @@ export class HashtagComponent implements OnInit, OnDestroy {
   // OWASP A03:2021, FIND-P3-SEC-4).  Initialised from the persistence service
   // in the constructor once Angular DI has resolved SubscriptionPersistence.
   hashtags: string[] = [];
-  hashtag: string = "Enter a hashtag";
+  // SHELL-11: dead field "Enter a hashtag" removed — it was never read by the template.
 
   // @ts-ignore
   @ViewChild('hashtagInput') hashtagInput: ElementRef<HTMLInputElement>;
@@ -188,13 +188,27 @@ export class HashtagComponent implements OnInit, OnDestroy {
   add(event: MatChipInputEvent): void {
     const sanitizedTag = this.sanitize(event.value || '');
 
-    // Add the hashtag if it isn't already in the list
-    if (sanitizedTag && !this.hashtags.includes(sanitizedTag)) {
+    // SHELL-11: show a localised snackbar on rejection so users get WCAG 3.3.1 feedback.
+    if (!sanitizedTag) {
+      // Empty or whitespace-only input after sanitization
+      this.snackBar.open(
+        $localize`:@@hashtag.add.empty.snackbar:Bitte gib einen gültigen Hashtag ein.`,
+        $localize`:@@gap.snackbar.dismiss:Schließen`,
+        { duration: 5_000 },
+      );
+    } else if (this.hashtags.includes(sanitizedTag)) {
+      // Duplicate hashtag
+      this.snackBar.open(
+        $localize`:@@hashtag.add.duplicate.snackbar:Hashtag '${sanitizedTag}' ist bereits in der Liste.`,
+        $localize`:@@gap.snackbar.dismiss:Schließen`,
+        { duration: 5_000 },
+      );
+    } else {
       this.hashtags.push(sanitizedTag);
       this.subscriptionService.subscribeHashtag(sanitizedTag);
     }
 
-    // Clear the input sanitizedTag
+    // Clear the input value
     event.chipInput!.clear();
   }
 
@@ -236,12 +250,53 @@ export class HashtagComponent implements OnInit, OnDestroy {
   }
 
   clearTags(): void {
-    this.hashtags.forEach( tag => this.subscriptionService.unsubscribeHashtag(tag))
+    // SHELL-12: Undo affordance for the destructive "Alle entfernen" action.
+    //
+    // Choice: Undo snackbar (not a confirm dialog).
+    // Rationale: restoring hashtag subscriptions is cheap and side-effect-free
+    // (re-subscribe each saved tag). An undo snackbar matches the gap-snackbar
+    // pattern already present in this component and avoids interrupting the user
+    // with a modal for an easily reversible action. The undo window matches the
+    // snackbar duration (8 s), which is the same as the CAP_EXCEEDED snackbar.
+    const savedTags = [...this.hashtags];
+    this.hashtags.forEach(tag => this.subscriptionService.unsubscribeHashtag(tag));
     this.hashtags = [];
+
+    const snackRef = this.snackBar.open(
+      $localize`:@@hashtag.clear.tags.undo.snackbar:Alle Hashtags entfernt.`,
+      $localize`:@@hashtag.clear.tags.undo.action:Rückgängig`,
+      { duration: 8_000 },
+    );
+
+    // If the user activates "Rückgängig" within the snackbar window,
+    // restore the previous subscriptions and chip list.
+    snackRef.onAction().subscribe(() => {
+      savedTags.forEach(tag => {
+        this.hashtags.push(tag);
+        this.subscriptionService.subscribeHashtag(tag);
+      });
+    });
   }
 
   clearToots(): void {
-    this.subscriptionService.clearAllToots();
+    // SHELL-12: Confirm-snackbar for the destructive "Toots löschen" action.
+    //
+    // Choice: confirm-snackbar (not undo) for clearToots.
+    // Rationale: toots come from the server; restoring them would require
+    // snapshotting and re-enqueueing up to 20 WallMessage objects via
+    // SubscriptionService, which would demand new service API surface and is
+    // architecturally invasive. A confirm-step is less disruptive than a modal
+    // dialog while still satisfying WCAG 3.3.4 (reversible / confirmed actions)
+    // for an irreversible operation.
+    const snackRef = this.snackBar.open(
+      $localize`:@@hashtag.clear.toots.confirm.snackbar:Alle Toots wirklich löschen?`,
+      $localize`:@@hashtag.clear.toots.confirm.action:Löschen`,
+      { duration: 8_000 },
+    );
+
+    snackRef.onAction().subscribe(() => {
+      this.subscriptionService.clearAllToots();
+    });
   }
 
   private sanitize(tag: string): string {
