@@ -73,7 +73,7 @@
         -->
         @for (toot of columnToots()[i]; track toot.id) {
           <article role="article" [@pruneLeave]>
-            <app-toot [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id" [label]="'Toot #' + toot.hashtags[0]"></app-toot>
+            <app-toot [url]="toot.url | resourceUrlSanitizer" [uuid]="toot.id" [label]="tootLabel(toot)"></app-toot>
           </article>
         }
       </div>

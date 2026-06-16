@@ -407,6 +407,11 @@ describe('HashtagComponent', () => {
       'hashtag.cancel.all.label',       // A11Y-F-02: Cancel All button visible text
       'hashtag.clear.toots.aria',       // A11Y-F-02: Clear Toots button aria-label
       'hashtag.clear.toots.label',      // A11Y-F-02: Clear Toots button visible text
+      'hashtag.form.label',             // SHELL-03: form field label
+      'hashtag.chip.grid.aria',         // SHELL-03: chip-grid aria-label
+      'hashtag.input.placeholder',      // SHELL-03: input placeholder
+      'hashtag.chip.edit.description',  // SHELL-04: chip edit aria-description
+      'hashtag.chip.remove.label',      // SHELL-04: chip remove aria-label
     ] as const;
 
     for (const key of REQUIRED_CATALOG_KEYS) {
@@ -432,5 +437,22 @@ describe('HashtagComponent', () => {
         expect(catalog[key].length).toBeGreaterThan(0);
       });
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // SHELL-04 chip localized aria attributes
+  // -------------------------------------------------------------------------
+  describe('SHELL-04 chip localized aria attributes', () => {
+    it('chipEditDescription returns a non-empty localized string containing the tag', () => {
+      const result = component.chipEditDescription('glacier');
+      expect(result).toBeTruthy();
+      expect(result).toContain('glacier');
+    });
+
+    it('chipRemoveLabel returns a non-empty localized string containing the tag', () => {
+      const result = component.chipRemoveLabel('glacier');
+      expect(result).toBeTruthy();
+      expect(result).toContain('glacier');
+    });
   });
 });

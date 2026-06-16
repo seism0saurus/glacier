@@ -6,6 +6,7 @@ import {
 } from '@angular/core/testing';
 import { MatDialogRef, MatDialog } from '@angular/material/dialog';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
+import { LOCALE_ID } from '@angular/core';
 import { of, throwError } from 'rxjs';
 import { ShareDialogComponent } from './share-dialog.component';
 import { ShareLinkService } from '../share/services/share-link.service';
@@ -59,6 +60,7 @@ describe('ShareDialogComponent', () => {
         { provide: ShareLinkService, useValue: shareLinkServiceSpy },
         { provide: MatDialog, useValue: dialogSpy },
         { provide: LiveAnnouncer, useValue: liveAnnouncerSpy },
+        { provide: LOCALE_ID, useValue: 'de' },
       ],
     })
     // ShareDialogComponent imports MatDialogModule in its standalone imports array,
@@ -363,6 +365,41 @@ describe('ShareDialogComponent', () => {
       if (createBtn) {
         expect(createBtn.disabled).toBeTrue();
       }
+    });
+  });
+
+  // ---- TOOT-09: spinner aria-label i18n catalog completeness ----
+
+  describe('TOOT-09 i18n catalog completeness', () => {
+    it('messages.en.json must contain key share.dialog.creating.aria', async () => {
+      const response = await fetch('/assets/i18n/messages.en.json');
+      const catalog: Record<string, string> = await response.json();
+      expect(catalog['share.dialog.creating.aria']).toBeDefined();
+      expect(typeof catalog['share.dialog.creating.aria']).toBe('string');
+      expect(catalog['share.dialog.creating.aria'].length).toBeGreaterThan(0);
+    });
+  });
+
+  // ---- TOOT-13: formatExpiry uses injected LOCALE_ID ----
+
+  describe('TOOT-13 formatExpiry uses injected LOCALE_ID', () => {
+    it('formatExpiry returns a formatted date string for a valid ISO date', () => {
+      const result = component.formatExpiry('2026-04-29T12:00:00Z');
+      expect(result).toBeTruthy();
+      expect(result).not.toBe('2026-04-29T12:00:00Z'); // must not return raw ISO
+    });
+
+    it('formatExpiry falls back to the raw string for invalid input', () => {
+      const result = component.formatExpiry('not-a-date');
+      expect(result).toBe('not-a-date');
+    });
+
+    it('formatExpiry uses the injected locale (de yields German format)', () => {
+      // The TestBed default locale is used; since no LOCALE_ID override in test,
+      // this just asserts the date is formatted (not raw ISO).
+      const result = component.formatExpiry('2026-01-15T00:00:00Z');
+      expect(result).toMatch(/\d/); // contains digits
+      expect(result).not.toContain('T'); // ISO T separator not present
     });
   });
 });

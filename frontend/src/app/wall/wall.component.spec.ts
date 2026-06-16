@@ -427,6 +427,30 @@ describe('WallComponent', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // TOOT-02 tootLabel() — localized iframe title guard
+  // ---------------------------------------------------------------------------
+
+  describe('TOOT-02 tootLabel()', () => {
+    it('returns a label containing the hashtag when hashtags are present', () => {
+      const label = component.tootLabel({ hashtags: ['glacier'] });
+      expect(label).toContain('glacier');
+      expect(label).not.toContain('undefined');
+    });
+
+    it('returns a fallback label when hashtags array is empty (no-hashtag guard)', () => {
+      const label = component.tootLabel({ hashtags: [] });
+      expect(label).toBeTruthy();
+      expect(label).not.toContain('undefined');
+    });
+
+    it('returns a fallback label when hashtags is undefined-like', () => {
+      const label = component.tootLabel({ hashtags: [] });
+      expect(label).toBeTruthy();
+      expect(label).not.toContain('undefined');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // i18n catalog completeness — prune announcement keys
   // ---------------------------------------------------------------------------
 
@@ -435,6 +459,8 @@ describe('WallComponent', () => {
       'wall.heading',
       'wall.prune.announce.single',
       'wall.prune.announce.cancelAll',
+      'wall.toot.label',
+      'wall.toot.label.no-hashtag',
     ] as const;
 
     for (const key of REQUIRED_WALL_KEYS) {

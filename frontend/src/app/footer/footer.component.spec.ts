@@ -107,9 +107,9 @@ describe('FooterComponent', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       fixture.detectChanges();
       expect(compiled.querySelector('.howto')?.innerHTML)
-        .toContain('You want your toots to be shown here?&nbsp;Mention');
+        .toContain('Möchtest du deine Toots hier sehen?');
       expect(compiled.querySelector('.howto')?.innerHTML)
-        .toContain('in your toot and use one of the hashtags.');
+        .toContain('in deinem Toot und verwende einen der Hashtags.');
       expect(compiled.querySelector('.howto .handle')?.innerHTML)
         .toContain('@mastodon@example.com');
     });
@@ -124,7 +124,7 @@ describe('FooterComponent', () => {
     it('should contain the correct text', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.querySelector('.legal>span')?.innerHTML)
-        .toContain('Legal Notice');
+        .toContain('Impressum');
     });
 
     /**
@@ -162,7 +162,7 @@ describe('FooterComponent', () => {
     it('should have the correct copyright text', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.querySelector('.copyright')?.innerHTML)
-        .toContain('Glacier is Open Source: ')
+        .toContain('Glacier ist Open Source:')
     });
 
     it('should have the correct url text', () => {

@@ -1,6 +1,8 @@
 <footer>
   <div class="howto">
-    You want your toots to be shown here?&nbsp;Mention <span class="handle">&#64;{{mastodonHandle}}</span> in your toot and use one of the hashtags.
+    <span i18n="@@footer.howto.prefix">Möchtest du deine Toots hier sehen?&nbsp;Erwähne</span>
+    <span class="handle">&#64;{{mastodonHandle}}</span>
+    <span i18n="@@footer.howto.suffix">in deinem Toot und verwende einen der Hashtags.</span>
   </div>
   <button class='legal' type="button"
           i18n-aria-label="@@footer.legal.button.aria"
@@ -8,9 +10,10 @@
           (click)="openLegal()">
     <!--suppress HtmlUnknownTag -->
     <mat-icon aria-hidden="true" svgIcon="legal_notice_icon"></mat-icon>
-    <span i18n="@@footer.legal.button.label">Legal Notice &amp; GDPR</span>
+    <span i18n="@@footer.legal.button.label">Impressum &amp; Datenschutz</span>
   </button>
   <div class="copyright">
-    Glacier is Open Source: <a href='https://github.com/seism0saurus/glacier' rel='noopener noreferrer' target='_blank'>https://github.com/seism0saurus/glacier</a>
+    <span i18n="@@footer.opensource.prefix">Glacier ist Open Source:</span>
+    <a href='https://github.com/seism0saurus/glacier' rel='noopener noreferrer' target='_blank'>https://github.com/seism0saurus/glacier</a>
   </div>
 </footer>

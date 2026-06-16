@@ -199,4 +199,17 @@ export class WallComponent implements OnInit, OnDestroy {
       return i % this.columns === column;
     });
   }
+
+  /**
+   * TOOT-02: Returns a localized, meaningful iframe title for a toot.
+   * Guards against empty hashtags array (would produce "Toot #undefined").
+   * @param toot - the toot object
+   */
+  tootLabel(toot: { hashtags: string[] }): string {
+    const hashtag = toot.hashtags?.[0];
+    if (hashtag) {
+      return $localize`:@@wall.toot.label:Toot #${hashtag}`;
+    }
+    return $localize`:@@wall.toot.label.no-hashtag:Toot`;
+  }
 }

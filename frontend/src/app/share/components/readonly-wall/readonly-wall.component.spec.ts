@@ -5,6 +5,7 @@ import {
   tick,
 } from '@angular/core/testing';
 import { provideRouter, ActivatedRoute, Router } from '@angular/router';
+import { LOCALE_ID } from '@angular/core';
 import { BehaviorSubject, Subject, of, NEVER } from 'rxjs';
 import { ReadonlyWallComponent } from './readonly-wall.component';
 import { ReadonlyWallService } from '../../services/readonly-wall.service';
@@ -86,6 +87,7 @@ describe('ReadonlyWallComponent', () => {
         { provide: ReadonlyWallService, useValue: wallServiceSpy },
         { provide: ReadonlyWallStompClient, useValue: stompClientSpy },
         { provide: LiveAnnouncer, useValue: liveAnnouncerSpy },
+        { provide: LOCALE_ID, useValue: 'de' },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -559,6 +561,26 @@ describe('ReadonlyWallComponent', () => {
       overrideHashtags(['a', 'b', 'c']);
       const label = component.feedLabel;
       expect(label).toContain('3');
+    });
+  });
+
+  // ---- VIEW-11: formattedExpiry uses injected LOCALE_ID ----
+
+  describe('VIEW-11 formattedExpiry uses injected LOCALE_ID', () => {
+    it('formattedExpiry returns a formatted date string when expiresAt is set', () => {
+      // wallServiceSpy.expiresAt is set to '2026-04-29T12:00:00Z' in beforeEach
+      const result = component.formattedExpiry;
+      expect(result).toBeTruthy();
+      expect(result).not.toBe('2026-04-29T12:00:00Z');
+      expect(result).toMatch(/\d/);
+      expect(result).not.toContain('T');
+    });
+
+    it('formattedExpiry returns empty string when expiresAt is null/empty', () => {
+      // Override the expiresAt on the spy
+      Object.defineProperty(wallServiceSpy, 'expiresAt', { get: () => null, configurable: true });
+      const result = component.formattedExpiry;
+      expect(result).toBe('');
     });
   });
 });

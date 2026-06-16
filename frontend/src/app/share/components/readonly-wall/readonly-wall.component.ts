@@ -4,6 +4,8 @@ import {
   OnDestroy,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  Inject,
+  LOCALE_ID,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -302,7 +304,7 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
   get formattedExpiry(): string {
     if (!this.expiresAt) return '';
     try {
-      return new Intl.DateTimeFormat(undefined, {
+      return new Intl.DateTimeFormat(this.locale, {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -319,6 +321,7 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
     private stompClient: ReadonlyWallStompClient,
     private liveAnnouncer: LiveAnnouncer,
     private cdr: ChangeDetectorRef,
+    @Inject(LOCALE_ID) private locale: string,
   ) {}
 
   ngOnInit(): void {

@@ -1,34 +1,39 @@
 /**
- * E2E a11y spec for the share-link readonly view (chromium project).
+ * E2E a11y spec for the share-link readonly view (a11y project — chromium only).
  *
- * Uses @axe-core/playwright for WCAG 2.2 AA automated scan.
- * Also tests keyboard navigation and 200% zoom reflow.
+ * XCUT-09: Refactored the axe scan to use the shared `assertNoWcag22AaViolations`
+ * helper from `helper/a11y.ts` wrapped in `runAxeOnlyInChromium`.  The previous
+ * inline AxeBuilder usage ran in all five Playwright projects (3× wasted cost)
+ * and duplicated the tag list and impact filter from the shared helper.
  *
- * Backend endpoints wired in Phase 3. Tests enabled.
+ * This file matches the glob pattern `**\/*-a11y.spec.ts` so it is routed
+ * exclusively to the
+ * `a11y` project (chromium), consistent with D-20 and all other axe scans.
  */
 
 import { test, expect } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
+import { assertNoWcag22AaViolations, runAxeOnlyInChromium } from '../helper/a11y';
 
 const SHARE_TEST_URL = process.env['SHARE_TEST_URL'] || '/share/test-share-id-placeholder';
 
 test.describe('Share link — accessibility', () => {
 
-  test('readonly wall has zero critical/serious axe violations', async ({ page }) => {
-    await page.goto(SHARE_TEST_URL);
-    await expect(page.getByTestId('share-feed')).toHaveAttribute('aria-busy', 'false', {
-      timeout: 15_000,
+  /**
+   * XCUT-09: Replaced inline AxeBuilder + withTags() + manual filter with
+   * assertNoWcag22AaViolations() wrapped in runAxeOnlyInChromium().
+   * Single source of truth; no longer runs in firefox/webkit/killswitch/insecure.
+   */
+  test('@a11y readonly wall has zero critical/serious axe violations',
+    async ({ page, browserName }) => {
+      await page.goto(SHARE_TEST_URL);
+      await expect(page.getByTestId('share-feed')).toHaveAttribute('aria-busy', 'false', {
+        timeout: 15_000,
+      });
+
+      await runAxeOnlyInChromium(browserName, async () => {
+        await assertNoWcag22AaViolations(page);
+      });
     });
-
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-      .analyze();
-
-    const criticalOrSerious = results.violations.filter(
-      (v) => v.impact === 'critical' || v.impact === 'serious'
-    );
-    expect(criticalOrSerious).toEqual([]);
-  });
 
   test('keyboard navigation: Tab moves through toots and links', async ({ page }) => {
     await page.goto(SHARE_TEST_URL);

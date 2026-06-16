@@ -1,7 +1,9 @@
 <header [className]="extended ? 'extended' : 'small'">
   <img [className]="extended ? 'extended' : 'small'"
-    src="assets/glacier_logo_small.png" alt="Logo of Glacier - the Mastodon social wall" />
-  <h1 i18n="@@header.h1">Glacier - The Mastodon Social Wall</h1>
+    src="assets/glacier_logo_small.png"
+    i18n-alt="@@header.logo.alt"
+    alt="Logo von Glacier – der Mastodon-Pinnwand" />
+  <h1 i18n="@@header.h1">Glacier — Die Mastodon-Pinnwand</h1>
   <!--
     Share button (P1-17): opens the ShareDialogComponent to let the operator
     create / manage accessible share links and QR codes.

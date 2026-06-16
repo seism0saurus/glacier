@@ -121,7 +121,16 @@ describe('HeaderComponent', () => {
     // In Karma (German source, no catalog loaded) the text is the source text.
     expect(h1?.textContent?.trim())
       .withContext('h1 must contain the application title')
-      .toBe('Glacier - The Mastodon Social Wall');
+      .toBe('Glacier — Die Mastodon-Pinnwand');
+  });
+
+  // SHELL-13: logo img must have i18n-alt (@@header.logo.alt) with a non-empty alt
+  it('SHELL-13: logo img must have i18n-alt (@@header.logo.alt) with a non-empty alt', () => {
+    const img = fixture.nativeElement.querySelector('img');
+    expect(img).withContext('logo img must exist').toBeTruthy();
+    const alt = img?.getAttribute('alt');
+    expect(alt).withContext('logo alt must be non-empty (WCAG 1.1.1)').toBeTruthy();
+    expect(alt!.length).toBeGreaterThan(0);
   });
 
   // D.3 P1-17: Share button

@@ -136,6 +136,23 @@ export class HashtagComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * SHELL-04: Returns the localized chip edit description for screen readers.
+   * Uses $localize interpolation to allow runtime catalog substitution.
+   * @param tag - the hashtag name
+   */
+  chipEditDescription(tag: string): string {
+    return $localize`:@@hashtag.chip.edit.description:Enter drücken, um Hashtag ${tag} zu bearbeiten`;
+  }
+
+  /**
+   * SHELL-04: Returns the localized chip remove aria-label for screen readers.
+   * @param tag - the hashtag name
+   */
+  chipRemoveLabel(tag: string): string {
+    return $localize`:@@hashtag.chip.remove.label:Hashtag ${tag} entfernen`;
+  }
+
+  /**
    * Returns true if the given hashtag is currently in the settling state
    * (recentlyTerminated guard is active).
    *

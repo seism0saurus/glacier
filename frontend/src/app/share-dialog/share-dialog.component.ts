@@ -4,6 +4,8 @@ import {
   ChangeDetectionStrategy,
   signal,
   computed,
+  Inject,
+  LOCALE_ID,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatDialogModule, MatDialogRef, MatDialog } from '@angular/material/dialog';
@@ -199,6 +201,7 @@ import {
         <mat-progress-spinner
           mode="indeterminate"
           diameter="24"
+          i18n-aria-label="@@share.dialog.creating.aria"
           aria-label="Erstelle Link…"
         ></mat-progress-spinner>
       }
@@ -253,6 +256,7 @@ export class ShareDialogComponent implements OnInit {
     private shareLinkService: ShareLinkService,
     private dialog: MatDialog,
     private liveAnnouncer: LiveAnnouncer,
+    @Inject(LOCALE_ID) private locale: string,
   ) {}
 
   ngOnInit(): void {
@@ -354,7 +358,7 @@ export class ShareDialogComponent implements OnInit {
 
   formatExpiry(isoDate: string): string {
     try {
-      return new Intl.DateTimeFormat(undefined, {
+      return new Intl.DateTimeFormat(this.locale, {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
