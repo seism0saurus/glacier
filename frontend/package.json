@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration watch",
     "test": "ng test",
     "lint": "npx eslint src/app/share/ src/app/subscription*.ts src/app/subscription-persistence.service.ts src/app/hashtag/hashtag.component.ts -c eslint.config.js",
-    "check-i18n-keys": "node scripts/check-i18n-keys.mjs"
+    "check-i18n-keys": "node scripts/check-i18n-parity.mjs",
+    "i18n:check": "node scripts/check-i18n-parity.mjs"
   },
   "private": true,
   "dependencies": {

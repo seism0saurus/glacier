@@ -29,6 +29,9 @@ jobs:
       - name: Lint the frontend
         working-directory: frontend
         run: npm run lint
+      - name: Check i18n parity (template @@ids vs messages.en.json)
+        working-directory: frontend
+        run: npm run i18n:check
       - name: Verify sqlite-jdbc SHA-256 checksum
         run: |
           curl -fsSL -o dependency-checksums/sqlite-jdbc-3.49.1.0.jar \
