@@ -15,6 +15,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -80,12 +81,29 @@ public class ShareViewStompRelay {
     private final ShareLinkActivityRegistry registry;
 
     /**
+     * Clock used by {@link #emitNoViewersWarnWithDebounce} for debounce timing.
+     * Injected so tests can substitute a {@link Clock#fixed} for deterministic assertion
+     * (ACC-03 behavioral debounce test, SR-RELAY-20).
+     */
+    private final Clock clock;
+
+    /**
      * Debounce state for the {@code share.relay.no_viewers} AUDIT.warn (SR-RELAY-09, SR-RELAY-20).
      * Maps sharerWallId to the instant of the last emitted warn. Grows with distinct
      * sharerWallId values seen (Open Risk R3 — negligible at Glacier scale).
      */
     private final ConcurrentHashMap<String, Instant> noViewersLastWarnAt = new ConcurrentHashMap<>();
 
+    /**
+     * Spring-managed constructor.
+     *
+     * @param messagingTemplate STOMP messaging template (lazy to break circular dep chain)
+     * @param shareLinkService  share link service (lazy to break circular dep chain)
+     * @param messageCache      message cache (lazy to break circular dep chain)
+     * @param registry          active share link routing table
+     * @param clock             clock for debounce timing; injected so tests can freeze time
+     *                          (ACC-03 behavioral assertion, SR-RELAY-20)
+     */
     public ShareViewStompRelay(
             // @Lazy on SimpMessagingTemplate and ShareLinkService breaks the mutual circular
             // dependency chain:
@@ -95,11 +113,13 @@ public class ShareViewStompRelay {
             @Lazy final ShareLinkService shareLinkService,
             // @Lazy on MessageCache prevents a secondary cycle via the same chain.
             @Lazy final MessageCache messageCache,
-            final ShareLinkActivityRegistry registry) {
+            final ShareLinkActivityRegistry registry,
+            final Clock clock) {
         this.messagingTemplate = messagingTemplate;
         this.shareLinkService = shareLinkService;
         this.messageCache = messageCache;
         this.registry = registry;
+        this.clock = clock;
     }
 
     // -------------------------------------------------------------------------
@@ -307,7 +327,9 @@ public class ShareViewStompRelay {
      * @param wallId the sharer's wallId (logged as hash8 — never raw)
      */
     private void emitNoViewersWarnWithDebounce(final String wallId) {
-        Instant now = Instant.now();
+        // ACC-03: use injected clock so tests can freeze time and prove the 30-second suppression
+        // window behaviorally (SR-RELAY-20).
+        Instant now = clock.instant();
         Instant lastWarn = noViewersLastWarnAt.get(wallId);
         if (lastWarn == null || Duration.between(lastWarn, now).compareTo(NO_VIEWERS_DEBOUNCE) >= 0) {
             noViewersLastWarnAt.put(wallId, now);

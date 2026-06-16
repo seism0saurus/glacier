@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -44,7 +45,8 @@ class ShareViewStompRelayEventTest {
         mockShareLinkService = mock(ShareLinkService.class);
         mockMessageCache = mock(MessageCache.class);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
-        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry);
+        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+                Clock.systemUTC());
     }
 
     // -----------------------------------------------------------------------
