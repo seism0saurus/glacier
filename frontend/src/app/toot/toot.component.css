@@ -12,6 +12,6 @@ iframe {
 
   border-radius: 4px;
   margin: 4px;
-  border: 1px solid #10303f;
+  border: 1px solid var(--mat-sys-outline);
   box-shadow: 10px 15px 15px rgba(0, 0, 0, 0.15);
 }

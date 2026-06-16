@@ -1,7 +1,7 @@
 :host {
   display: block;
-  background-color: #d3ecf0;
-  color: #123342;
+  background-color: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
 }
 
 h2 {
@@ -15,7 +15,8 @@ button {
   flex-direction: column;
   align-items: center;
 
-  background-color: #4acad7;
+  background-color: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
 
   height: max-content;
   border-radius: 4px;
