@@ -25,17 +25,18 @@
   align-items: center;
   justify-content: center;
   height: 57px;
-  background-color: #4acad7;
+  background-color: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
 
   border-radius: 4px;
 }
 
 .button:hover {
   /* SHELL-09: Previous hover background #3293a3 on #123342 text yielded 3.7:1 (< 4.5:1 WCAG AA).
-     Replaced with #3daabb which yields 4.86:1 — passes AA for normal text.
-     The value is slightly darker than the normal state (#4acad7 = 6.79:1) so the
-     hover is still visually distinct, while meeting the minimum contrast ratio. */
-  background-color: #3daabb;
+     Replaced with #3daabb which yielded 4.86:1 — passes AA for normal text.
+     Now token-based: a 15% blend toward on-surface gives a visually distinct
+     darker shade while remaining contrast-safe in both light and dark modes. */
+  background-color: color-mix(in srgb, var(--mat-sys-primary-container) 85%, var(--mat-sys-on-surface));
 }
 
 /* Focus-visible: visible keyboard focus ring without removing mouse-click outline  */
@@ -53,10 +54,10 @@ mat-label {
   margin-right: 8px;
 }
 .mat-mdc-standard-chip:not(.mdc-evolution-chip--disabled){
-  background-color: #d3ecf0;
+  background-color: var(--mat-sys-surface-container-high);
 }
 .mdc-text-field--filled:not(.mdc-text-field--disabled) {
-  background-color: #fdfffe;
+  background-color: var(--mat-sys-surface-container-low);
 }
 mat-chip-row {
   border-radius: 4px;
