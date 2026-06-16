@@ -3,6 +3,8 @@ package de.seism0saurus.glacier.share.application;
 import de.seism0saurus.glacier.util.IpAddressClassifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.net.InetAddress;
@@ -55,6 +57,46 @@ public class DefaultSafeUrlValidator implements SafeUrlValidator {
             0x200B  // ZERO WIDTH SPACE
     );
 
+    /**
+     * Whether dev mode is active ({@code glacier.devmode}). Gated to the {@code dev}/{@code test}
+     * profiles by {@code StartupSanityChecker}; never {@code true} in production.
+     */
+    private final boolean devMode;
+
+    /**
+     * The configured Mastodon instance host ({@code mastodon.instance}), lower-cased, or empty
+     * when unset. In dev mode this single host is exempted from the private-IP SSRF block so the
+     * local/e2e fixture (an internal hostname resolving to an RFC1918 address) can be embedded.
+     * Production never reaches the exemption because {@link #devMode} is {@code false}.
+     */
+    private final String devInstanceHost;
+
+    /**
+     * Production-strict constructor (no dev exemption). Used by tests that assert the
+     * default SSRF behaviour and by any wiring that does not need the dev allowance.
+     */
+    public DefaultSafeUrlValidator() {
+        this(false, "");
+    }
+
+    /**
+     * Spring constructor. Binds {@code glacier.devmode} and {@code mastodon.instance} so that,
+     * in dev mode only, the configured instance host is exempt from the private-IP blocklist
+     * (see {@link #devInstanceHost}). All other SSRF guards remain in force in every mode.
+     *
+     * @param devMode          value of {@code glacier.devmode} (default {@code false})
+     * @param mastodonInstance value of {@code mastodon.instance} (the bare instance host)
+     */
+    @Autowired
+    public DefaultSafeUrlValidator(
+            @Value("${glacier.devmode:false}") final boolean devMode,
+            @Value("${mastodon.instance:}") final String mastodonInstance) {
+        this.devMode = devMode;
+        this.devInstanceHost = mastodonInstance == null
+                ? ""
+                : mastodonInstance.trim().toLowerCase(Locale.ROOT);
+    }
+
     @Override
     public Optional<URI> validate(final String raw) {
         if (raw == null || raw.isBlank()) {
@@ -99,11 +141,20 @@ public class DefaultSafeUrlValidator implements SafeUrlValidator {
         }
 
         // Step 6: DNS resolution + SSRF blocklist check
-        // Resolve once and pin the IP to prevent DNS rebinding attacks
+        // Resolve once and pin the IP to prevent DNS rebinding attacks.
+        // Dev-only exemption: in dev mode the single configured mastodon.instance host is
+        // allowed even when it resolves to a private address (the local/e2e fixture runs on
+        // an internal hostname). devMode is false in production, so the block stays strict there.
+        final boolean devInstanceExempt =
+                devMode && !devInstanceHost.isEmpty() && host.toLowerCase(Locale.ROOT).equals(devInstanceHost);
         try {
             InetAddress[] addresses = InetAddress.getAllByName(host);
             for (InetAddress addr : addresses) {
                 if (isBlockedAddress(addr)) {
+                    if (devInstanceExempt) {
+                        AUDIT.info("stomp.embed.dev_instance_exempt host={}", obfuscateHost(host));
+                        continue;
+                    }
                     AUDIT.info("share.proxy.fetch_blocked reason=ssrf_blocked host={}",
                             obfuscateHost(host));
                     return Optional.empty();
