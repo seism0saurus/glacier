@@ -15,9 +15,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -35,7 +39,7 @@ class MessageCacheImplTest {
         template = mock(SimpMessagingTemplate.class);
         meterRegistry = new SimpleMeterRegistry();
         // fallbackEnabled=true — the default production state; killswitch tests use separate instances
-        cache = new MessageCacheImpl(template, meterRegistry, 20, 10, 10000, true);
+        cache = new MessageCacheImpl(template, meterRegistry, 20, 10, 10000, true, Runnable::run);
     }
 
     /** Convenience factory: wraps a name string in a WALL PrincipalKey. */
@@ -75,6 +79,41 @@ class MessageCacheImplTest {
      * so the leak slipped through. Assert both the formatted message and the lazily-rendered
      * argument array (CWE-117 / log injection).
      */
+    /**
+     * F5: the STOMP fan-out (including the 200 ms retry back-off) must run off the calling
+     * (Bigbone streaming) thread. Uses the PRODUCTION constructor — the real single-threaded
+     * async publish executor — and verifies recordThenPublish returns without waiting for the
+     * retry sleep, while both publish attempts still occur on the executor.
+     */
+    @Test
+    void recordThenPublish_doesNotBlockCallerOnRetryBackoff() throws InterruptedException {
+        SimpMessagingTemplate failingTemplate = mock(SimpMessagingTemplate.class);
+        MessageCacheImpl asyncCache =
+                new MessageCacheImpl(failingTemplate, new SimpleMeterRegistry(), 20, 10, 10000, true);
+        try {
+            CountDownLatch attempts = new CountDownLatch(2); // initial attempt + one retry
+            doAnswer(inv -> {
+                attempts.countDown();
+                throw new MessageDeliveryException("boom");
+            }).when(failingTemplate).convertAndSend(anyString(), any(Object.class));
+
+            asyncCache.provisionHashtag(wall("p"), "t");
+
+            long startNanos = System.nanoTime();
+            asyncCache.recordThenPublish(wall("p"), "t", partial(EventType.CREATED, "s1"));
+            long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
+
+            assertThat(elapsedMs)
+                    .as("recordThenPublish must return without waiting for the 200ms retry back-off (F5)")
+                    .isLessThan(150L);
+            assertThat(attempts.await(2, TimeUnit.SECONDS))
+                    .as("both publish attempts (initial + retry) must occur on the publish executor")
+                    .isTrue();
+        } finally {
+            asyncCache.shutdownPublishExecutor();
+        }
+    }
+
     @Test
     void recordThenPublish_doesNotLogRawWallId() {
         final String canaryUuid = "550e8400-e29b-41d4-a716-446655440000";
@@ -359,7 +398,7 @@ class MessageCacheImplTest {
 
     @Test
     void provisionHashtag_exceedsHashtagCapForPrincipal_throwsCacheCapacityException() {
-        MessageCacheImpl smallCache = new MessageCacheImpl(template, meterRegistry, 20, 2, 10000, true);
+        MessageCacheImpl smallCache = new MessageCacheImpl(template, meterRegistry, 20, 2, 10000, true, Runnable::run);
         smallCache.provisionHashtag(wall("p"), "h1");
         smallCache.provisionHashtag(wall("p"), "h2");
 
@@ -369,7 +408,7 @@ class MessageCacheImplTest {
 
     @Test
     void provisionHashtag_exceedsPrincipalCap_throwsCacheCapacityException() {
-        MessageCacheImpl tinyCache = new MessageCacheImpl(template, meterRegistry, 20, 10, 2, true);
+        MessageCacheImpl tinyCache = new MessageCacheImpl(template, meterRegistry, 20, 10, 2, true, Runnable::run);
         tinyCache.provisionHashtag(wall("p1"), "h1");
         tinyCache.provisionHashtag(wall("p2"), "h1");
 
@@ -379,7 +418,7 @@ class MessageCacheImplTest {
 
     @Test
     void provisionHashtag_idempotentReprovision_doesNotThrowEvenAtCap() {
-        MessageCacheImpl smallCache = new MessageCacheImpl(template, meterRegistry, 20, 2, 10000, true);
+        MessageCacheImpl smallCache = new MessageCacheImpl(template, meterRegistry, 20, 2, 10000, true, Runnable::run);
         smallCache.provisionHashtag(wall("p"), "h1");
         smallCache.provisionHashtag(wall("p"), "h2");
 
@@ -468,7 +507,7 @@ class MessageCacheImplTest {
         // Fresh registry to avoid gauge-name conflict with @BeforeEach cache instance
         MeterRegistry ksRegistry = new SimpleMeterRegistry();
         SimpMessagingTemplate ksTemplate = mock(SimpMessagingTemplate.class);
-        MessageCacheImpl killswitchedCache = new MessageCacheImpl(ksTemplate, ksRegistry, 20, 10, 10000, false);
+        MessageCacheImpl killswitchedCache = new MessageCacheImpl(ksTemplate, ksRegistry, 20, 10, 10000, false, Runnable::run);
 
         // Attempt recordThenPublish with killswitch off
         CacheEntry result = killswitchedCache.recordThenPublish(wall("principal-A"), "cats", partial(EventType.CREATED, "s1"));
@@ -497,7 +536,7 @@ class MessageCacheImplTest {
     void recordThenPublish_killswitchOff_stompFanoutPreservedButNoCacheWrite() {
         MeterRegistry ksRegistry = new SimpleMeterRegistry();
         SimpMessagingTemplate ksTemplate = mock(SimpMessagingTemplate.class);
-        MessageCacheImpl killswitchedCache = new MessageCacheImpl(ksTemplate, ksRegistry, 20, 10, 10000, false);
+        MessageCacheImpl killswitchedCache = new MessageCacheImpl(ksTemplate, ksRegistry, 20, 10, 10000, false, Runnable::run);
 
         CacheEntry result = killswitchedCache.recordThenPublish(wall("principal-B"), "dogs", partial(EventType.CREATED, "s2"));
 
@@ -521,7 +560,7 @@ class MessageCacheImplTest {
     @Test
     void provisionHashtag_killswitchOff_isNoOp() {
         MeterRegistry ksRegistry = new SimpleMeterRegistry();
-        MessageCacheImpl killswitchedCache = new MessageCacheImpl(template, ksRegistry, 20, 10, 10000, false);
+        MessageCacheImpl killswitchedCache = new MessageCacheImpl(template, ksRegistry, 20, 10, 10000, false, Runnable::run);
 
         killswitchedCache.provisionHashtag(wall("principal-C"), "news");
 
@@ -573,7 +612,7 @@ class MessageCacheImplTest {
     @Test
     void recordThenPublish_messageDeliveryException_bothAttemptsFail_entryPreservedAndCounterIncremented() {
         MeterRegistry retryRegistry = new SimpleMeterRegistry();
-        MessageCacheImpl retryCache = new MessageCacheImpl(template, retryRegistry, 20, 10, 10000, true);
+        MessageCacheImpl retryCache = new MessageCacheImpl(template, retryRegistry, 20, 10, 10000, true, Runnable::run);
         retryCache.provisionHashtag(wall("retry-fail-principal"), "news");
         CacheEntry partial = partial(EventType.CREATED, "retry-fail-s1");
 

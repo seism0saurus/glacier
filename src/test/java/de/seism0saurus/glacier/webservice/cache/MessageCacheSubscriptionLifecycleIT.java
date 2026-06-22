@@ -38,7 +38,7 @@ class MessageCacheSubscriptionLifecycleIT {
     void subscribe_eventsRecordedInCache_snapshotReturnsThemAfterProvisioning() {
         SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
         MeterRegistry registry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true, Runnable::run);
 
         // Provision
         cache.provisionHashtag(PRINCIPAL, HASHTAG);
@@ -69,7 +69,7 @@ class MessageCacheSubscriptionLifecycleIT {
     void evictHashtag_afterRecording_snapshotThrowsUnknownSubscriptionException() {
         SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
         MeterRegistry registry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true, Runnable::run);
 
         cache.provisionHashtag(PRINCIPAL, HASHTAG);
         cache.recordThenPublish(PRINCIPAL, HASHTAG,
@@ -87,7 +87,7 @@ class MessageCacheSubscriptionLifecycleIT {
     void evictPrincipal_afterMultipleHashtags_allSnapshotsThrow() {
         SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
         MeterRegistry registry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true, Runnable::run);
 
         cache.provisionHashtag(PRINCIPAL, "h1");
         cache.provisionHashtag(PRINCIPAL, "h2");
@@ -105,7 +105,7 @@ class MessageCacheSubscriptionLifecycleIT {
     void recordThenPublish_afterEviction_isNoOp() {
         SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
         MeterRegistry registry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true, Runnable::run);
 
         cache.provisionHashtag(PRINCIPAL, HASHTAG);
         cache.evictHashtag(PRINCIPAL, HASHTAG);
@@ -120,7 +120,7 @@ class MessageCacheSubscriptionLifecycleIT {
     void cursorSince_partialRead_returnsOnlyNewerEvents() {
         SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
         MeterRegistry registry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, registry, 20, 10, 10000, true, Runnable::run);
         cache.provisionHashtag(PRINCIPAL, HASHTAG);
 
         CacheEntry e1 = cache.recordThenPublish(PRINCIPAL, HASHTAG,

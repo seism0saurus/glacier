@@ -5,8 +5,10 @@ import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
@@ -14,7 +16,14 @@ import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Default {@link MessageCache} implementation.
@@ -65,6 +74,24 @@ public class MessageCacheImpl implements MessageCache {
     private final Counter publishFailureCounter;
 
     /**
+     * Executor that performs the STOMP fan-out off the Bigbone streaming thread (F5).
+     *
+     * <p>Single-threaded on purpose: STOMP delivery order per destination must match the
+     * order in which {@link #recordThenPublish} assigned ring sequences, because the live
+     * wire payload carries no sequence number and the frontend relies on arrival order. A
+     * single FIFO worker preserves that ordering (including across the retry path, whose
+     * 200 ms back-off now blocks this worker rather than the Bigbone reader thread).
+     */
+    private final Executor publishExecutor;
+
+    /**
+     * Bounded capacity of the publish work queue (F5). When saturated, the live push is
+     * dropped (counted via {@code glacier.fallback.publish.dropped}) — the cache entry was
+     * already stored before submission, so it remains recoverable via fallback polling (D-03).
+     */
+    private static final int DEFAULT_PUBLISH_QUEUE_CAPACITY = 10_000;
+
+    /**
      * Constructs the cache service with all required collaborators.
      *
      * <p>Three Micrometer instruments are registered on construction (D-11):
@@ -88,6 +115,7 @@ public class MessageCacheImpl implements MessageCache {
      *                                  when {@code false}, cache writes are suppressed but STOMP fan-out
      *                                  is preserved for live WebSocket clients (D-11)
      */
+    @Autowired
     public MessageCacheImpl(
             final SimpMessagingTemplate simpMessagingTemplate,
             final MeterRegistry meterRegistry,
@@ -95,11 +123,32 @@ public class MessageCacheImpl implements MessageCache {
             @Value("${glacier.cache.maxHashtagsPerPrincipal:10}") final int maxHashtagsPerPrincipal,
             @Value("${glacier.cache.maxPrincipals:10000}") final int maxPrincipals,
             @Value("${glacier.fallback.enabled:true}") final boolean fallbackEnabled) {
+        // F5: production uses a single-threaded, bounded, daemon publish executor so the
+        // Bigbone streaming thread is never blocked by the STOMP send / retry back-off.
+        this(simpMessagingTemplate, meterRegistry, ringCapacity, maxHashtagsPerPrincipal,
+                maxPrincipals, fallbackEnabled,
+                buildPublishExecutor(meterRegistry, DEFAULT_PUBLISH_QUEUE_CAPACITY));
+    }
+
+    /**
+     * Seam constructor (F5): accepts the publish {@link Executor} directly. Production code
+     * uses the {@link Autowired} constructor above; unit tests pass {@code Runnable::run} for
+     * a synchronous, deterministic publish path.
+     */
+    MessageCacheImpl(
+            final SimpMessagingTemplate simpMessagingTemplate,
+            final MeterRegistry meterRegistry,
+            final int ringCapacity,
+            final int maxHashtagsPerPrincipal,
+            final int maxPrincipals,
+            final boolean fallbackEnabled,
+            final Executor publishExecutor) {
         this.simpMessagingTemplate = simpMessagingTemplate;
         this.ringCapacity = ringCapacity;
         this.maxHashtagsPerPrincipal = maxHashtagsPerPrincipal;
         this.maxPrincipals = maxPrincipals;
         this.fallbackEnabled = fallbackEnabled;
+        this.publishExecutor = publishExecutor;
         this.store = new ConcurrentHashMap<>();
         // store is ConcurrentHashMap<PrincipalKey, ...> — prevents cross-namespace collision (ADR-SHARE-05)
         this.publishFailureCounter = meterRegistry.counter("glacier.fallback.publish.failures");
@@ -121,6 +170,39 @@ public class MessageCacheImpl implements MessageCache {
                 .register(meterRegistry);
     }
 
+    /**
+     * Builds the production publish executor (F5): a single worker thread, a bounded queue,
+     * and daemon threads. Single-threaded guarantees FIFO send order per destination; the
+     * bounded queue + drop-on-saturation policy caps memory under sustained backlog (the
+     * dropped live push remains recoverable via fallback polling, D-03).
+     */
+    private static ExecutorService buildPublishExecutor(final MeterRegistry meterRegistry, final int queueCapacity) {
+        final Counter dropped = meterRegistry.counter("glacier.fallback.publish.dropped");
+        final ThreadFactory threadFactory = runnable -> {
+            Thread thread = new Thread(runnable, "glacier-stomp-publish");
+            thread.setDaemon(true);
+            return thread;
+        };
+        final RejectedExecutionHandler rejection = (runnable, exec) -> {
+            dropped.increment();
+            LOGGER.warn("STOMP publish queue saturated — dropping live push; cache entry retained for fallback (F5, D-03)");
+        };
+        return new ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity), threadFactory, rejection);
+    }
+
+    /**
+     * Shuts the publish executor down on bean destruction (F5/F7). No-op when the executor
+     * is a synchronous {@code Runnable::run} seam (unit tests) rather than an owned pool.
+     */
+    @PreDestroy
+    void shutdownPublishExecutor() {
+        if (publishExecutor instanceof ExecutorService executorService) {
+            executorService.shutdownNow();
+        }
+    }
+
     @Override
     public CacheEntry recordThenPublish(final PrincipalKey key, final String hashtag, final CacheEntry partial) {
         // D-11 kill-switch: suppress cache write but preserve STOMP fan-out for live WS clients.
@@ -130,7 +212,8 @@ public class MessageCacheImpl implements MessageCache {
                     "STOMP fan-out preserved for live WS clients (D-11)",
                     LogScrubber.hash8(key.name()), hashtag);
             String destination = destinationFor(key.name(), hashtag, partial.type());
-            publishWithRetry(destination, partial, key, hashtag);
+            // F5: publish off the Bigbone streaming thread (see publishExecutor).
+            publishExecutor.execute(() -> publishWithRetry(destination, partial, key, hashtag));
             return null;
         }
 
@@ -150,7 +233,9 @@ public class MessageCacheImpl implements MessageCache {
         CacheEntry stored = ring.append(partial);
 
         String destination = destinationFor(key.name(), hashtag, stored.type());
-        publishWithRetry(destination, stored, key, hashtag);
+        // F5: publish off the Bigbone streaming thread. The entry is already stored above,
+        // so order is fixed by `sequence`; the single-threaded executor preserves send order.
+        publishExecutor.execute(() -> publishWithRetry(destination, stored, key, hashtag));
 
         return stored;
     }

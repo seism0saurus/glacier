@@ -48,7 +48,7 @@ class FallbackAtomicityIT {
     void parallelAppends_50Events_stompAndHttpSnapshotAgreOnAll50StatusIds() throws Exception {
         SimpMessagingTemplate template = mock(SimpMessagingTemplate.class);
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, meterRegistry, 20, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, meterRegistry, 20, 10, 10000, true, Runnable::run);
         cache.provisionHashtag(PRINCIPAL, HASHTAG);
 
         CountDownLatch startGate = new CountDownLatch(1);
@@ -104,7 +104,7 @@ class FallbackAtomicityIT {
         }).when(template).convertAndSend(any(String.class), any(Object.class));
 
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
-        MessageCacheImpl cache = new MessageCacheImpl(template, meterRegistry, 60, 10, 10000, true);
+        MessageCacheImpl cache = new MessageCacheImpl(template, meterRegistry, 60, 10, 10000, true, Runnable::run);
         cache.provisionHashtag(PRINCIPAL, HASHTAG);
 
         for (int i = 0; i < TOTAL_EVENTS; i++) {
