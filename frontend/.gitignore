@@ -49,3 +49,7 @@ Thumbs.db
 /playwright/.cache/
 /frontend.iml
 /node/
+
+# Mutation testing (Stryker) output
+reports/
+.stryker-tmp/
