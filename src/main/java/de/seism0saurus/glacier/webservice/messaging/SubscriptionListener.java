@@ -3,6 +3,7 @@ package de.seism0saurus.glacier.webservice.messaging;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -80,7 +81,7 @@ public class SubscriptionListener {
      * The executor provides improved performance and resource utilization for threading operations.
      * It is declared as final to ensure immutability and thread safety in its usage.
      */
-    private final static ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
      * The private final variable subscriptionManager is an instance of the SubscriptionManager interface.
@@ -174,6 +175,25 @@ public class SubscriptionListener {
      */
     protected boolean hasRunningDisconnectTimers() {
         return !this.disconnectTimer.isEmpty();
+    }
+
+    /**
+     * Shuts the reconnect-timer executor down on bean destruction (F7).
+     *
+     * <p>The executor is owned by this bean (no longer a {@code static} field), so it is
+     * bound to the Spring lifecycle and never outlives the application context — this
+     * gives clean shutdown in production and proper isolation across integration-test
+     * contexts. {@code shutdownNow()} interrupts any sleeping reconnect timers; they
+     * handle {@link InterruptedException} and exit without terminating subscriptions.
+     */
+    @PreDestroy
+    void shutdownExecutor() {
+        this.executorService.shutdownNow();
+    }
+
+    /** Diagnostic accessor (F7): whether the timer executor has been shut down. */
+    protected boolean isExecutorShutdown() {
+        return this.executorService.isShutdown();
     }
 
     /**

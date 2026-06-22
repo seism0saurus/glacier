@@ -348,6 +348,17 @@ class SubscriptionListenerTest {
         assertFalse(subscriptionListener.hasRunningDisconnectTimers());
     }
 
+    // -----------------------------------------------------------------------
+    // F7: the virtual-thread executor is owned by the bean and shut down on
+    //     context destruction (no leaked static executor across test contexts).
+    // -----------------------------------------------------------------------
+    @Test
+    void shutdownExecutor_terminatesTheExecutor() {
+        subscriptionListener.shutdownExecutor();
+        assertTrue(subscriptionListener.isExecutorShutdown(),
+                "the @PreDestroy hook must shut the executor down");
+    }
+
     private void disconnect(Principal principal) {
         // Mock the event
         SessionDisconnectEvent event = mock(SessionDisconnectEvent.class);

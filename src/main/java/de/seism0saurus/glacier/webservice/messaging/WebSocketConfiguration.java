@@ -7,6 +7,7 @@ import de.seism0saurus.glacier.share.application.ShareLinkViewerCounter;
 import de.seism0saurus.glacier.share.domain.ShareLinkCapPolicy;
 import de.seism0saurus.glacier.share.web.ShareViewTopicAuthInterceptor;
 import de.seism0saurus.glacier.webservice.security.HandshakeRateLimitInterceptor;
+import de.seism0saurus.glacier.webservice.security.ShareLinkRequiredHandshakeInterceptor;
 import de.seism0saurus.glacier.webservice.security.SubscribeRateLimitInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -82,6 +83,11 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
     // SR-WS-02 (ADR-PT-G7-01): subscribe rate limiter for clientInboundChannel
     @Autowired
     private SubscribeRateLimitInterceptor subscribeRateLimitInterceptor;
+
+    // NF1: rejects /share-view-ws upgrades that carry no shareLinkId, so link-less
+    // connections never establish an idle WebSocket session (OWASP API4:2023).
+    @Autowired
+    private ShareLinkRequiredHandshakeInterceptor shareLinkRequiredHandshakeInterceptor;
 
     /**
      * SEC-ACC-03: clock for AUDIT reject debounce timing in {@link ShareViewPrincipalHandler}.
@@ -261,6 +267,8 @@ public class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer 
                 // Design choice: budgets are combined across both endpoints. A high-traffic source IP
                 // opening many /websocket connections consumes from the same per-IP bucket as /share-view-ws
                 // viewers at that IP. Acceptable for single-instance homelab deployment (AR-WS-01).
-                .addInterceptors(handshakeRateLimitInterceptor);
+                // NF1: rate limiter first (bounds frequency + its own AUDIT), then reject link-less
+                // upgrades so no idle session is created for connections without a shareLinkId.
+                .addInterceptors(handshakeRateLimitInterceptor, shareLinkRequiredHandshakeInterceptor);
     }
 }

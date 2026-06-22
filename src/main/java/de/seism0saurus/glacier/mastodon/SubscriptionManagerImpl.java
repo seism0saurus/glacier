@@ -6,6 +6,7 @@ import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +49,7 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * The executor provides improved performance and resource utilization for threading operations.
      * It is declared as final to ensure immutability and thread safety in its usage.
      */
-    private final static ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
 
     /**
      * The list of subscriptions as map of Futures.
@@ -142,6 +143,25 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
      * @param principal The principal of the user.
      * @param hashtag   The hashtag to subscribe to.
      */
+    /**
+     * Shuts the subscription executor down on bean destruction (F7).
+     *
+     * <p>The executor is owned by this singleton bean (no longer a {@code static} field),
+     * binding it to the Spring lifecycle so it never outlives the application context —
+     * clean shutdown in production, proper isolation across integration-test contexts.
+     * {@code shutdownNow()} interrupts the per-subscription keep-alive threads (which sleep
+     * in 60 s loops); their {@link InterruptedException} path closes the Bigbone stream.
+     */
+    @PreDestroy
+    void shutdownExecutor() {
+        this.executorService.shutdownNow();
+    }
+
+    /** Diagnostic accessor (F7): whether the subscription executor has been shut down. */
+    protected boolean isExecutorShutdown() {
+        return this.executorService.isShutdown();
+    }
+
     @Override
     public void subscribeToHashtag(String principal, String hashtag) {
         LOGGER.info("subscribeToHashtag");

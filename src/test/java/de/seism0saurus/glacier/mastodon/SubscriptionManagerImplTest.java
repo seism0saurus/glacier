@@ -71,6 +71,14 @@ class SubscriptionManagerImplTest {
                 messageCache, restTemplate, shareViewStompRelay, PERMISSIVE_VALIDATOR);
     }
 
+    // F7: the virtual-thread executor is owned by the bean and shut down on context
+    // destruction (no leaked static executor across Spring contexts / test runs).
+    @Test
+    void shutdownExecutor_terminatesTheExecutor() {
+        subscriptionManager.shutdownExecutor();
+        assertTrue(subscriptionManager.isExecutorShutdown());
+    }
+
     @Test
     void testSubscribeToHashtag_NewPrincipalAndHashtag() {
         String principal = "user123";
