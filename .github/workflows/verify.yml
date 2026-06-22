@@ -29,6 +29,9 @@ jobs:
       - name: Lint the frontend
         working-directory: frontend
         run: npm run lint
+      - name: Verify frontend architecture (Sheriff — DDD bounded contexts + layer rules)
+        working-directory: frontend
+        run: npm run arch
       - name: Check i18n parity (template @@ids vs messages.en.json)
         working-directory: frontend
         run: npm run i18n:check

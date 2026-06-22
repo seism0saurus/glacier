@@ -104,6 +104,11 @@ When writing a new ADR, add a row here in the acceptance commit.
 
 ## CI/CD
 
+### Frontend Architecture Enforcement — Sheriff (`frontend-architecture-sheriff`)
+| File | Summary |
+|---|---|
+| [2026-06-22-frontend-architecture-sheriff.md](2026-06-22-frontend-architecture-sheriff.md) | Adopt Sheriff (`@softarc/sheriff-core`, CLI — ESLint plugin skipped on ESLint 10) to enforce DDD bounded contexts (wall→share→shared) + layer direction (ui→data→domain→util); `npm run arch` gated in CI |
+
 ### Locale.ROOT Correctness + npm audit CI Gate (`locale-root-npm-audit`)
 | File | Summary |
 |---|---|
