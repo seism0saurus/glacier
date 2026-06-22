@@ -114,6 +114,19 @@
                             </outputFormats>
                             <!-- Stable output path — no timestamp suffix — so CI can always find target/pit-reports/ -->
                             <timestampedReports>false</timestampedReports>
+                            <!--
+                                PIT runs against the fast Surefire UNIT tests only — all Failsafe
+                                integration tests (*IT) are excluded. Mutation testing requires a
+                                green baseline, and several ITs are not stable inside PIT's minion
+                                JVM: SQLite ITs contend on a shared on-disk DB, and timing ITs
+                                (p95 latency assertions) are unreliable under the CPU contention of
+                                a mutation run. The 15 security-critical target classes above are
+                                all covered by unit tests, so excluding ITs keeps the baseline green
+                                without lowering target-class mutation coverage.
+                            -->
+                            <excludedTestClasses>
+                                <param>*IT</param>
+                            </excludedTestClasses>
                         </configuration>
                     </plugin>
                 </plugins>

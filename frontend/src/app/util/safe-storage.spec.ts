@@ -196,5 +196,107 @@ describe('safeSetItem', () => {
       expect(retryParsed.items.length).toBeGreaterThan(0);
       expect(retryParsed.items.length).toBeLessThan(fullItems.length);
     });
+
+    // -----------------------------------------------------------------------
+    // Quota-error DETECTION: each branch of isQuotaExceededError must be
+    // exercised in isolation, otherwise the OR-chain and the instanceof guard
+    // are under-tested (mutation survivors). makeQuotaError above sets BOTH
+    // name='QuotaExceededError' AND code=22, which masks single-branch logic.
+    // -----------------------------------------------------------------------
+
+    it('detects the legacy Firefox NS_ERROR_DOM_QUOTA_REACHED name (name-only branch → retries)', () => {
+      // Arrange: a DOMException whose NAME alone marks it as quota (code is 0, not 22),
+      // so only the NS_ERROR_DOM_QUOTA_REACHED arm of the OR-chain is true.
+      const nsError = new DOMException('quota', 'NS_ERROR_DOM_QUOTA_REACHED');
+      expect(nsError.code).toBe(0); // guards the premise: name matches, code does NOT
+      setItemSpy.and.callFake(() => {
+        if (setItemSpy.calls.count() === 1) {
+          throw nsError;
+        }
+      });
+
+      // Act
+      safeSetItem('k', JSON.stringify([{id: '1'}, {id: '2'}]));
+
+      // Assert: the name-only branch must still trigger the drop-and-retry.
+      expect(localStorage.setItem).toHaveBeenCalledTimes(2);
+    });
+
+    it('does NOT retry for a non-quota DOMException', () => {
+      // Arrange: a DOMException that is not a quota error at all.
+      const otherError = new DOMException('bad syntax', 'SyntaxError');
+      setItemSpy.and.callFake(() => {
+        if (setItemSpy.calls.count() === 1) {
+          throw otherError;
+        }
+      });
+      const consoleSpy = spyOn(console, 'error');
+
+      // Act
+      safeSetItem('k', JSON.stringify([{id: '1'}]));
+
+      // Assert: no drop-and-retry, and no error log — the error is simply not a quota error.
+      expect(localStorage.setItem).toHaveBeenCalledTimes(1);
+      expect(consoleSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT retry when the thrown value is not a DOMException, even if it looks like a quota error', () => {
+      // Arrange: a plain object masquerading as a quota error. The instanceof guard
+      // must reject it (a non-DOMException can never be a real quota signal).
+      const fakeQuota = {name: 'QuotaExceededError', code: 22};
+      setItemSpy.and.callFake(() => {
+        if (setItemSpy.calls.count() === 1) {
+          throw fakeQuota;
+        }
+      });
+
+      // Act
+      safeSetItem('k', JSON.stringify([{id: '1'}]));
+
+      // Assert: instanceof DOMException guard short-circuits → no retry.
+      expect(localStorage.setItem).toHaveBeenCalledTimes(1);
+    });
+
+    // -----------------------------------------------------------------------
+    // dropOldestHalf SHAPE detection: distinguish the v:2-envelope arm from the
+    // plain-array arm from the neither-shape fallback, so the shape conditions
+    // are each exercised (mutation survivors otherwise).
+    // -----------------------------------------------------------------------
+
+    it('falls back to an empty array for a JSON object that is NOT an envelope (no items array)', () => {
+      // Arrange: an object whose `items` is absent/non-array — neither envelope nor array.
+      setItemSpy.and.callFake(() => {
+        if (setItemSpy.calls.count() === 1) {
+          throw new DOMException('q', 'QuotaExceededError');
+        }
+      });
+
+      // Act
+      safeSetItem('k', JSON.stringify({v: 2, meta: 'no-items-here'}));
+
+      // Assert: object-without-items is neither shape → reduced to '[]'.
+      const retryValue = JSON.parse(setItemSpy.calls.argsFor(1)[1]);
+      expect(retryValue).toEqual([]);
+    });
+
+    it('drops the oldest half of an ODD-length v:2 envelope using ceil rounding', () => {
+      // Arrange: 5-item envelope; oldest half = ceil(5/2) = 3 dropped → 2 newest remain.
+      const items = Array.from({length: 5}, (_, i) => ({id: `e${i}`}));
+      setItemSpy.and.callFake(() => {
+        if (setItemSpy.calls.count() === 1) {
+          throw new DOMException('q', 'QuotaExceededError');
+        }
+      });
+
+      // Act
+      safeSetItem('messageQueue', JSON.stringify({v: 2, items}));
+
+      // Assert: envelope preserved; exactly the 2 newest items kept (indexes 3,4).
+      const retry = JSON.parse(setItemSpy.calls.argsFor(1)[1]);
+      expect(retry.v).toBe(2);
+      expect(retry.items.length).toBe(2);
+      expect(retry.items[0].id).toBe('e3');
+      expect(retry.items[1].id).toBe('e4');
+    });
   });
 });

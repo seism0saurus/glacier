@@ -9,6 +9,7 @@
     "test": "ng test",
     "lint": "npx eslint src/app/share/ src/app/subscription*.ts src/app/subscription-persistence.service.ts src/app/hashtag/hashtag.component.ts -c eslint.config.js",
     "arch": "sheriff verify",
+    "mutation": "stryker run",
     "check-i18n-keys": "node scripts/check-i18n-parity.mjs",
     "i18n:check": "node scripts/check-i18n-parity.mjs"
   },
@@ -41,6 +42,8 @@
     "@axe-core/playwright": "^4.11.2",
     "@playwright/test": "^1.59.1",
     "@softarc/sheriff-core": "^0.19.6",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/karma-runner": "^9.6.1",
     "@types/jasmine": "^5.1.15",
     "@types/node": "^22.19.17",
     "@types/qrcode": "1.5.6",
