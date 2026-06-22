@@ -1,4 +1,4 @@
-import {NgModule} from '@angular/core';
+import {NgModule, DOCUMENT} from '@angular/core';
 import {BrowserModule} from '@angular/platform-browser';
 import {NgIf} from '@angular/common';
 
@@ -21,7 +21,7 @@ import {ResourceUrlSanitizerPipe} from "./wall/resource-url-sanitizer.pipe";
 import {CookieService} from "ngx-cookie-service";
 import {MatGridList, MatGridTile} from "@angular/material/grid-list";
 import {MatDialogModule} from "@angular/material/dialog";
-import {DOCUMENT} from "@angular/common";
+
 import {MatSnackBarModule} from "@angular/material/snack-bar";
 import {MatMenuModule} from "@angular/material/menu";
 import {MatButtonModule} from "@angular/material/button";

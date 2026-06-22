@@ -10,7 +10,7 @@
       "browsers": ["ChromeHeadless"]
     }
   },
-  "coverageAnalysis": "perTest",
+  "coverageAnalysis": "all",
   "reporters": ["html", "clear-text", "progress"],
   "htmlReporter": {
     "fileName": "reports/mutation/index.html"
