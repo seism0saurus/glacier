@@ -14,7 +14,8 @@ import {RxStompService} from '../rx-stomp.service';
 import {BehaviorSubject, Subject} from 'rxjs';
 import {Message} from '@stomp/stompjs';
 import {MatProgressSpinner, MatProgressSpinnerModule} from '@angular/material/progress-spinner';
-import {MatTooltipModule} from '@angular/material/tooltip';
+import {MatTooltip, MatTooltipModule} from '@angular/material/tooltip';
+import {MatButtonModule} from '@angular/material/button';
 import {By} from '@angular/platform-browser';
 
 describe('HashtagComponent', () => {
@@ -51,6 +52,7 @@ describe('HashtagComponent', () => {
         MatSnackBarModule,
         MatProgressSpinnerModule,
         MatTooltipModule,
+        MatButtonModule,
       ],
       providers: [
         {provide: SubscriptionService, useValue: mockSubscriptionService},
@@ -220,6 +222,54 @@ describe('HashtagComponent', () => {
       const label = btn.getAttribute('aria-label');
       expect(label).toBeTruthy();
       expect(label!.length).toBeGreaterThan(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Cancel-all embedded at the end of the chip field (clarifies that the
+  // action removes the hashtag chips, not the toots). Must stay a11y-conformant.
+  // -------------------------------------------------------------------------
+  describe('cancel-all embedded as a trailing suffix in the chip field', () => {
+    it('renders the cancel-all button INSIDE the mat-form-field (not as an outer sibling)', () => {
+      const inField = fixture.nativeElement.querySelector('mat-form-field #cancel-all');
+      expect(inField)
+        .withContext('cancel-all must be embedded in the chip field as a suffix')
+        .toBeTruthy();
+    });
+
+    it('renders cancel-all in the form-field suffix slot', () => {
+      const suffix = fixture.nativeElement.querySelector(
+        '.mat-mdc-form-field-icon-suffix #cancel-all, .mat-mdc-form-field-text-suffix #cancel-all',
+      );
+      expect(suffix).withContext('cancel-all must sit in the field suffix slot').toBeTruthy();
+    });
+
+    it('cancel-all is a Material icon button (compact, embedded affordance)', () => {
+      const btn = fixture.nativeElement.querySelector('#cancel-all') as HTMLElement;
+      expect(btn.classList).toContain('mat-mdc-icon-button');
+    });
+
+    it('cancel-all keeps a non-empty aria-label (icon-only button needs an accessible name)', () => {
+      const btn = fixture.nativeElement.querySelector('#cancel-all') as HTMLButtonElement;
+      expect(btn.getAttribute('aria-label')?.length).toBeGreaterThan(0);
+    });
+
+    it('cancel-all carries a MatTooltip so sighted users learn its purpose', () => {
+      const withTooltip = fixture.debugElement
+        .queryAll(By.directive(MatTooltip))
+        .map((d) => d.nativeElement as HTMLElement);
+      expect(withTooltip.some((el) => el.id === 'cancel-all'))
+        .withContext('cancel-all must have a MatTooltip describing the action')
+        .toBeTrue();
+    });
+
+    it('clicking cancel-all clears all hashtags and unsubscribes them', () => {
+      component.hashtags = ['alpha', 'beta'];
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('#cancel-all') as HTMLButtonElement).click();
+      expect(component.hashtags.length).toBe(0);
+      expect(mockSubscriptionService.unsubscribeHashtag).toHaveBeenCalledWith('alpha');
+      expect(mockSubscriptionService.unsubscribeHashtag).toHaveBeenCalledWith('beta');
     });
   });
 

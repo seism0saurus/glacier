@@ -49,14 +49,24 @@
              [matChipInputAddOnBlur]="addOnBlur"
              (matChipInputTokenEnd)="add($event)"/>
     </mat-chip-grid>
+    <!--
+      "Alle entfernen" is embedded as a trailing suffix of the chip field so it
+      is visually and programmatically part of the same field as the chips it
+      clears — making it clear the action removes the hashtags, not the toots
+      (A11Y-F-02 / WCAG 2.5.3 Label-in-Name: the visible tooltip text "Alle
+      entfernen" is contained in the aria-label "Alle Hashtags entfernen").
+      Icon-only mat-icon-button gives a 40 px target (WCAG 2.5.8) and a keyboard-
+      focusable native <button>; the tooltip surfaces the label for sighted
+      users while the aria-label names it for assistive technology.
+    -->
+    <button matSuffix mat-icon-button id="cancel-all" type="button"
+            i18n-aria-label="@@hashtag.cancel.all.aria"
+            aria-label="Alle Hashtags entfernen"
+            [matTooltip]="cancelAllTooltip"
+            (click)="clearTags()">
+      <mat-icon aria-hidden="true" svgIcon="cancel_icon"></mat-icon>
+    </button>
   </mat-form-field>
-  <button class="button" id='cancel-all' type="button"
-          i18n-aria-label="@@hashtag.cancel.all.aria"
-          aria-label="Alle Hashtags entfernen"
-          (click)="clearTags()">
-    <mat-icon aria-hidden="true" svgIcon="cancel_icon"></mat-icon>
-    <span i18n="@@hashtag.cancel.all.label">Alle entfernen</span>
-  </button>
   <button class="button" id='clear-toots' type="button"
           i18n-aria-label="@@hashtag.clear.toots.aria"
           aria-label="Alle Toots entfernen"

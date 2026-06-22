@@ -73,6 +73,14 @@ export class HashtagComponent implements OnInit, OnDestroy {
   readonly settlingTooltip: string = $localize`:chip.settling.visual.tooltip@@chip.settling.visual.tooltip:Synchronisiert …`;
 
   /**
+   * Tooltip for the embedded "Alle entfernen" suffix button. The button is
+   * icon-only, so this surfaces the action label to sighted users on hover/focus
+   * while the aria-label names it for assistive technology. Reuses the existing
+   * @@hashtag.cancel.all.label key (formerly the button's visible text).
+   */
+  readonly cancelAllTooltip: string = $localize`:@@hashtag.cancel.all.label:Alle entfernen`;
+
+  /**
    * Set of currently settling hashtags (normalised).
    *
    * Populated by SubscriptionService.settlingHashtags$ and used by the
