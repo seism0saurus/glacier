@@ -1,6 +1,9 @@
 import {Component, OnDestroy, OnInit} from '@angular/core';
 import {Subscription} from 'rxjs';
+import {MatIconRegistry} from '@angular/material/icon';
+import {DomSanitizer} from '@angular/platform-browser';
 import {SubscriptionService} from '../subscription.service';
+import {registerGlacierSvgIcons} from '../icons/glacier-svg-icons';
 
 /**
  * localStorage key used to persist the user's dismiss action.
@@ -51,7 +54,14 @@ export class MigrationBannerComponent implements OnInit, OnDestroy {
 
   private migrationSub?: Subscription;
 
-  constructor(private subscriptionService: SubscriptionService) {}
+  constructor(
+    private subscriptionService: SubscriptionService,
+    iconRegistry: MatIconRegistry,
+    sanitizer: DomSanitizer,
+  ) {
+    // Local SVG icon — the Material Icons webfont is intentionally not shipped.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, ['close_icon']);
+  }
 
   ngOnInit(): void {
     // Do not show the banner if the user has already dismissed it this session

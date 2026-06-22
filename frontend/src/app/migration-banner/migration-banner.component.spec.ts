@@ -8,6 +8,8 @@ import {MatButtonModule} from '@angular/material/button';
 import {NgIf} from '@angular/common';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
+import {provideHttpClient, withInterceptorsFromDi} from '@angular/common/http';
+import {provideHttpClientTesting} from '@angular/common/http/testing';
 
 /**
  * Unit tests for MigrationBannerComponent (ADR-4).
@@ -48,6 +50,8 @@ describe('MigrationBannerComponent', () => {
       ],
       providers: [
         {provide: SubscriptionService, useValue: mockSubscriptionService},
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
       ],
     });
 
@@ -62,6 +66,17 @@ describe('MigrationBannerComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('renders the dismiss-button icon as a local SVG (close_icon), not a font ligature', () => {
+    migratedSubject.next(true);
+    fixture.detectChanges();
+    const icon: HTMLElement = fixture.nativeElement.querySelector('mat-icon');
+    expect(icon).withContext('dismiss icon must exist when banner is visible').toBeTruthy();
+    expect(icon.getAttribute('data-mat-icon-type'))
+      .withContext('icon must use the local svgIcon path, not a font ligature')
+      .toBe('svg');
+    expect(icon.getAttribute('data-mat-icon-name')).toBe('close_icon');
   });
 
   describe('B1 — Banner appears on migration signal', () => {

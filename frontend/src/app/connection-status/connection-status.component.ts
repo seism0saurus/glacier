@@ -1,7 +1,10 @@
 import {Component, OnDestroy, OnInit} from '@angular/core';
 import {Subscription} from 'rxjs';
+import {MatIconRegistry} from '@angular/material/icon';
+import {DomSanitizer} from '@angular/platform-browser';
 import {TransportMode} from '../fallback/transport-mode';
 import {FallbackService} from '../fallback/fallback.service';
+import {registerGlacierSvgIcons} from '../icons/glacier-svg-icons';
 
 /**
  * Per-state display metadata.
@@ -9,7 +12,7 @@ import {FallbackService} from '../fallback/fallback.service';
 interface StateDisplay {
   /** CSS modifier class suffix, e.g. "websocket" → .connection-chip--websocket */
   readonly modeKey: string;
-  /** Material icon ligature name. */
+  /** Registered local SVG icon name (svgIcon), e.g. "wifi_icon". */
   readonly iconName: string;
   /** Short chip label (German default, D-18). */
   readonly label: string;
@@ -49,8 +52,8 @@ export class ConnectionStatusComponent implements OnInit, OnDestroy {
   /** CSS class modifier for the current state. */
   modeKey = 'websocket';
 
-  /** Material icon name for the current state. */
-  iconName = 'wifi';
+  /** Registered local SVG icon name (svgIcon) for the current state. */
+  iconName = 'wifi_icon';
 
   /** Short chip label. */
   chipLabel = $localize`:connection.websocket.label@@connection.websocket.label:Live`;
@@ -80,49 +83,64 @@ export class ConnectionStatusComponent implements OnInit, OnDestroy {
   private readonly _stateDisplayMap: ReadonlyMap<TransportMode, StateDisplay> = new Map([
     [TransportMode.WEBSOCKET, {
       modeKey: 'websocket',
-      iconName: 'wifi',
+      iconName: 'wifi_icon',
       label: $localize`:connection.websocket.label@@connection.websocket.label:Live`,
       detail: $localize`:connection.websocket.detail@@connection.websocket.detail:Toots werden live via WebSocket gestreamt.`,
       showReloadCta: false,
     }],
     [TransportMode.PROBING, {
       modeKey: 'probing',
-      iconName: 'sync',
+      iconName: 'sync_icon',
       label: $localize`:connection.probing.label@@connection.probing.label:Verbinde…`,
       detail: $localize`:connection.probing.detail@@connection.probing.detail:WebSocket-Verbindung wird wiederhergestellt.`,
       showReloadCta: false,
     }],
     [TransportMode.FALLBACK, {
       modeKey: 'fallback',
-      iconName: 'cloud_download',
+      iconName: 'cloud_download_icon',
       label: $localize`:connection.fallback.label@@connection.fallback.label:Fallback-Modus`,
       detail: $localize`:connection.fallback.detail@@connection.fallback.detail:WebSocket ist nicht verfügbar. Toots werden alle 5 Sekunden abgerufen.`,
       showReloadCta: false,
     }],
     [TransportMode.OFFLINE, {
       modeKey: 'offline',
-      iconName: 'cloud_off',
+      iconName: 'cloud_off_icon',
       label: $localize`:connection.offline.label@@connection.offline.label:Offline`,
       detail: $localize`:connection.offline.detail@@connection.offline.detail:Ihre Sitzung ist abgelaufen. Bitte laden Sie die Seite neu.`,
       showReloadCta: true,
     }],
     [TransportMode.KILLSWITCHED, {
       modeKey: 'killswitched',
-      iconName: 'block',
+      iconName: 'block_icon',
       label: $localize`:connection.killswitched.label@@connection.killswitched.label:Eingeschränkt`,
       detail: $localize`:connection.killswitched.detail@@connection.killswitched.detail:Der Betreiber hat den Fallback-Modus deaktiviert.`,
       showReloadCta: true,
     }],
     [TransportMode.INSECURE, {
       modeKey: 'insecure',
-      iconName: 'lock_open',
+      iconName: 'lock_open_icon',
       label: $localize`:connection.insecure.label@@connection.insecure.label:Unsichere Verbindung`,
       detail: $localize`:connection.insecure.detail@@connection.insecure.detail:Diese Seite wird über eine unsichere Verbindung ausgeliefert. Der Fallback-Modus ist zu Ihrem Schutz deaktiviert.`,
       showReloadCta: false,
     }],
   ]);
 
-  constructor(private readonly fallbackService: FallbackService) {}
+  constructor(
+    private readonly fallbackService: FallbackService,
+    iconRegistry: MatIconRegistry,
+    sanitizer: DomSanitizer,
+  ) {
+    // Register the chip's state icons as local SVGs. The Material Icons webfont
+    // is intentionally not shipped, so font ligatures would render blank.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, [
+      'wifi_icon',
+      'sync_icon',
+      'cloud_download_icon',
+      'cloud_off_icon',
+      'block_icon',
+      'lock_open_icon',
+    ]);
+  }
 
   ngOnInit(): void {
     this._modeSub = this.fallbackService.transportMode$.subscribe(mode => {

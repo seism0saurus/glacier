@@ -20,6 +20,8 @@ import {MatIconModule} from '@angular/material/icon';
 import {MatButtonModule} from '@angular/material/button';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {NgIf} from '@angular/common';
+import {provideHttpClient, withInterceptorsFromDi} from '@angular/common/http';
+import {provideHttpClientTesting} from '@angular/common/http/testing';
 
 describe('ConnectionStatusComponent', () => {
   let component: ConnectionStatusComponent;
@@ -52,6 +54,10 @@ describe('ConnectionStatusComponent', () => {
       ],
       providers: [
         {provide: FallbackService, useValue: fallbackServiceSpy},
+        // MatIconRegistry needs an HttpClient to resolve the chip's local
+        // svgIcon assets; the testing backend keeps the fetch from erroring.
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
       ],
     });
 
@@ -255,6 +261,38 @@ describe('ConnectionStatusComponent', () => {
     // serialises the template into the compiled component view — confirm not present.)
     expect(html).not.toContain('role="document"');
   });
+
+  // -------------------------------------------------------------------------
+  // ICON-LOCAL: chip icon renders as a locally-bundled SVG (svgIcon), never a
+  // Material-font ligature. The Material Icons webfont is intentionally not
+  // shipped, so a font-mode mat-icon would render blank/broken.
+  // Every fallback state must map to a registered local SVG icon
+  // (glacier-fallback-mode-discipline: all six states + transient probing).
+  // -------------------------------------------------------------------------
+  const ICON_BY_MODE: ReadonlyArray<[TransportMode, string]> = [
+    [TransportMode.WEBSOCKET, 'wifi_icon'],
+    [TransportMode.PROBING, 'sync_icon'],
+    [TransportMode.FALLBACK, 'cloud_download_icon'],
+    [TransportMode.OFFLINE, 'cloud_off_icon'],
+    [TransportMode.KILLSWITCHED, 'block_icon'],
+    [TransportMode.INSECURE, 'lock_open_icon'],
+  ];
+
+  for (const [mode, expectedIcon] of ICON_BY_MODE) {
+    it(`renders the chip icon as a local SVG (${expectedIcon}) in ${TransportMode[mode]} state`, () => {
+      modeSubject.next(mode);
+      fixture.detectChanges();
+      const icon: HTMLElement =
+        fixture.nativeElement.querySelector('mat-icon.connection-chip__icon');
+      expect(icon).withContext('chip icon must exist').toBeTruthy();
+      expect(icon.getAttribute('data-mat-icon-type'))
+        .withContext('icon must use the svgIcon path, not a font ligature')
+        .toBe('svg');
+      expect(icon.getAttribute('data-mat-icon-name')).toBe(expectedIcon);
+      // A font ligature would leave its text content in the element; svgIcon must not.
+      expect(icon.textContent?.trim()).toBe('');
+    });
+  }
 
   // -------------------------------------------------------------------------
   // SHELL-07: live region must NOT have aria-label (double-announcement fix)

@@ -4,6 +4,8 @@ import { ReadonlyTootComponent } from './readonly-toot.component';
 import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
 import { ReadonlyTootView, LinkRef } from '../../model/readonly-toot-view';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 /**
  * Exhaustive XSS corpus + accessibility tests for ReadonlyTootComponent.
@@ -55,7 +57,11 @@ describe('ReadonlyTootComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ReadonlyTootComponent, SafeUrlPipe],
-      providers: [provideAnimations()],
+      providers: [
+        provideAnimations(),
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(ReadonlyTootComponent);
@@ -66,6 +72,16 @@ describe('ReadonlyTootComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('renders the bidi-stripped info badge as a local SVG icon (not a font ligature)', () => {
+    setToot({ bidiStripped: true });
+    const icon: HTMLElement = fixture.nativeElement.querySelector('mat-icon');
+    expect(icon).withContext('bidi info icon must exist').toBeTruthy();
+    expect(icon.getAttribute('data-mat-icon-type'))
+      .withContext('icon must use the local svgIcon path, not a font ligature')
+      .toBe('svg');
+    expect(icon.getAttribute('data-mat-icon-name')).toBe('info_icon');
   });
 
   // ---- Semantic structure ----

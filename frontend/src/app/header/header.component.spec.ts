@@ -32,6 +32,16 @@ describe('HeaderComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('renders the share button icon as a local SVG (svgIcon="share_icon"), not a font ligature', () => {
+    const icon: HTMLElement = fixture.nativeElement.querySelector('mat-icon');
+    expect(icon).withContext('share icon must exist').toBeTruthy();
+    expect(icon.getAttribute('svgIcon'))
+      .withContext('icon must reference a local svgIcon, not a font ligature')
+      .toBe('share_icon');
+    // A font ligature would leave the literal text "share" in the element.
+    expect(icon.textContent?.trim()).toBe('');
+  });
+
   describe('animation', () => {
     it('should start extended', () => {
       expect(component.extended).toBeTruthy();

@@ -51,7 +51,8 @@
     class="connection-chip__icon"
     [class.rotating-icon]="isProbing"
     aria-hidden="true"
-  >{{ iconName }}</mat-icon>
+    [svgIcon]="iconName"
+  ></mat-icon>
 
   <!-- Label -->
   <span class="connection-chip__label">{{ chipLabel }}</span>

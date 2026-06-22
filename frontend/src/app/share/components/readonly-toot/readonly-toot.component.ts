@@ -4,9 +4,10 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
+import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { SafeUrl } from '@angular/platform-browser';
+import { SafeUrl, DomSanitizer } from '@angular/platform-browser';
+import { registerGlacierSvgIcons } from '../../../icons/glacier-svg-icons';
 import { ReadonlyTootView } from '../../model/readonly-toot-view';
 import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
 import { MediaRefComponent } from '../media-ref/media-ref.component';
@@ -85,7 +86,7 @@ import { CwToggleComponent } from '../cw-toggle/cw-toggle.component';
           [matTooltip]="bidiTooltipText"
           [attr.aria-label]="bidiAriaLabel"
         >
-          <mat-icon aria-hidden="true" fontIcon="info"></mat-icon>
+          <mat-icon aria-hidden="true" svgIcon="info_icon"></mat-icon>
           <span i18n="@@share.toot.bidi.stripped.label">Richtungszeichen entfernt</span>
         </span>
       }
@@ -196,6 +197,11 @@ import { CwToggleComponent } from '../cw-toggle/cw-toggle.component';
 export class ReadonlyTootComponent {
 
   @Input({ required: true }) toot!: ReadonlyTootView;
+
+  constructor(iconRegistry: MatIconRegistry, sanitizer: DomSanitizer) {
+    // Local SVG icon — the Material Icons webfont is intentionally not shipped.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, ['info_icon']);
+  }
 
   /** Unique heading ID to satisfy aria-labelledby. */
   get headingId(): string {

@@ -1,7 +1,9 @@
 import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { MatIconModule } from '@angular/material/icon';
+import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
+import { DomSanitizer } from '@angular/platform-browser';
+import { registerGlacierSvgIcons } from '../../../icons/glacier-svg-icons';
 
 /**
  * Content-warning (CW) toggle using native `<details>`/`<summary>`.
@@ -40,7 +42,7 @@ import { MatIconModule } from '@angular/material/icon';
         [attr.aria-expanded]="isOpen"
         [attr.aria-controls]="bodyId"
       >
-        <mat-icon aria-hidden="true" fontIcon="warning"></mat-icon>
+        <mat-icon aria-hidden="true" svgIcon="warning_icon"></mat-icon>
         <span class="cw-spoiler-text">{{ spoilerText }}</span>
         <span class="cw-hint" i18n="@@share.toot.cw.toggle.show">Inhalt anzeigen</span>
       </summary>
@@ -73,7 +75,14 @@ export class CwToggleComponent {
 
   isOpen = false;
 
-  constructor(private liveAnnouncer: LiveAnnouncer) {}
+  constructor(
+    private liveAnnouncer: LiveAnnouncer,
+    iconRegistry: MatIconRegistry,
+    sanitizer: DomSanitizer,
+  ) {
+    // Local SVG icon — the Material Icons webfont is intentionally not shipped.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, ['warning_icon']);
+  }
 
   get detailsId(): string {
     return `cw-details-${this.tootId}`;

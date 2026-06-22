@@ -2,6 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MediaRefComponent } from './media-ref.component';
 import { MediaRef } from '../../model/readonly-toot-view';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 describe('MediaRefComponent', () => {
   let component: MediaRefComponent;
@@ -46,7 +48,11 @@ describe('MediaRefComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [MediaRefComponent],
-      providers: [provideAnimations()],
+      providers: [
+        provideAnimations(),
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(MediaRefComponent);
@@ -57,6 +63,17 @@ describe('MediaRefComponent', () => {
     component.media = imageMedia;
     fixture.detectChanges();
     expect(component).toBeTruthy();
+  });
+
+  it('renders the missing-alt warning as a local SVG icon (not a font ligature)', () => {
+    component.media = imageNoAlt;
+    fixture.detectChanges();
+    const icon: HTMLElement = fixture.nativeElement.querySelector('mat-icon');
+    expect(icon).withContext('missing-alt warning icon must exist').toBeTruthy();
+    expect(icon.getAttribute('data-mat-icon-type'))
+      .withContext('icon must use the local svgIcon path, not a font ligature')
+      .toBe('svg');
+    expect(icon.getAttribute('data-mat-icon-name')).toBe('warning_icon');
   });
 
   describe('image rendering', () => {

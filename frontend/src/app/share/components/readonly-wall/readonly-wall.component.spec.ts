@@ -15,6 +15,8 @@ import { ViewerTransportMode } from '../../services/viewer-transport-mode';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 describe('ReadonlyWallComponent', () => {
   let component: ReadonlyWallComponent;
@@ -83,6 +85,8 @@ describe('ReadonlyWallComponent', () => {
       imports: [ReadonlyWallComponent],
       providers: [
         provideAnimations(),
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: ReadonlyWallService, useValue: wallServiceSpy },
         { provide: ReadonlyWallStompClient, useValue: stompClientSpy },
@@ -118,6 +122,28 @@ describe('ReadonlyWallComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  // ---- VIEW-03: transport status icon is a local SVG, never a font ligature ----
+  const TRANSPORT_ICON: ReadonlyArray<[ViewerTransportMode, string]> = [
+    [ViewerTransportMode.LIVE, 'wifi_icon'],
+    [ViewerTransportMode.PROBING, 'sync_icon'],
+    [ViewerTransportMode.FALLBACK, 'sync_problem_icon'],
+  ];
+
+  for (const [mode, expectedIcon] of TRANSPORT_ICON) {
+    it(`renders the transport-status icon as a local SVG (${expectedIcon}) in ${ViewerTransportMode[mode]} mode`, () => {
+      transportModeSubject.next(mode);
+      fixture.detectChanges();
+      const icon: HTMLElement = fixture.nativeElement.querySelector(
+        '[data-testid="transport-status"] mat-icon',
+      );
+      expect(icon).withContext('transport-status icon must exist').toBeTruthy();
+      expect(icon.getAttribute('data-mat-icon-type'))
+        .withContext('icon must use the local svgIcon path, not a font ligature')
+        .toBe('svg');
+      expect(icon.getAttribute('data-mat-icon-name')).toBe(expectedIcon);
+    });
+  }
 
   // ---- role="feed" ----
 

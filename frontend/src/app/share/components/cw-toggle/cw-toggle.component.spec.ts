@@ -3,6 +3,8 @@ import { ChangeDetectorRef } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { CwToggleComponent } from './cw-toggle.component';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 describe('CwToggleComponent', () => {
   let component: CwToggleComponent;
@@ -28,6 +30,8 @@ describe('CwToggleComponent', () => {
       providers: [
         provideAnimations(),
         { provide: LiveAnnouncer, useValue: liveAnnouncerSpy },
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
       ],
     }).compileComponents();
 
@@ -36,6 +40,15 @@ describe('CwToggleComponent', () => {
     component.tootId = 'test-toot-1';
     component.spoilerText = 'Content warning: sensitive topic';
     fixture.detectChanges();
+  });
+
+  it('renders the CW warning as a local SVG icon (not a Material font ligature)', () => {
+    const icon: HTMLElement = fixture.nativeElement.querySelector('mat-icon');
+    expect(icon).withContext('warning icon must exist').toBeTruthy();
+    expect(icon.getAttribute('data-mat-icon-type'))
+      .withContext('icon must use the local svgIcon path, not a font ligature')
+      .toBe('svg');
+    expect(icon.getAttribute('data-mat-icon-name')).toBe('warning_icon');
   });
 
   it('should create', () => {

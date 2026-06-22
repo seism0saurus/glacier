@@ -10,12 +10,14 @@ import {
 import { CommonModule } from '@angular/common';
 import { MatDialogModule, MatDialogRef, MatDialog } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
+import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
+import { DomSanitizer } from '@angular/platform-browser';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { ShareLinkService } from '../share/services/share-link.service';
+import { registerGlacierSvgIcons } from '../icons/glacier-svg-icons';
 import { QrCodeComponent } from '../qr-code/qr-code.component';
 import {
   ShareLinkCreated,
@@ -108,7 +110,7 @@ import {
               class="copy-btn-min-size"
               data-testid="copy-button"
             >
-              <mat-icon fontIcon="content_copy"></mat-icon>
+              <mat-icon svgIcon="content_copy_icon"></mat-icon>
             </button>
           </div>
 
@@ -262,7 +264,12 @@ export class ShareDialogComponent implements OnInit {
     private dialog: MatDialog,
     private liveAnnouncer: LiveAnnouncer,
     @Inject(LOCALE_ID) private locale: string,
-  ) {}
+    iconRegistry: MatIconRegistry,
+    sanitizer: DomSanitizer,
+  ) {
+    // Local SVG icon — the Material Icons webfont is intentionally not shipped.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, ['content_copy_icon']);
+  }
 
   ngOnInit(): void {
     this.loadExistingLinks();

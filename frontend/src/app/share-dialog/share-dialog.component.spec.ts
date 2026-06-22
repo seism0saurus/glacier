@@ -12,6 +12,8 @@ import { ShareDialogComponent } from './share-dialog.component';
 import { ShareLinkService } from '../share/services/share-link.service';
 import { ShareLinkCreated, ShareLinkEntry } from '../share/model/readonly-toot-view';
 import { provideAnimations } from '@angular/platform-browser/animations';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 
 describe('ShareDialogComponent', () => {
   let component: ShareDialogComponent;
@@ -56,6 +58,8 @@ describe('ShareDialogComponent', () => {
       imports: [ShareDialogComponent],
       providers: [
         provideAnimations(),
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
         { provide: MatDialogRef, useValue: dialogRefSpy },
         { provide: ShareLinkService, useValue: shareLinkServiceSpy },
         { provide: MatDialog, useValue: dialogSpy },
@@ -77,6 +81,19 @@ describe('ShareDialogComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('renders the copy-URL button icon as a local SVG (content_copy_icon), not a font ligature', () => {
+    component.activeLink.set(mockCreated);
+    fixture.detectChanges();
+    const icon: HTMLElement = fixture.nativeElement.querySelector(
+      '[data-testid="copy-button"] mat-icon',
+    );
+    expect(icon).withContext('copy icon must exist when a link is active').toBeTruthy();
+    expect(icon.getAttribute('data-mat-icon-type'))
+      .withContext('icon must use the local svgIcon path, not a font ligature')
+      .toBe('svg');
+    expect(icon.getAttribute('data-mat-icon-name')).toBe('content_copy_icon');
   });
 
   it('loads existing links on init', () => {

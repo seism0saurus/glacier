@@ -2,7 +2,10 @@ import {Component, OnDestroy, OnInit} from '@angular/core';
 import {AnimationService} from "../animation.service";
 import {Subscription} from "rxjs";
 import {MatDialog} from "@angular/material/dialog";
+import {MatIconRegistry} from "@angular/material/icon";
+import {DomSanitizer} from "@angular/platform-browser";
 import {ShareDialogComponent} from "../share-dialog/share-dialog.component";
+import {registerGlacierSvgIcons} from "../icons/glacier-svg-icons";
 
 /**
  * Represents the header component of the application.
@@ -33,7 +36,12 @@ export class HeaderComponent implements OnInit, OnDestroy{
   constructor(
     private animationService: AnimationService,
     private dialog: MatDialog,
-  ) {}
+    iconRegistry: MatIconRegistry,
+    sanitizer: DomSanitizer,
+  ) {
+    // Local SVG icon — the Material Icons webfont is intentionally not shipped.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, ['share_icon']);
+  }
 
   ngOnInit() {
     this.extendedSubscription = this.animationService.getHeaderExtended()

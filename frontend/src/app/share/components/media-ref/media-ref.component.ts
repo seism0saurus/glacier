@@ -1,8 +1,10 @@
 import { Component, Input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
+import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
+import { DomSanitizer } from '@angular/platform-browser';
 import { MediaRef } from '../../model/readonly-toot-view';
 import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
+import { registerGlacierSvgIcons } from '../../../icons/glacier-svg-icons';
 
 /**
  * Renders a single media attachment in a read-only toot.
@@ -60,7 +62,7 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
               class="media-missing-alt"
               data-testid="missing-alt-warning"
             >
-              <mat-icon aria-hidden="true" fontIcon="warning"></mat-icon>
+              <mat-icon aria-hidden="true" svgIcon="warning_icon"></mat-icon>
               <span i18n="@@share.toot.media.missing-alt">Dieses Bild hat keinen Alternativtext</span>
             </figcaption>
           }
@@ -78,7 +80,7 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
           @if (!media.altText) {
             <!-- VIEW-08: No role="alert" on gifv missing-alt either -->
             <figcaption class="media-missing-alt" data-testid="missing-alt-warning">
-              <mat-icon aria-hidden="true" fontIcon="warning"></mat-icon>
+              <mat-icon aria-hidden="true" svgIcon="warning_icon"></mat-icon>
               <span i18n="@@share.toot.media.missing-alt">Dieses Bild hat keinen Alternativtext</span>
             </figcaption>
           }
@@ -168,4 +170,9 @@ import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
 })
 export class MediaRefComponent {
   @Input({ required: true }) media!: MediaRef;
+
+  constructor(iconRegistry: MatIconRegistry, sanitizer: DomSanitizer) {
+    // Local SVG icon — the Material Icons webfont is intentionally not shipped.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, ['warning_icon']);
+  }
 }

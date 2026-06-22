@@ -11,8 +11,10 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatIconModule } from '@angular/material/icon';
+import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
+import { DomSanitizer } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
+import { registerGlacierSvgIcons } from '../../../icons/glacier-svg-icons';
 import { ReadonlyWallService } from '../../services/readonly-wall.service';
 import { ReadonlyWallStompClient } from '../../services/readonly-wall-stomp-client.service';
 import { ViewerTransportMode } from '../../services/viewer-transport-mode';
@@ -113,7 +115,7 @@ import { ReadonlyTootView } from '../../model/readonly-toot-view';
           [class]="'transport-status transport-status--' + currentTransportMode.toLowerCase()"
           data-testid="transport-status"
         >
-          <mat-icon aria-hidden="true" [fontIcon]="transportStatusIcon"></mat-icon>
+          <mat-icon aria-hidden="true" [svgIcon]="transportStatusIcon"></mat-icon>
           <span>{{ transportStatusLabel }}</span>
         </div>
       }
@@ -289,14 +291,17 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * VIEW-03: Icon name for the current transport mode (text+icon, not color alone).
+   * VIEW-03: Registered local SVG icon name for the current transport mode
+   * (text+icon, not color alone). These are self-hosted SVGs — the Material
+   * Icons webfont is intentionally not shipped, so font ligatures would render
+   * blank in the share view.
    */
   get transportStatusIcon(): string {
     switch (this.currentTransportMode) {
-      case ViewerTransportMode.LIVE:     return 'wifi';
-      case ViewerTransportMode.PROBING:  return 'sync';
-      case ViewerTransportMode.FALLBACK: return 'sync_problem';
-      default:                           return 'sync';
+      case ViewerTransportMode.LIVE:     return 'wifi_icon';
+      case ViewerTransportMode.PROBING:  return 'sync_icon';
+      case ViewerTransportMode.FALLBACK: return 'sync_problem_icon';
+      default:                           return 'sync_icon';
     }
   }
 
@@ -356,7 +361,16 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
     private liveAnnouncer: LiveAnnouncer,
     private cdr: ChangeDetectorRef,
     @Inject(LOCALE_ID) private locale: string,
-  ) {}
+    iconRegistry: MatIconRegistry,
+    sanitizer: DomSanitizer,
+  ) {
+    // VIEW-03: register the transport-status icons as local SVGs.
+    registerGlacierSvgIcons(iconRegistry, sanitizer, [
+      'wifi_icon',
+      'sync_icon',
+      'sync_problem_icon',
+    ]);
+  }
 
   ngOnInit(): void {
     const shareId = this.route.snapshot.paramMap.get('shareId') ?? '';
