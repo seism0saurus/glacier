@@ -34,6 +34,11 @@ When writing a new ADR, add a row here in the acceptance commit.
 
 ## Security
 
+### External Architecture/Security Review — gpt-5.2-pro (`gpt5-architecture-review`)
+| File | Summary |
+|---|---|
+| [2026-06-22-acceptance-gpt5-architecture-review.md](2026-06-22-acceptance-gpt5-architecture-review.md) | Review+Remediation: F1/F3/F4/F11/NF1/F7/F5 fixed (TDD, verify green); F2/F12 refuted; **F13 (no server-side viewer kick on revoke) accepted as a known residual** |
+
 ### Pentest Findings F-1 + F-2 (`pentest-findings`)
 | File | Summary |
 |---|---|
