@@ -282,3 +282,20 @@ jobs:
         # SR-NA-01/SR-NA-04: gates on high/critical advisories; no continue-on-error
         # --omit=dev: scopes audit to production runtime deps only; dev-toolchain advisories
         # (e.g. @angular/cli, webpack loaders) are never included in the deployed SPA bundle
+
+  # secret-scan — gitleaks gate (D-13/SR-8 at the VCS layer): no committed secrets
+  # (wallId / token / cookie / API key). Scans INCREMENTALLY — the pushed commits on
+  # push, the PR diff on pull_request — so it gates NEW secrets without failing on the
+  # repo's pre-existing local-only seed token (allowlisted via .gitleaks.toml anyway).
+  # Free for this public, user-owned repo (GITLEAKS_LICENSE is only for org accounts).
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

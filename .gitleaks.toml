@@ -1,0 +1,18 @@
+# gitleaks configuration for Glacier — secret-scan gate (security.yml `secret-scan` job).
+#
+# Reinforces the D-13 / SR-8 discipline (no wallId / token / cookie / API key ever
+# committed) at the version-control layer, complementing the runtime LogScrubber
+# controls and the ZAP/Trivy scans.
+
+[extend]
+# Start from gitleaks' built-in rule set (generic API keys, tokens, private keys, …).
+useDefault = true
+
+[allowlist]
+description = "Local-only seed/test material — never real credentials (security.yml rules of engagement)."
+# The dockerized Mastodon fixture under infrastructure/ ships a throwaway access token
+# used ONLY against the seeded local instance (documented in security.yml). It is not a
+# real credential, so it must not fail the secret-scan gate.
+paths = [
+  '''^infrastructure/''',
+]
