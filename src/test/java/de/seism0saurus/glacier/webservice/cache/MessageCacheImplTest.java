@@ -1,5 +1,7 @@
 package de.seism0saurus.glacier.webservice.cache;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
@@ -9,6 +11,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
@@ -63,6 +66,46 @@ class MessageCacheImplTest {
         assertThat(stored.sequence()).isEqualTo(1L);
         verify(template, times(1)).convertAndSend(
                 eq("/topic/hashtags/principal-A/cats/creation"), any(Object.class));
+    }
+
+    /**
+     * F1 (D-13 / SR-8): the publish path must NOT log the raw STOMP destination, because
+     * it embeds the raw wallId UUID (/topic/hashtags/{wallId}/{hashtag}/...). The
+     * MessageCacheImpl logger was previously not covered by the RawWallIdLogHygiene canary,
+     * so the leak slipped through. Assert both the formatted message and the lazily-rendered
+     * argument array (CWE-117 / log injection).
+     */
+    @Test
+    void recordThenPublish_doesNotLogRawWallId() {
+        final String canaryUuid = "550e8400-e29b-41d4-a716-446655440000";
+        final ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(MessageCacheImpl.class);
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            cache.provisionHashtag(wall(canaryUuid), "cats");
+            cache.recordThenPublish(wall(canaryUuid), "cats", partial(EventType.CREATED, "s1"));
+
+            assertThat(appender.list)
+                    .as("the publish log path must have been exercised")
+                    .isNotEmpty();
+            for (ILoggingEvent event : appender.list) {
+                assertThat(event.getFormattedMessage())
+                        .as("no log line may contain the raw wallId (D-13/SR-8)")
+                        .doesNotContain(canaryUuid);
+                if (event.getArgumentArray() != null) {
+                    for (Object arg : event.getArgumentArray()) {
+                        assertThat(String.valueOf(arg))
+                                .as("no log argument may contain the raw wallId (D-13/SR-8)")
+                                .doesNotContain(canaryUuid);
+                    }
+                }
+            }
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
     }
 
     @Test

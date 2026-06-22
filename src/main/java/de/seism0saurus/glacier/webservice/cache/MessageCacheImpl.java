@@ -277,7 +277,10 @@ public class MessageCacheImpl implements MessageCache {
             final PrincipalKey key, final String hashtag) {
         try {
             simpMessagingTemplate.convertAndSend(destination, buildStompPayload(entry));
-            LOGGER.info("Sending message to {} sequence={} statusId={}", destination, entry.sequence(), entry.statusId());
+            // D-13 / SR-8 (F1): never log the raw destination — it embeds the raw wallId
+            // (/topic/hashtags/{wallId}/...). Log scrubbed, structured fields instead.
+            LOGGER.info("Sent message principal-hash={} hashtag={} eventType={} sequence={} statusId={}",
+                    LogScrubber.hash8(key.name()), hashtag, entry.type(), entry.sequence(), entry.statusId());
         } catch (MessageDeliveryException ex) {
             // Single retry after 200 ms — transient broker backlog recovery (P2-12)
             LOGGER.warn("STOMP publish failed (attempt 1/2) principal-hash={} hashtag={} sequence={} statusId={} " +

@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * SubscriptionListener is responsible for handling WebSocket-related events
@@ -159,10 +160,11 @@ public class SubscriptionListener {
     /**
      * Checks if there is an active disconnect timer associated with the specified principal.
      *
-     * @return true if a disconnect timer is currently running for the specified principal, false otherwise
+     * @param principal the principal (wallId) to check for a running disconnect timer
+     * @return true if a disconnect timer is currently running for the given principal, false otherwise
      */
-    protected boolean hasRunningDisconnectTimer() {
-        return this.disconnectTimer.containsKey("user1");
+    protected boolean hasRunningDisconnectTimer(String principal) {
+        return this.disconnectTimer.containsKey(principal);
     }
 
     /**
@@ -241,6 +243,9 @@ public class SubscriptionListener {
                 LogScrubber.hash8(principalName),
                 currentDelay);
 
+        // Q-02 / F3: holds a reference to *this* timer's Future so the lambda can remove
+        // itself from the map identity-safely (only if it is still the current timer).
+        final AtomicReference<Future<?>> selfRef = new AtomicReference<>();
         Future<?> future = executorService.submit(() -> {
             // D-13/SR-8: hash the principal in all timer-lambda log lines — capture hash once for closure
             // raw principal stays in the closure only to pass to terminateAllSubscriptions
@@ -259,11 +264,24 @@ public class SubscriptionListener {
             // (fallback-mode-only clients) are also cleaned up.  Idempotent if already evicted.
             // ADR-SHARE-05 (revised): wrap wallId in PrincipalKey to prevent cross-namespace collision.
             this.messageCache.evictPrincipal(new PrincipalKey(PrincipalKind.WALL, principalName));
-            this.disconnectTimer.remove(principalName);
+            // F3: identity-safe removal — only clear the map entry if it still points at THIS
+            // timer, so a newer disconnect's timer (installed concurrently) is never dropped.
+            this.disconnectTimer.remove(principalName, selfRef.get());
             // Clear back-off state after termination so a fresh reconnect starts from scratch
             this.backoffDelayMs.remove(principalName);
         });
-        this.disconnectTimer.put(principalName, future);
+        selfRef.set(future);
+        // F3: atomically install the new timer and cancel any prior (orphaned) timer for this
+        // principal. Without this, a second disconnect would overwrite the map entry while the
+        // first timer kept running — and could terminate all subscriptions even after the client
+        // successfully reconnected (onConnectedEvent only cancels the *currently mapped* future).
+        // The cancelled timer is interrupted mid-sleep and returns early without terminating.
+        this.disconnectTimer.compute(principalName, (key, previous) -> {
+            if (previous != null) {
+                previous.cancel(true);
+            }
+            return future;
+        });
     }
 
     /**

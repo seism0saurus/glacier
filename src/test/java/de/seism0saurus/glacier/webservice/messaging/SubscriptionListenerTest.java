@@ -32,7 +32,7 @@ class SubscriptionListenerTest {
 
         // Validate behavior
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
     }
 
     @Test
@@ -54,14 +54,14 @@ class SubscriptionListenerTest {
 
         // Validate state before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertTrue(subscriptionListener.hasRunningDisconnectTimer());
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer("user1"));
 
         // Mock the event
         connect(principal);
 
         // Validate behavior
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
     }
 
     @Test
@@ -77,21 +77,21 @@ class SubscriptionListenerTest {
 
         // Validate state before timeout
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertTrue(subscriptionListener.hasRunningDisconnectTimer());
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer("user1"));
 
         // wait for timeout
         Thread.sleep(3_000L);
 
         // Validate state before test
         verify(subscriptionManager, times(1)).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
 
         // Mock the event
         connect(principal);
 
         // Validate behavior
         verify(subscriptionManager, times(1)).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
     }
     
     @Test
@@ -104,14 +104,14 @@ class SubscriptionListenerTest {
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
 
         // Mock disconnect
         disconnect(principal);
 
         // Valiate assumptions after test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertTrue(subscriptionListener.hasRunningDisconnectTimer());
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer("user1"));
     }
 
     @Test
@@ -128,7 +128,7 @@ class SubscriptionListenerTest {
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
 
         // Mock disconnect
         disconnect(principal);
@@ -138,7 +138,7 @@ class SubscriptionListenerTest {
 
         // Valiate assumptions after test
         verify(subscriptionManager, times(1)).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
     }
 
     @Test
@@ -151,7 +151,7 @@ class SubscriptionListenerTest {
 
         // Valiate assumptions before test
         verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
-        assertFalse(subscriptionListener.hasRunningDisconnectTimer());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"));
 
         // Mock disconnect
         disconnect(null);
@@ -308,6 +308,44 @@ class SubscriptionListenerTest {
 
         // Set up the given listener to handle the mock event
         listener.onConnectedEvent(event);
+    }
+
+    // -----------------------------------------------------------------------
+    // F11: the timer helper must report per the actual principal, not a
+    //      hardcoded "user1" key.
+    // -----------------------------------------------------------------------
+    @Test
+    void hasRunningDisconnectTimer_reflectsTheActualPrincipal_notAHardcodedKey() {
+        Principal alice = () -> "alice";
+        disconnect(alice);
+
+        assertTrue(subscriptionListener.hasRunningDisconnectTimer("alice"),
+                "a running timer must be reported for the principal that disconnected");
+        assertFalse(subscriptionListener.hasRunningDisconnectTimer("user1"),
+                "no timer must be reported for an unrelated principal");
+    }
+
+    // -----------------------------------------------------------------------
+    // F3: a second disconnect for the same principal must cancel the prior
+    //     timer, so that a reconnect cannot be undone by an orphaned timer.
+    // -----------------------------------------------------------------------
+    @Test
+    void doubleDisconnectThenReconnect_doesNotTerminateSubscriptions() throws Exception {
+        // Short base delay so the (orphaned) first timer would fire quickly if not cancelled.
+        subscriptionListener = new SubscriptionListener(
+                subscriptionManager, messageCache, 500L, 300_000L, 2.0);
+        Principal principal = () -> "user1";
+
+        connect(principal);
+        disconnect(principal);  // timer1 (~500 ms)
+        disconnect(principal);  // timer2 (~1000 ms); must cancel timer1
+        connect(principal);     // cancels timer2
+
+        // Wait well past timer1's delay — with the bug, the orphaned timer1 fires here.
+        Thread.sleep(2_000L);
+
+        verify(subscriptionManager, never()).terminateAllSubscriptions(anyString());
+        assertFalse(subscriptionListener.hasRunningDisconnectTimers());
     }
 
     private void disconnect(Principal principal) {

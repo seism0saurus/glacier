@@ -36,7 +36,7 @@ class RestTemplateRedirectTest {
     void restTemplate_factory_usesApacheHttpClient5PooledFactory() {
         // Arrange: construct the bean the same way Spring would
         EmbedRestTemplateConfiguration config = new EmbedRestTemplateConfiguration();
-        RestTemplate rt = config.restTemplate(3000, 5000, 50, 20, 30);
+        RestTemplate rt = config.restTemplate(3000, 5000, 50, 20, 30, false, "");
 
         // Assert: factory must be Apache HttpComponents (not SimpleClientHttpRequestFactory)
         assertThat(rt.getRequestFactory())
@@ -56,10 +56,10 @@ class RestTemplateRedirectTest {
         EmbedRestTemplateConfiguration config = new EmbedRestTemplateConfiguration();
 
         // Act + Assert: no exception — parameters accepted for all valid boundary values
-        RestTemplate rtDefault = config.restTemplate(3000, 5000, 50, 20, 30);
+        RestTemplate rtDefault = config.restTemplate(3000, 5000, 50, 20, 30, false, "");
         assertThat(rtDefault).isNotNull();
 
-        RestTemplate rtCustom = config.restTemplate(1000, 2000, 10, 5, 10);
+        RestTemplate rtCustom = config.restTemplate(1000, 2000, 10, 5, 10, false, "");
         assertThat(rtCustom).isNotNull();
     }
 }

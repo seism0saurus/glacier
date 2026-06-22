@@ -4,6 +4,7 @@ import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.slf4j.Logger;
@@ -73,19 +74,29 @@ public class EmbedRestTemplateConfiguration {
             @Value("${glacier.embed.readTimeoutMs:5000}") int readMs,
             @Value("${glacier.embed.connectionPool.maxTotal:50}") int maxTotal,
             @Value("${glacier.embed.connectionPool.maxPerRoute:20}") int maxPerRoute,
-            @Value("${glacier.embed.connectionPool.ttlSeconds:30}") int ttlSeconds) {
+            @Value("${glacier.embed.connectionPool.ttlSeconds:30}") int ttlSeconds,
+            @Value("${glacier.devmode:false}") boolean devMode,
+            @Value("${mastodon.instance:}") String mastodonInstance) {
+
+        // F4 / NF2 SSRF guard: re-check resolved IPs at *connection* time, closing the
+        // validate-then-use DNS-rebinding TOCTOU window in StompCallback's embed HEAD.
+        // Combined with redirect-following disabled below, this removes the residual
+        // embed-fetch SSRF vectors. Dev-mode exempts only the configured instance host.
+        SsrfBlockingDnsResolver dnsResolver = new SsrfBlockingDnsResolver(devMode, mastodonInstance);
 
         // Connection pool — bounded by maxTotal / maxPerRoute with TTL-based eviction
-        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
-        connectionManager.setMaxTotal(maxTotal);
-        connectionManager.setDefaultMaxPerRoute(maxPerRoute);
-        connectionManager.setDefaultConnectionConfig(
-                org.apache.hc.client5.http.config.ConnectionConfig.custom()
-                        .setConnectTimeout(Timeout.ofMilliseconds(connectMs))
-                        .setSocketTimeout(Timeout.ofMilliseconds(readMs))
-                        .setTimeToLive(TimeValue.ofSeconds(ttlSeconds))
-                        .build()
-        );
+        PoolingHttpClientConnectionManager connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
+                .setMaxConnTotal(maxTotal)
+                .setMaxConnPerRoute(maxPerRoute)
+                .setDnsResolver(dnsResolver)
+                .setDefaultConnectionConfig(
+                        org.apache.hc.client5.http.config.ConnectionConfig.custom()
+                                .setConnectTimeout(Timeout.ofMilliseconds(connectMs))
+                                .setSocketTimeout(Timeout.ofMilliseconds(readMs))
+                                .setTimeToLive(TimeValue.ofSeconds(ttlSeconds))
+                                .build()
+                )
+                .build();
 
         // H-3 SSRF guard: disable automatic redirect-following on all requests.
         // Per-request config overrides the client-level default.
