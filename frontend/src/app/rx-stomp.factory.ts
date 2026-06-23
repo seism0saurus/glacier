@@ -22,7 +22,13 @@ export function rxStompServiceFactory(http: HttpClient, document: Document) {
     port = document.location.port;
   }
   var host = document.location.hostname
-  const brokerURL: string = protocolWebsocket + '://' + host + ':' + port + '/websocket';
+  // On the default ports (443 for HTTPS, 80 for HTTP) the browser reports an
+  // empty location.port. Append ':port' ONLY when a port is actually present —
+  // otherwise the authority becomes "host:" (a dangling colon), a malformed
+  // WebSocket URL the browser refuses to connect to. This is the normal
+  // production topology (Glacier served behind TLS on 443).
+  const authority: string = port ? host + ':' + port : host;
+  const brokerURL: string = protocolWebsocket + '://' + authority + '/websocket';
   const rxStompConfig = generateConfig(brokerURL);
 
   rxStompConfig.beforeConnect = (): Promise<void> =>

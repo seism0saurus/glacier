@@ -83,6 +83,34 @@ describe('rxStompServiceFactory', () => {
   });
 
   /**
+   * When the page is served over HTTPS on the default port 443, the browser
+   * reports {@code location.port === ''}. The broker URL must then OMIT the port
+   * entirely — emitting {@code wss://host/websocket}, never {@code wss://host:/websocket}
+   * (a malformed authority with a dangling colon that the browser refuses to
+   * connect to). This is the normal production topology (Glacier behind TLS on
+   * 443), so getting it wrong breaks live streaming in production.
+   *
+   * <p>Arrange: fake document with {@code protocol === 'https:'}, a hostname, and
+   *             an EMPTY port (as browsers report for the default 443).
+   * <p>Act:     call {@code rxStompServiceFactory} (backendPort defaults to 'auto').
+   * <p>Assert:  brokerURL is exactly {@code wss://<host>/websocket} — no colon, no port.
+   */
+  it('factory_omitsPort_whenDefaultHttpsPortEmpty', () => {
+    const fakeDocument = {
+      location: {
+        protocol: 'https:',
+        hostname: 'glacier.proxy',
+        port: '',
+      },
+    } as unknown as Document;
+
+    rxStompServiceFactory(httpClient, fakeDocument);
+
+    const capturedConfig = configureSpy.calls.first().args[0];
+    expect(capturedConfig.brokerURL).toBe('wss://glacier.proxy/websocket');
+  });
+
+  /**
    * When the page is served over plain HTTP (e.g. local development), the broker
    * URL must use the {@code ws} scheme — using {@code wss} on an HTTP page
    * would fail because the WebSocket upgrade target is not TLS.
