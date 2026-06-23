@@ -51,6 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = {ShareLinkController.class, ShareLinkControllerConfig.class})
 @TestPropertySource(properties = {
         "glacier.domain=glacier.example.com",
+        "glacier.share.host=share.glacier.example.com",
         "glacier.fallback.ratelimit.perMinute=30",
         "glacier.fallback.ratelimit.perMinutePerIp=120",
         "glacier.ratelimit.eviction.intervalMs=600000",
@@ -107,6 +108,12 @@ class ShareLinkControllerIT {
                 .andExpect(jsonPath("$.shareLinkId").value("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
                 .andExpect(jsonPath("$.expiresAt").isNotEmpty())
                 .andExpect(jsonPath("$.readonlyUrl").isNotEmpty())
+                // The readonly URL MUST target the share host (glacier.share.host) — viewers
+                // open it on the dedicated share origin, where ShareHostRouter serves /share/*.
+                // Building it on the main glacier.domain would 404 (the main host blocks
+                // /share/* for anti-enumeration), so the link would be dead.
+                .andExpect(jsonPath("$.readonlyUrl")
+                        .value("https://share.glacier.example.com/share/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
                 // sharerWallId must NEVER appear in the response
                 .andExpect(result -> {
                     String body = result.getResponse().getContentAsString();

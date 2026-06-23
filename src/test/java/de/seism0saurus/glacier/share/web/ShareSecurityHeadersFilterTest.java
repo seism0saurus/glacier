@@ -130,6 +130,30 @@ class ShareSecurityHeadersFilterTest {
                 .containsIgnoringCase("'none'");
     }
 
+    @Test
+    void baseUri_isSelf_toHonorSpaBaseTag() throws Exception {
+        // ARRANGE
+        request.setRequestURI("/share/link-456");
+
+        // ACT
+        filter.doFilterInternal(request, response, new MockFilterChain());
+
+        // ASSERT
+        String csp = response.getHeader("Content-Security-Policy");
+        assertThat(csp).isNotNull();
+
+        // base-uri must be 'self' (NOT 'none'): the readonly SPA shell's <base href="/">
+        // must be honored so root-relative bundle assets resolve on deep links. 'self'
+        // still blocks a base tag pointing at a different (attacker) origin.
+        String baseUri = extractDirective(csp, "base-uri");
+        assertThat(baseUri)
+                .as("base-uri must allow the same-origin SPA base tag")
+                .containsIgnoringCase("'self'");
+        assertThat(baseUri)
+                .as("base-uri must not be 'none' (that blocks the SPA base tag)")
+                .doesNotContainIgnoringCase("'none'");
+    }
+
     // ---------------------------------------------------------------------------
     // X-Content-Type-Options: nosniff
     // ---------------------------------------------------------------------------

@@ -160,7 +160,12 @@ public class ShareSecurityHeadersFilter extends OncePerRequestFilter {
                         + "connect-src 'self' wss://" + shareHost + " wss://" + glacierDomain + "; "
                         + "font-src 'self'; "
                         + "frame-ancestors 'none'; "
-                        + "base-uri 'none'; "
+                        // 'self' (not 'none'): the readonly SPA shell relies on its
+                        // <base href="/"> tag so root-relative bundle assets resolve on a
+                        // deep link (/share/{id}). base-uri 'none' would block the base tag,
+                        // breaking asset resolution. 'self' still forbids injecting a base
+                        // pointing at a different (attacker) origin — the actual base-tag threat.
+                        + "base-uri 'self'; "
                         + "form-action 'none'; "
                         + "require-trusted-types-for 'script'"
         );

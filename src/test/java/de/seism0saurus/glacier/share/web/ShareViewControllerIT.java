@@ -149,7 +149,10 @@ class ShareViewControllerIT {
         assertThat(csp).isNotNull();
         assertThat(csp).contains("default-src 'none'");
         assertThat(csp).contains("frame-ancestors 'none'");
-        assertThat(csp).contains("base-uri 'none'");
+        // base-uri must be 'self' (not 'none'): the readonly SPA shell relies on its
+        // <base href="/"> tag to resolve root-relative bundle assets on a deep link.
+        // 'self' still blocks a base tag pointing at a different (attacker) origin.
+        assertThat(csp).contains("base-uri 'self'");
     }
 
     @Test

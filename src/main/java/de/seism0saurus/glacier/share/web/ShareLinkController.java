@@ -70,7 +70,7 @@ public class ShareLinkController {
     private final FallbackRateLimiter rateLimiter;
     private final ShareCsrfGuard csrfGuard;
     private final ShareRateLimiter shareRateLimiter;
-    private final String domain;
+    private final String shareHost;
     private final Clock clock;
 
     /**
@@ -81,8 +81,10 @@ public class ShareLinkController {
      * @param rateLimiter      general two-axis rate limiter (kept for backward compat)
      * @param csrfGuard        CSRF guard for state-changing operations (SR-SHARE-05)
      * @param shareRateLimiter share-specific six-axis rate limiter (SR-SHARE-12)
-     * @param domain           the glacier domain for constructing readonly URLs
-     *                         ({@code glacier.domain})
+     * @param shareHost        the dedicated share host for constructing readonly URLs
+     *                         ({@code glacier.share.host}). The readonly link MUST live on
+     *                         the share host — ShareHostRouter serves {@code /share/*} only
+     *                         there and 404s it on the main wall host (anti-enumeration).
      * @param clock            injected clock for test determinism
      */
     public ShareLinkController(
@@ -91,14 +93,14 @@ public class ShareLinkController {
             final FallbackRateLimiter rateLimiter,
             final ShareCsrfGuard csrfGuard,
             final ShareRateLimiter shareRateLimiter,
-            @Value("${glacier.domain}") final String domain,
+            @Value("${glacier.share.host}") final String shareHost,
             final Clock clock) {
         this.shareLinkService = shareLinkService;
         this.authGuard = authGuard;
         this.rateLimiter = rateLimiter;
         this.csrfGuard = csrfGuard;
         this.shareRateLimiter = shareRateLimiter;
-        this.domain = domain;
+        this.shareHost = shareHost;
         this.clock = clock;
     }
 
@@ -282,6 +284,9 @@ public class ShareLinkController {
     }
 
     private String buildReadonlyUrl(final String shareLinkId) {
-        return "https://" + domain + "/share/" + shareLinkId;
+        // Readonly links live on the share host (glacier.share.host), NOT the main wall
+        // host: ShareHostRouter serves /share/* only on the share host and returns 404 on
+        // the main host. Building this on glacier.domain would yield a dead (404) link.
+        return "https://" + shareHost + "/share/" + shareLinkId;
     }
 }

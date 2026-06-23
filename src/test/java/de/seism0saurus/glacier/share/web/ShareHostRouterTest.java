@@ -117,14 +117,68 @@ class ShareHostRouterTest {
     }
 
     @Test
-    void mainHost_shareCsrf_returns404() throws Exception {
+    void mainHost_shareCsrf_allowed() throws Exception {
+        // The CSRF-token endpoint must be reachable on the MAIN host: the sharer needs the
+        // __Host-shareCsrf token there to POST/DELETE /rest/share-links (served on the main
+        // host), and __Host- cookies are host-scoped so the token must be issued on that
+        // same origin. It carries no share-link IDs, so this does not weaken ADR-SHARE-09
+        // anti-enumeration. (Previously this 404'd, which made owner share-creation impossible
+        // behind a TLS proxy — see ShareHostRouter.CSRF_PATH.)
         MockHttpServletRequest request = request(MAIN_HOST, "/rest/share-csrf");
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain chain = new MockFilterChain();
 
         router.doFilterInternal(request, response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(404);
+        assertThat(chain.getRequest()).isNotNull(); // filter chain proceeded (not blocked)
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void shareHost_staticBundleAssets_allowed() throws Exception {
+        // The readonly SPA shell loads its Angular bundle root-relative; those static
+        // assets (no wall data) must be servable on the share host or the view can't boot.
+        for (String asset : new String[]{"/main.js", "/polyfills.js", "/styles.css",
+                "/chunk-ABC123.js", "/media/font.woff2", "/favicon.ico", "/assets/icons/share.svg"}) {
+            MockHttpServletRequest request = request(SHARE_HOST, asset);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            MockFilterChain chain = new MockFilterChain();
+
+            router.doFilterInternal(request, response, chain);
+
+            assertThat(chain.getRequest())
+                    .as("static asset must pass through on the share host: " + asset)
+                    .isNotNull();
+        }
+    }
+
+    @Test
+    void shareHost_mainWallDataEndpoints_stillBlocked() throws Exception {
+        // Sensitive main-wall endpoints have no file extension, so the static-asset
+        // exemption must NOT let them through on the share host (origin isolation).
+        for (String path : new String[]{"/rest/wall-id", "/websocket", "/topic/hashtags/x"}) {
+            MockHttpServletRequest request = request(SHARE_HOST, path);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            MockFilterChain chain = new MockFilterChain();
+
+            router.doFilterInternal(request, response, chain);
+
+            assertThat(response.getStatus())
+                    .as("main-wall endpoint must stay blocked on the share host: " + path)
+                    .isEqualTo(404);
+        }
+    }
+
+    @Test
+    void shareHost_shareCsrf_stillAllowed() throws Exception {
+        // Regression guard: the CSRF endpoint remains reachable on the SHARE host too.
+        MockHttpServletRequest request = request(SHARE_HOST, "/rest/share-csrf");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        router.doFilterInternal(request, response, chain);
+
+        assertThat(chain.getRequest()).isNotNull();
     }
 
     // -----------------------------------------------------------------------
