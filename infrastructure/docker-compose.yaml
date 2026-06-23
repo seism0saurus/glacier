@@ -115,10 +115,19 @@ services:
     # mastodon network (glacier, playwright) can resolve the share subdomain
     # to the Traefik proxy without needing extra_hosts IP entries.
     # Traefik then routes Host:`share.proxy` to the glacier backend per dynamic.yml.
+    #
+    # "glacier.proxy" is the dedicated HTTPS host for the OWNER wall (see the
+    # glacier-main router in dynamic.yml). It lets e2e drive the main wall over
+    # TLS — a realistic "live" setup where COOKIE_SECURE=true cookies are sent and
+    # the app runs in WebSocket (not insecure) mode — without reusing the Mastodon
+    # "proxy" host. ShareHostRouter treats it as an unknown host and serves the
+    # main wall (allowing /rest/share creation).
     networks:
       mastodon:
         aliases:
           - share.proxy
+          - glacier.proxy
+          - share.glacier.proxy
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`dashboard.localhost`)"
