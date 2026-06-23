@@ -1,8 +1,11 @@
 import {NgModule, DOCUMENT} from '@angular/core';
 import {BrowserModule} from '@angular/platform-browser';
 import {NgIf} from '@angular/common';
+import {RouterModule, Routes} from '@angular/router';
 
 import {AppComponent} from './app.component';
+import {MainWallComponent} from './main-wall/main-wall.component';
+import {SHARE_ROUTES} from './share/share.routes';
 import {RxStompService} from "./rx-stomp.service";
 import {rxStompServiceFactory} from "./rx-stomp.factory";
 import {WallComponent} from './wall/wall.component';
@@ -51,9 +54,27 @@ const prefersReducedMotion: boolean =
   typeof window !== 'undefined' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Application routes.
+ *
+ * - `''`        → the main social wall (header / hashtag panel / streaming wall / footer).
+ * - `share/**`  → the dedicated readonly share view (SHARE_ROUTES: `:shareId` and
+ *                 `:shareId/expired`). Mounted as children of `share` so the full paths
+ *                 are `/share/:shareId` and `/share/:shareId/expired` — matching the
+ *                 readonly URL built by ShareLinkController and the share-host routing.
+ *
+ * The backend forwards `/share/**` deep links to index.html (ShareViewSpaForwardController)
+ * so these client routes resolve on a direct navigation / refresh.
+ */
+const routes: Routes = [
+  {path: '', component: MainWallComponent},
+  {path: 'share', children: SHARE_ROUTES},
+];
+
 @NgModule({
   declarations: [
     AppComponent,
+    MainWallComponent,
     WallComponent,
     HeaderComponent,
     HashtagComponent,
@@ -65,6 +86,7 @@ const prefersReducedMotion: boolean =
   bootstrap: [AppComponent],
   imports: [
     BrowserModule,
+    RouterModule.forRoot(routes),
     FormsModule,
     MatFormField,
     MatChipGrid,
