@@ -60,23 +60,14 @@ async function expectWallTootCount(page: Page, count: number): Promise<void> {
 
 test.describe('Social wall + shared wall — full round trip', () => {
 
-  // NOTE: marked test.fixme until the two remaining pieces land. The owner side
-  // (subscribe → post → toots stream live over WebSocket → create share link) and
-  // the viewer opening + rendering the readonly share wall all pass now. The
-  // outstanding work to make the WHOLE round trip green:
-  //   1. Catalog endpoint (ShareViewController): return the sharer's subscribed
-  //      hashtags (from SubscriptionManager via the link's server-side wallId) plus
-  //      `initialToots` — both are currently stubbed (hashtags = List.of(), no
-  //      initialToots field), so the viewer never subscribes and live toots never
-  //      surface on the shared wall.
-  //   2. The realistic-HTTPS e2e stack: the owner wall must be served over TLS
-  //      (https://glacier.proxy) and the share view over https://share.glacier.proxy.
-  //      That needs the Traefik routing + cert SANs in infrastructure/dynamic.yml /
-  //      v3.ext / proxy.crt — which live in infrastructure-content.tar.gz (re-pack per
-  //      the .github/workflows/verify.yml note). Over the plain-HTTP CI stack the
-  //      share cookie is not sent (Secure), so share creation can't authenticate.
-  // Flip test.fixme → test once both are in place.
-  test.fixme(
+  // Full live round trip. Requires the realistic-HTTPS stack: the owner wall served
+  // over TLS at https://glacier.proxy and the share view at https://share.glacier.proxy
+  // (Traefik routing + ALPN http/1.1 + cert SANs in infrastructure/dynamic.yml / v3.ext /
+  // proxy.crt — packed in infrastructure-content.tar.gz; glacier env MY_DOMAIN=glacier.proxy
+  // + GLACIER_SHARE_HOST=share.glacier.proxy; playwright BASE_URL=https://glacier.proxy).
+  // The toot-rendering MVP (catalog hashtags + per-link ReadonlyTootView relay on the
+  // generic streaming path + frontend subscribe-after-catalog) makes the live render work.
+  test(
     'owner builds a wall with tags, posts toots, shares the wall, posts on the shared wall, then closes it',
     async ({ browser }) => {
       const mastodon = new MastodonClient(
@@ -137,7 +128,11 @@ test.describe('Social wall + shared wall — full round trip', () => {
       const shareUrl = await urlInput.inputValue();
       expect(shareUrl).toContain('/share/');
 
-      await ownerPage.getByTestId('close-button').click();
+      // Keep the share dialog open: the freshly-created link is shown as the active-link
+      // card (revoke-button), which carries the full shareLinkId needed to revoke. Reopening
+      // the dialog would instead show the link in the "Active links" list, whose row only
+      // exposes idHash8 (the full token is never re-served, by design) — so list revocation
+      // is a separate, pre-existing concern outside this MVP. We revoke via the active card.
 
       const viewerContext: BrowserContext = await browser.newContext();
       const viewerPage: Page = await viewerContext.newPage();
@@ -145,6 +140,14 @@ test.describe('Social wall + shared wall — full round trip', () => {
       await viewerPage.goto(shareUrl);
       await expect(viewerPage.getByTestId('share-banner')).toBeVisible({ timeout: 10_000 });
       await expect(viewerPage.getByTestId('share-feed')).toBeVisible();
+
+      // Wait for the viewer's share-view WebSocket to reach LIVE before posting — the
+      // STOMP topic subscription is only active once connected, and STOMP does not replay,
+      // so a toot posted during the connect window would be missed (MVP ships initialToots
+      // empty — no catalog backfill). This is the skill's stable-state wait, the viewer-side
+      // analogue of waiting on connection-status before actions that assume live streaming.
+      await expect(viewerPage.getByTestId('transport-status'))
+          .toHaveClass(/transport-status--live/, { timeout: 15_000 });
 
       // ---------------------------------------------------------------
       // 5. Post on the shared wall — surfaces on BOTH walls (live relay).
@@ -161,10 +164,11 @@ test.describe('Social wall + shared wall — full round trip', () => {
       // ---------------------------------------------------------------
       // 6. Owner closes (revokes) the shared wall → viewer hits /expired.
       // ---------------------------------------------------------------
-      await shareButton.click();
+      // The dialog is still open from step 4, showing the active-link card.
       const revokeButton = ownerPage.getByTestId('revoke-button');
       await expect(revokeButton).toBeVisible();
       await revokeButton.click();
+      await expect(ownerPage.getByTestId('revoke-confirm')).toBeVisible();
       await ownerPage.getByTestId('revoke-confirm').click();
 
       await expect(viewerPage).toHaveURL(/\/expired/, { timeout: 10_000 });

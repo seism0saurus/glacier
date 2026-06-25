@@ -44,7 +44,25 @@ export default defineConfig({
         '**/share-link-insecure.spec.ts',
         '**/fallback-unsubscribe-prune.spec.ts',
         '**/*-a11y.spec.ts',
+        // Full share round trip needs the realistic-HTTPS stack (owner on
+        // https://glacier.proxy, viewer on https://share.glacier.proxy): a plain-HTTP
+        // origin cannot send the Secure wallId cookie, so share-link creation fails.
+        // Runs in the dedicated 'share-https' project via docker-compose.override.sharehttps.yaml.
+        '**/share-wall-roundtrip.spec.ts',
       ],
+    },
+
+    {
+      // Dedicated project for the full owner→viewer share round trip over the realistic
+      // HTTPS stack. Driven by docker-compose.override.sharehttps.yaml (glacier
+      // MY_DOMAIN=glacier.proxy + GLACIER_SHARE_HOST=share.glacier.proxy; Traefik routing +
+      // cert SANs in the seed tar; playwright BASE_URL=https://glacier.proxy).
+      name: 'share-https',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env['BASE_URL'] || 'https://glacier.proxy/',
+      },
+      testMatch: ['**/share-wall-roundtrip.spec.ts'],
     },
 
     {

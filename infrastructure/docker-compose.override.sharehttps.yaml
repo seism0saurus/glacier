@@ -1,0 +1,50 @@
+# Compose override for the full share round-trip e2e over the realistic HTTPS stack.
+#
+# The owner wall is served over TLS at https://glacier.proxy and the readonly share view at
+# https://share.glacier.proxy (Traefik routers + ALPN http/1.1 in dynamic.yml; cert SANs in
+# v3.ext / proxy.crt; both packed in infrastructure-content.tar.gz). On a plain-HTTP origin the
+# Secure wallId cookie is not sent, so share-link creation cannot authenticate — hence HTTPS.
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.override.sharehttps.yaml \
+#     up --build --abort-on-container-exit playwright --exit-code-from playwright
+# Runs ONLY the dedicated 'share-https' Playwright project (share-wall-roundtrip.spec.ts),
+# which is excluded from the default chromium project.
+services:
+  glacier:
+    environment:
+      # glacier.domain must equal the public owner host so the WebSocket allowed-origins
+      # list contains the browser Origin (https://glacier.proxy). The default
+      # MY_DOMAIN=localhost:443 fails twice: not the proxied host, and its ":443" never
+      # matches a browser Origin (the default port is stripped).
+      MY_DOMAIN: "glacier.proxy"
+      # Share host = share.<glacier.domain> — matches the shareViewOrigins derivation and the
+      # readonly-URL host; served via the share-glacier-domain Traefik router.
+      GLACIER_SHARE_HOST: "share.glacier.proxy"
+  playwright:
+    environment:
+      # Owner wall over HTTPS (secure origin → Secure cookies sent → live WebSocket mode →
+      # sharing works). The self-signed cert is accepted via Playwright's ignoreHTTPSErrors.
+      BASE_URL: "https://glacier.proxy"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        npm install
+        npx playwright install --with-deps chromium
+
+        count=0; max=90
+        while ! curl -ksf https://proxy:443/.well-known/nodeinfo &> /dev/null; do
+          count=$((count + 1)); [ "$${count}" -ge "$${max}" ] && { echo "proxy not ready"; exit 1; }
+          echo "Attempt $$count/$${max}: waiting for proxy..."; sleep 2
+        done
+        echo "proxy is ready!"
+
+        count=0
+        while ! curl -ksf https://glacier.proxy/ &> /dev/null; do
+          count=$((count + 1)); [ "$${count}" -ge "$${max}" ] && { echo "glacier (https) not ready"; exit 1; }
+          echo "Attempt $$count/$${max}: waiting for glacier over https..."; sleep 2
+        done
+        echo "glacier is ready over https!"
+
+        npx playwright test --project=share-https
