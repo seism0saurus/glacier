@@ -356,4 +356,45 @@ class ShareRelayArchitectureTest {
                         + "to preserve traceability to the governing requirement")
                 .allMatch(desc -> desc.contains("ARCH-RELAY-03"));
     }
+
+    // -------------------------------------------------------------------------
+    // ARCH-RENDER-02: new ReadonlyTootView(...) only in ShareRenderingService (+ tests)
+    // SR-RENDER-02: relay publishes only what renderForView returns — no inline construction
+    // -------------------------------------------------------------------------
+
+    /**
+     * SR-RENDER-02 / ARCH-RENDER-02: {@code new ReadonlyTootView(...)} may only be called
+     * from {@code ShareRenderingService} in production code.
+     *
+     * <p>This gate prevents any relay or controller from constructing a hand-built
+     * {@link ReadonlyTootView} that bypasses the security chain in
+     * {@link ShareRenderingService#renderForView} (text extraction, URL validation,
+     * proxy URL rewriting, bidi stripping — ADR-SHARE-03, ADR-SHARE-07, SR-RENDER-02).
+     *
+     * <p>Confirmed zero pre-existing violations before this gate was added
+     * (2026-06-24 implementation pass).
+     */
+    @Test
+    void readonlyTootViewConstructor_onlyCalledFromShareRenderingService() {
+        // SR-RENDER-02: new ReadonlyTootView(...) restricted to ShareRenderingService
+        DescribedPredicate<JavaConstructorCall> callsReadonlyTootViewConstructor =
+                new DescribedPredicate<>("call to ReadonlyTootView constructor") {
+                    @Override
+                    public boolean test(final JavaConstructorCall call) {
+                        return call.getTarget().getOwner().getName()
+                                .endsWith("ReadonlyTootView");
+                    }
+                };
+
+        ArchRule rule = noClasses()
+                .that().doNotHaveSimpleName("ShareRenderingService")
+                .should().callConstructorWhere(callsReadonlyTootViewConstructor)
+                .because("SR-RENDER-02 / ARCH-RENDER-02: new ReadonlyTootView(...) may only be "
+                        + "constructed inside ShareRenderingService so that every published "
+                        + "ReadonlyTootView has been through the full sanitisation chain "
+                        + "(text extraction, URL validation, proxy rewrite, bidi strip — "
+                        + "ADR-SHARE-03, ADR-SHARE-07). A relay or controller that constructs "
+                        + "a ReadonlyTootView directly bypasses these security controls.");
+        rule.check(productionClasses);
+    }
 }

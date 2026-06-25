@@ -45,8 +45,9 @@ class ShareViewStompRelayEventTest {
         mockShareLinkService = mock(ShareLinkService.class);
         mockMessageCache = mock(MessageCache.class);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
+        // ShareRenderingService is null here: EventListener tests do not exercise the render path.
         relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
-                Clock.systemUTC());
+                null, Clock.systemUTC());
     }
 
     // -----------------------------------------------------------------------

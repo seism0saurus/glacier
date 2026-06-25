@@ -19,6 +19,8 @@ import social.bigbone.api.method.StreamingMethods;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -289,6 +291,29 @@ public class SubscriptionManagerImpl implements SubscriptionManager {
     public int numberOfSubscriptions(String principal) {
         ConcurrentHashMap<String, Future<?>> principalMap = subscriptions.get(principal);
         return principalMap != null ? principalMap.size() : 0;
+    }
+
+    /**
+     * Returns a defensive snapshot of the hashtags subscribed by the given principal.
+     *
+     * <p>Copy-on-read (SR-SUB-01/SR-SUB-02): the returned {@link Set} is {@code new HashSet<>}
+     * over the inner map's key set — never the live view. Callers cannot mutate internal state
+     * through the returned set, and subsequent subscription changes do not affect it.
+     *
+     * <p>Thread-safety: {@link ConcurrentHashMap#keySet()} produces a weakly-consistent
+     * snapshot; copying into a new {@link HashSet} completes the isolation.
+     *
+     * @param principal the wallId or other principal identifier; may be unknown or null
+     * @return a mutable, non-null snapshot — empty when the principal has no subscriptions
+     */
+    @Override
+    public Set<String> getSubscribedHashtags(String principal) {
+        ConcurrentHashMap<String, Future<?>> principalMap = subscriptions.get(principal);
+        if (principalMap == null) {
+            return new HashSet<>();
+        }
+        // Defensive copy — never expose the live keySet view (SR-SUB-01/SR-SUB-02)
+        return new HashSet<>(principalMap.keySet());
     }
 
     /**

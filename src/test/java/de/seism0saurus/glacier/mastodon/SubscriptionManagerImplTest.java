@@ -19,6 +19,7 @@ import social.bigbone.api.method.StreamingMethods;
 import java.io.Closeable;
 import java.net.URI;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -407,6 +408,80 @@ class SubscriptionManagerImplTest {
 
         // Assert: cache eviction is unconditional (ADR-05 memory-reclamation contract)
         verify(messageCache, times(1)).evictPrincipal(wall(principal));
+    }
+
+    // -----------------------------------------------------------------------
+    // SR-SUB-01/02: getSubscribedHashtags — copy-on-read snapshot contract
+    // -----------------------------------------------------------------------
+
+    /**
+     * Verify that getSubscribedHashtags returns a snapshot containing exactly the hashtags
+     * that the principal has subscribed to.
+     *
+     * <p>Arrange: two hashtags subscribed for one principal.
+     * <p>Act: call getSubscribedHashtags.
+     * <p>Assert: the returned set contains both hashtags.
+     */
+    @Test
+    void getSubscribedHashtags_returnsSnapshotOfKeySet() {
+        String principal = "wall-abc123";
+        String hashtag1 = "cats";
+        String hashtag2 = "dogs";
+
+        subscriptionManager.subscribeToHashtag(principal, hashtag1);
+        subscriptionManager.subscribeToHashtag(principal, hashtag2);
+
+        Set<String> result = subscriptionManager.getSubscribedHashtags(principal);
+
+        assertThat(result).containsExactlyInAnyOrder(hashtag1, hashtag2);
+    }
+
+    /**
+     * Verify that getSubscribedHashtags returns an empty set (never null) for an unknown
+     * principal — prevents NullPointerException in callers (SR-SUB-02).
+     *
+     * <p>Arrange: no subscriptions registered for the principal.
+     * <p>Act: call getSubscribedHashtags with a previously unseen principal.
+     * <p>Assert: result is an empty set, not null.
+     */
+    @Test
+    void getSubscribedHashtags_unknownPrincipal_returnsEmptySet() {
+        String unknownPrincipal = "principal-never-seen";
+
+        Set<String> result = subscriptionManager.getSubscribedHashtags(unknownPrincipal);
+
+        assertThat(result).isNotNull();
+        assertThat(result).isEmpty();
+    }
+
+    /**
+     * Verify that the set returned by getSubscribedHashtags is a snapshot — a defensive copy
+     * whose contents are not affected by subsequent mutations to the subscription state
+     * (SR-SUB-01: live view must never be exposed).
+     *
+     * <p>Arrange: one hashtag subscribed.
+     * <p>Act: capture the snapshot, then subscribe a second hashtag.
+     * <p>Assert: the original snapshot still contains only the first hashtag; it was not
+     *   updated by the later subscription (proves copy-on-read, not live-view semantics).
+     */
+    @Test
+    void getSubscribedHashtags_isSnapshot_notLiveView() {
+        String principal = "wall-snapshot-test";
+        String firstHashtag = "cats";
+        String secondHashtag = "dogs";
+
+        subscriptionManager.subscribeToHashtag(principal, firstHashtag);
+
+        // Capture snapshot BEFORE the second subscription
+        Set<String> snapshotBeforeSecondSubscription = subscriptionManager.getSubscribedHashtags(principal);
+
+        // Mutate subscription state after snapshot was taken
+        subscriptionManager.subscribeToHashtag(principal, secondHashtag);
+
+        // The snapshot must not reflect the subsequent mutation
+        assertThat(snapshotBeforeSecondSubscription)
+                .as("snapshot captured before second subscription must not contain the second hashtag")
+                .containsExactly(firstHashtag);
     }
 
     // -----------------------------------------------------------------------

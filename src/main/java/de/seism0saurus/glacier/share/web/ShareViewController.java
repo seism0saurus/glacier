@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.webservice.cache.CacheEntry;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,6 +66,7 @@ public class ShareViewController {
     private final CsrfTokenCookieFactory csrfTokenCookieFactory;
     private final ShareRateLimiter shareRateLimiter;
     private final ShareViewStompRelay shareViewStompRelay;
+    private final SubscriptionManager subscriptionManager;
     private final boolean fallbackEnabled;
 
     public ShareViewController(
@@ -72,12 +75,14 @@ public class ShareViewController {
             final CsrfTokenCookieFactory csrfTokenCookieFactory,
             final ShareRateLimiter shareRateLimiter,
             final ShareViewStompRelay shareViewStompRelay,
+            final SubscriptionManager subscriptionManager,
             @Value("${glacier.fallback.enabled:true}") final boolean fallbackEnabled) {
         this.shareLinkService = shareLinkService;
         this.cookieFactory = cookieFactory;
         this.csrfTokenCookieFactory = csrfTokenCookieFactory;
         this.shareRateLimiter = shareRateLimiter;
         this.shareViewStompRelay = shareViewStompRelay;
+        this.subscriptionManager = subscriptionManager;
         this.fallbackEnabled = fallbackEnabled;
     }
 
@@ -165,14 +170,27 @@ public class ShareViewController {
                     LogScrubber.hash8(shareId), LogScrubber.hash8(viewerId));
         }
 
-        // Build catalog response — NEVER include sharerWallId (SR-SHARE-02)
-        // Hashtag list would come from SubscriptionManager; for now return empty (peer lane owns this)
-        List<String> hashtags = List.of(); // TODO: retrieve from SubscriptionManager via sharerWallId server-side
+        // Derive hashtags from the live subscription map, resolved server-side
+        // from the confirmed-active link's sharerWallId (ADR-RENDER-02).
+        // The sharerWallId is used ONLY here, never serialized into the response (SR-SHARE-02).
+        // SR-CAT-02: hashtags are derived only after resolve() confirms an active link,
+        // and only from link.sharerWallId() — never from any caller-supplied value.
+        // D-13/SR-8: do not log raw sharerWallId — hash it
+        List<String> hashtags = new ArrayList<>(
+                subscriptionManager.getSubscribedHashtags(link.sharerWallId()));
+        log.debug("share.catalog.hashtags shareId-hash={} sharer-hash={} count={}",
+                LogScrubber.hash8(shareId),
+                LogScrubber.hash8(link.sharerWallId()),
+                hashtags.size());
 
+        // ADR-RENDER-03: initialToots is empty in the MVP — the share wall fills via
+        // live STOMP topics after the frontend subscribes using the returned hashtag list.
+        // History hydration is deferred until the ring buffer stores Status objects.
         ShareCatalogResponse catalog = ShareCatalogResponse.active(
                 shareId,
                 hashtags,
-                link.expiresAt()
+                link.expiresAt(),
+                List.of()
         );
 
         return ResponseEntity.ok(catalog);

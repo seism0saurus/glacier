@@ -12,6 +12,11 @@ import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
 import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import de.seism0saurus.glacier.webservice.messaging.messages.*;
+import kotlin.Unit;
+import kotlinx.serialization.KSerializer;
+import kotlinx.serialization.SerializersKt;
+import kotlinx.serialization.json.Json;
+import kotlinx.serialization.json.JsonKt;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,6 +71,37 @@ public class StompCallback implements WebSocketCallback {
      * Messages sent here must use scrubbed values only — never raw URLs, principals, or tokens.
      */
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
+
+    /**
+     * Lenient {@code kotlinx.serialization.json.Json} instance for parsing the raw Mastodon
+     * status JSON from the generic WebSocket path (B2 / SR-FLAW2-01 resolution).
+     *
+     * <p>{@code ignoreUnknownKeys = true}: the Mastodon WebSocket payload contains many fields
+     * not modelled in Bigbone's {@link Status} entity (e.g. {@code pinned}, {@code reblogged}).
+     * Without this, deserialization would throw on every event.
+     *
+     * <p>{@code coerceInputValues = true}: matches Bigbone's internal {@code JSON_SERIALIZER}
+     * configuration (defined in {@code social.bigbone.JsonSerializer}). Handles nullable fields
+     * where a Mastodon fork or version omits a field or sends an unexpected null variant.
+     *
+     * <p>Bigbone's {@code JSON_SERIALIZER} is declared {@code internal} in Kotlin — it compiles
+     * to package-private on the JVM and is NOT accessible from Java. This static field replicates
+     * the same configuration for the generic path.
+     *
+     * <p>This field is package-private for testability (verified by {@code StompCallbackRenderTest}
+     * — malformed payload test confirms no crash on bad JSON).
+     *
+     * <p>ADR-RENDER-01 / SR-FLAW2-01 (B2 resolution).
+     */
+    static final Json LENIENT_JSON = JsonKt.Json(Json.Default, builder -> {
+        // ignoreUnknownKeys: Mastodon status payload has many fields not modelled in Bigbone's Status
+        // (e.g. pinned, reblogged, favourited). Without this, deserialization throws SerializationException.
+        builder.setIgnoreUnknownKeys(true);
+        // coerceInputValues: matches Bigbone's internal JsonSerializer configuration — handles null
+        // coercion for nullable fields where a Mastodon fork may omit a field vs. sending explicit null.
+        builder.setCoerceInputValues(true);
+        return Unit.INSTANCE;
+    });
 
     /**
      * Represents a callback for handling WebSocket events related to subscriptions.
@@ -283,7 +319,11 @@ public class StompCallback implements WebSocketCallback {
      *   <li>Frame-ancestor / X-Frame-Options check via {@link #isLoadable}.</li>
      *   <li>Bot opt-in check (toot must mention {@code shortHandle}).</li>
      *   <li>Cache write via {@link MessageCache#recordThenPublish} (D-03).</li>
-     *   <li>Relay to share-view topics (ADR-SHARE-04).</li>
+     *   <li>Relay to share-view topics — Object overload for fallback polling (ADR-SHARE-04).</li>
+     *   <li>Parse payload JSON into {@link Status} + Status-overload relay for full
+     *       {@link de.seism0saurus.glacier.share.application.ReadonlyTootView} rendering
+     *       (ADR-RENDER-01 / SR-FLAW2-01 B2 resolution — live render path for dockerized
+     *       Mastodon hashtag WebSocket subscription).</li>
      * </ol>
      *
      * @param mapper                Jackson mapper for deserialising the payload
@@ -291,7 +331,7 @@ public class StompCallback implements WebSocketCallback {
      *                              determines the {@link StompEventType} via
      *                              {@link EventTypeMapping#stompFor(Class)} (ADR-P3A-4)
      * @param genericMessageContent the envelope containing the raw payload JSON
-     * @throws JsonProcessingException if the payload JSON cannot be parsed
+     * @throws JsonProcessingException if the outer payload JSON cannot be parsed
      */
     private void sendMessage(ObjectMapper mapper, Class<? extends StatusMessage> statusMessageClass,
                              GenericMessageContent genericMessageContent) throws JsonProcessingException {
@@ -304,10 +344,15 @@ public class StompCallback implements WebSocketCallback {
         }
         StompEventType type = typeOpt.get();
 
-        GenericMessageContentPayload payload = mapper.readValue(
-                genericMessageContent.getPayload().textValue(), GenericMessageContentPayload.class);
+        // Keep the raw payload JSON string for B2 Status deserialization (SR-FLAW2-01 resolution).
+        // The outer payload node is a text-encoded JSON string: its textValue() is the raw status JSON.
+        String payloadJson = genericMessageContent.getPayload().textValue();
+
+        GenericMessageContentPayload payload = mapper.readValue(payloadJson, GenericMessageContentPayload.class);
 
         // 1. SSRF guard: validate the toot URL before issuing any outbound request or cache write
+        // C10 / SR-PT-10: this gate MUST precede any network call or relay (B2 relay is step 6b,
+        // after all gates — ordering invariant preserved).
         Optional<URI> safeUri = safeUrlValidator.validate(payload.getUrl());
         if (safeUri.isEmpty()) {
             AUDIT.info("stomp.embed.ssrf_blocked url-host-hash={} scheme={}",
@@ -352,10 +397,30 @@ public class StompCallback implements WebSocketCallback {
                     partial = new CacheEntry(EventType.UPDATED, payload.getId(), payload.getUrl() + "/embed", editedAt, 0L);
                 }
                 CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
-                // 6. ADR-SHARE-04: relay to viewer share topics after successful cache write
+
+                // 6a. ADR-SHARE-04 (legacy Object overload): relay CacheEntry to share topics.
+                // This path is kept for the fallback polling endpoint (FLAW-3 — deferred).
                 if (shareViewStompRelay != null && stored != null) {
                     shareViewStompRelay.relayTootEvent(principal, hashtag, type.suffix(), stored);
                 }
+
+                // 6b. ADR-RENDER-01 / SR-FLAW2-01 (B2 resolution): parse the raw payload JSON
+                // into a Bigbone Status and call the Status-overload relay for full ReadonlyTootView
+                // rendering per share link. This is the live render path for the dockerized Mastodon
+                // hashtag WebSocket subscription (streaming().hashtag() → GenericMessage).
+                //
+                // Security ordering (C10 / SR-PT-10): all gates (SSRF → HEAD → isLoadable → opt-in)
+                // have already passed before reaching this point. The cache write (step 5) is also
+                // complete. This is intentionally the LAST action in the success path.
+                //
+                // KNOWN LIMITATION (FLAW-2 — resolved B2): previously this path called the Object
+                // overload only (insufficient for ReadonlyTootView rendering). The typed-path instances
+                // (Mastodon servers that emit typed StreamEvents) are also served by the Status overload
+                // via processStatusCreatedEvent/processStatusEditedEvent — both paths are now consistent.
+                if (shareViewStompRelay != null && stored != null) {
+                    parseStatusAndRelay(payloadJson, type.suffix());
+                }
+
                 // 7. P2-13: record successful StatusCreated publishes for future edit guard
                 if (StatusCreatedMessage.class.equals(statusMessageClass) && stored != null) {
                     publishedStatusIds.add(payload.getId());
@@ -369,6 +434,39 @@ public class StompCallback implements WebSocketCallback {
             }
         } else {
             LOGGER.info("Toot not loadable by this glacier instance. Ignoring");
+        }
+    }
+
+    /**
+     * Parses the raw Mastodon status JSON into a Bigbone {@link Status} using
+     * {@link #LENIENT_JSON} and relays it via the Status-overload relay (B2 / SR-FLAW2-01).
+     *
+     * <p>Separated from {@link #sendMessage} to isolate the deserialization error boundary:
+     * a malformed JSON payload is caught here and logged at DEBUG level, allowing the method
+     * to return cleanly without crashing the Bigbone virtual thread or blocking other relays.
+     *
+     * <p>D-13/SR-8: exceptions are logged by class name only — no raw payload content in logs.
+     *
+     * @param payloadJson   the raw JSON string from the GenericMessage payload field
+     * @param eventTypeSuffix the event type suffix for the relay topic (e.g. "creation")
+     */
+    private void parseStatusAndRelay(final String payloadJson, final String eventTypeSuffix) {
+        try {
+            // Deserialize Bigbone Status from raw Mastodon JSON (kotlinx.serialization).
+            // LENIENT_JSON has ignoreUnknownKeys=true and coerceInputValues=true to handle the full
+            // Mastodon status payload which contains many fields not modelled in Bigbone's Status.
+            // Status.Companion.serializer() is the @Serializable-generated companion serializer.
+            @SuppressWarnings("unchecked")
+            KSerializer<Status> statusSerializer =
+                    (KSerializer<Status>) Status.Companion.serializer();
+            Status status = LENIENT_JSON.decodeFromString(statusSerializer, payloadJson);
+            // ADR-RENDER-01 / SR-RENDER-01: relay the parsed Status to ShareViewStompRelay.
+            // The relay performs per-link renderForView() inside its loop (never here).
+            shareViewStompRelay.relayTootEvent(principal, hashtag, eventTypeSuffix, status);
+        } catch (Exception e) {
+            // D-13/SR-8: log class name only — payloadJson content must not reach the logger.
+            LOGGER.debug("stomp.generic.status_parse_failed event={} error={}",
+                    eventTypeSuffix, e.getClass().getSimpleName());
         }
     }
 
@@ -505,9 +603,12 @@ public class StompCallback implements WebSocketCallback {
             // 4. Cache write (D-03)
             CacheEntry partial = new CacheEntry(EventType.CREATED, status.getId(), status.getUrl() + "/embed", null, 0L);
             CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
-            // 5. ADR-SHARE-04: relay to viewer share topics after successful cache write
+            // 5. ADR-SHARE-04 / ADR-RENDER-01: relay to viewer share topics after successful cache write.
+            // Use the Status overload so ShareViewStompRelay can render a per-link ReadonlyTootView.
+            // SR-RENDER-01: renderForView(status, shareLinkId) is called INSIDE the relay's per-link
+            // loop — never hoisted here.
             if (shareViewStompRelay != null && stored != null) {
-                shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.CREATION.suffix(), stored);
+                shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.CREATION.suffix(), status);
             }
             // P2-13: record that this status was published so future StatusEdited events are allowed
             if (stored != null) {
@@ -569,9 +670,11 @@ public class StompCallback implements WebSocketCallback {
         // 3. Cache write (D-03)
         CacheEntry partial = new CacheEntry(EventType.UPDATED, status.getId(), status.getUrl() + "/embed", editedAt, 0L);
         CacheEntry stored = messageCache.recordThenPublish(principalKey, hashtag, partial);
-        // 4. ADR-SHARE-04: relay to viewer share topics
+        // 4. ADR-SHARE-04 / ADR-RENDER-01: relay to viewer share topics.
+        // Use the Status overload so ShareViewStompRelay can render a per-link ReadonlyTootView.
+        // P2-13 guard already verified above; Status overload called only on prior-create confirmed.
         if (shareViewStompRelay != null && stored != null) {
-            shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.MODIFICATION.suffix(), stored);
+            shareViewStompRelay.relayTootEvent(principal, hashtag, StompEventType.MODIFICATION.suffix(), status);
         }
     }
 

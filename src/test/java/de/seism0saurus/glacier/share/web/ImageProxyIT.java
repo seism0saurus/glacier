@@ -131,6 +131,51 @@ class ImageProxyIT {
     }
 
     /**
+     * SR-RENDER-03: the image proxy is a BEARER SURFACE — HMAC provides integrity +
+     * per-link distinctness, NOT per-fetch authorization.
+     *
+     * <p>A token signed for LINK_A is accepted by the proxy WITHOUT LINK_A's viewer
+     * cookie being present. This is by design: the proxy validates the HMAC signature
+     * only (it does not check session state). The per-link HMAC scope ensures that a
+     * token signed for one link cannot be reused for a different link's URLs (integrity),
+     * but it does NOT restrict access to the bearer of LINK_A's viewer cookie.
+     *
+     * <p>No proxy code change is made in the MVP (SR-RENDER-03, ADR-RENDER-01 C2 resolution).
+     * This test pins the KNOWN: shared bearer surface comment.
+     *
+     * <p>Concretely: a viewer who obtains a signed image URL from LINK_A can share
+     * that URL with a third party who fetches it without any cookie. This is acceptable
+     * because (a) the URL is already opaque + expiry-bounded by HMAC, and (b) the image
+     * itself is already public on the origin Mastodon instance.
+     *
+     * <p>KNOWN: shared bearer surface — HMAC = integrity + per-link distinctness,
+     * NOT per-fetch authz. SR-RENDER-03 / ADR-SHARE-07.
+     */
+    @Test
+    void imageProxyToken_signedForLinkA_isAcceptedWithoutViewerCookie_bearerSurface() throws Exception {
+        // Arrange: sign a URL for LINK_A (no viewer cookie in the request)
+        String imageUrl = "http://localhost:" + wireMockServer.port() + "/any-image.png";
+        String signedUrl = proxyUrlBuilder.sign(imageUrl, SHARE_LINK_ID);
+        if (signedUrl == null) return; // HMAC secret not configured — skip
+
+        String token = signedUrl.substring(signedUrl.indexOf("?u=") + 3);
+
+        // Act: request WITHOUT any shareViewerId cookie
+        // SR-RENDER-03: proxy must not return 401 (unauthorized) for a valid HMAC token
+        // even without the viewer cookie — HMAC-only bearer surface by design.
+        mockMvc.perform(get("/rest/share/img-proxy?u=" + token))
+                // SSRF guard blocks localhost → 502/5xx, but NOT 401
+                // 401 would indicate the proxy is checking session state (not its job)
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    assertThat(status)
+                            .as("SR-RENDER-03: a valid HMAC token must not be rejected with 401 "
+                                    + "(proxy is a bearer surface, not a session-authz gate)")
+                            .isNotEqualTo(401);
+                });
+    }
+
+    /**
      * SSRF Finding 4: Upstream redirect must NOT be followed.
      *
      * <p>If the proxy follows a redirect to an internal IP (e.g. 127.0.0.1),

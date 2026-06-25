@@ -58,9 +58,10 @@ class ShareViewStompRelayRelayTest {
         mockShareLinkService = mock(ShareLinkService.class);
         mockMessageCache = mock(MessageCache.class);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
-        // Real-time relay for tests that do not exercise the debounce clock path
+        // ShareRenderingService is null here: relay routing tests use the Object overload.
+        // Real-time relay for tests that do not exercise the debounce clock path.
         relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
-                Clock.systemUTC());
+                null, Clock.systemUTC());
     }
 
     // -----------------------------------------------------------------------
@@ -167,7 +168,7 @@ class ShareViewStompRelayRelayTest {
             // ---- Act / Assert: phase 1 — T0, first call → warn emitted ----
             ShareViewStompRelay relayT0 = new ShareViewStompRelay(
                     mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
-                    Clock.fixed(t0, ZoneOffset.UTC));
+                    null, Clock.fixed(t0, ZoneOffset.UTC));
             relayT0.relayTootEvent(WALL_ID, HASHTAG, "creation", Map.of());
 
             List<ILoggingEvent> eventsAfterT0 = auditAppender.list.stream()
@@ -183,7 +184,7 @@ class ShareViewStompRelayRelayTest {
             // ---- Act / Assert: phase 2 — T0+15s (inside 30s), second call → suppressed ----
             ShareViewStompRelay relayT0plus15 = new ShareViewStompRelay(
                     mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
-                    Clock.fixed(t0plus15, ZoneOffset.UTC));
+                    null, Clock.fixed(t0plus15, ZoneOffset.UTC));
             // Transfer debounce state by re-using the same relay would be ideal, but since
             // the debounce map is internal we call the same relay instance with a clock that
             // reports T0+15s.  We build a relay seeded at T0, then advance to T0+15s.
@@ -197,7 +198,7 @@ class ShareViewStompRelayRelayTest {
             MutableClock mutableClock = new MutableClock(t0);
             ShareViewStompRelay relay1 = new ShareViewStompRelay(
                     mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
-                    mutableClock);
+                    null, mutableClock);
 
             // Clear previous captures
             auditAppender.list.clear();

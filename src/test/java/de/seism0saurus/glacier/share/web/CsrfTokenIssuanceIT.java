@@ -1,6 +1,7 @@
 package de.seism0saurus.glacier.share.web;
 
 import de.seism0saurus.glacier.GlacierCookieProperties;
+import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import org.junit.jupiter.api.Nested;
@@ -92,6 +93,12 @@ class CsrfTokenIssuanceIT {
         @MockitoBean
         @SuppressWarnings("unused")
         private ShareViewStompRelay shareViewStompRelay;
+
+        // SubscriptionManager is a new ShareViewController dependency (ADR-RENDER-02).
+        // Mocked here so the web slice can start without the full Mastodon streaming stack.
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private SubscriptionManager subscriptionManager;
 
         /**
          * IT-CSRF-01a: I-CSRF-1 in secure mode — exactly one {@code __Host-shareCsrf=}
@@ -254,6 +261,12 @@ class CsrfTokenIssuanceIT {
         @MockitoBean
         @SuppressWarnings("unused")
         private ShareViewStompRelay shareViewStompRelay;
+
+        // SubscriptionManager is a new ShareViewController dependency (ADR-RENDER-02).
+        // Mocked here so the web slice can start without the full Mastodon streaming stack.
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private SubscriptionManager subscriptionManager;
 
         /**
          * IT-CSRF-02a: I-CSRF-1 in insecure mode — exactly one {@code shareCsrf=}

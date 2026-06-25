@@ -14,6 +14,7 @@ import de.seism0saurus.glacier.GlacierCookieProperties;
 import de.seism0saurus.glacier.GlacierOperatorProperties;
 import de.seism0saurus.glacier.MastodonProperties;
 import de.seism0saurus.glacier.mastodon.MastodonHandleFactory;
+import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.share.web.CsrfTokenCookieFactory;
@@ -379,6 +380,12 @@ class OwaspMatrixCookieAttributesLockstepTest {
         @SuppressWarnings("unused")
         private ShareViewStompRelay shareViewStompRelay;
 
+        // SubscriptionManager is a new ShareViewController dependency (ADR-RENDER-02).
+        // Mocked here so the web slice can start without the full Mastodon streaming stack.
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private SubscriptionManager subscriptionManager;
+
         /**
          * UT-sec-LOCK-02a: the matrix EP-09 rows claim a specific SameSite value for the
          * {@code __Host-shareCsrf} cookie. Verify the actual {@code Set-Cookie} header
@@ -550,6 +557,12 @@ class OwaspMatrixCookieAttributesLockstepTest {
         @MockitoBean
         @SuppressWarnings("unused")
         private ShareViewStompRelay shareViewStompRelay;
+
+        // SubscriptionManager is a new ShareViewController dependency (ADR-RENDER-02).
+        // Mocked here so the web slice can start without the full Mastodon streaming stack.
+        @MockitoBean
+        @SuppressWarnings("unused")
+        private SubscriptionManager subscriptionManager;
 
         /**
          * UT-sec-LOCK-02-insecure-a: GET /rest/share-csrf in insecure mode must emit exactly

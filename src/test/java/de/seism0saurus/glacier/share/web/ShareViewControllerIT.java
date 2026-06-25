@@ -1,5 +1,6 @@
 package de.seism0saurus.glacier.share.web;
 
+import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.share.domain.ShareLink;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -18,6 +20,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -64,6 +67,13 @@ class ShareViewControllerIT {
 
     @MockBean
     private ShareViewStompRelay shareViewStompRelay;
+
+    /**
+     * Spring Boot 3.4 / Spring Framework 6.2: use {@code @MockitoBean} for new mocks
+     * (replaces deprecated {@code @MockBean}).
+     */
+    @MockitoBean
+    private SubscriptionManager subscriptionManager;
 
     // IDs must be >= 43 chars total (URL-safe base64 alphabet: [A-Za-z0-9_-]{43,256})
     // sv_ prefix (3 chars) + 40 URL-safe base64 chars = 43 chars minimum
@@ -224,6 +234,123 @@ class ShareViewControllerIT {
         mockMvc.perform(get("/rest/share/{id}/messages", UNKNOWN_SHARE_ID)
                         .param("hashtag", "cats"))
                 .andExpect(status().isNotFound());
+    }
+
+    // -----------------------------------------------------------------------
+    // ADR-RENDER-02 / SR-CAT-02: catalog returns sharer's subscribed hashtags
+    // -----------------------------------------------------------------------
+
+    /**
+     * Verify that the catalog endpoint returns the hashtags the sharer is currently subscribed
+     * to, derived from the SubscriptionManager keyed on the sharer's wallId (ADR-RENDER-02).
+     *
+     * <p>Arrange: active share link whose sharerWallId is "sharer-principal-abc".
+     *   SubscriptionManager stub returns {"cats","dogs"} for that principal.
+     * <p>Act: GET /rest/share/{id}/catalog.
+     * <p>Assert: response body "hashtags" field contains exactly "cats" and "dogs"
+     *   (order-insensitive JSON array).
+     */
+    @Test
+    void catalogReturnsSubscribedHashtagsForSharer() throws Exception {
+        String sharerWallId = "sharer-principal-abc";
+        ShareLink activeLink = mockActiveShareLinkWithSharer(VALID_SHARE_ID, sharerWallId);
+        when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
+                .thenReturn(Optional.of(activeLink));
+        when(subscriptionManager.getSubscribedHashtags(sharerWallId))
+                .thenReturn(Set.of("cats", "dogs"));
+
+        MvcResult result = mockMvc.perform(get("/rest/share/{id}/catalog", VALID_SHARE_ID)
+                        .cookie(new jakarta.servlet.http.Cookie("shareViewerId",
+                                "sv_" + "V".repeat(40))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        // Order-insensitive: both hashtags must appear in the JSON body
+        assertThat(body).contains("\"cats\"");
+        assertThat(body).contains("\"dogs\"");
+    }
+
+    /**
+     * Verify that the catalog response body contains an empty {@code initialToots} array in the
+     * MVP (ADR-RENDER-03) — the frontend spreads it without null-guard.
+     *
+     * <p>Arrange: active share link; SubscriptionManager returns empty set.
+     * <p>Act: GET /rest/share/{id}/catalog.
+     * <p>Assert: body contains {@code "initialToots":[]} — field present and empty.
+     */
+    @Test
+    void catalogReturnsEmptyInitialTootsInMvp() throws Exception {
+        ShareLink activeLink = mockActiveShareLink(VALID_SHARE_ID);
+        when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
+                .thenReturn(Optional.of(activeLink));
+        when(subscriptionManager.getSubscribedHashtags(any()))
+                .thenReturn(Set.of());
+
+        MvcResult result = mockMvc.perform(get("/rest/share/{id}/catalog", VALID_SHARE_ID)
+                        .cookie(new jakarta.servlet.http.Cookie("shareViewerId",
+                                "sv_" + "V".repeat(40))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        // ADR-RENDER-03: initialToots must be present as an empty JSON array
+        assertThat(body).contains("\"initialToots\":[]");
+    }
+
+    /**
+     * SR-CAT-01 (SR-SHARE-02): the full serialized catalog JSON body — including the new
+     * {@code hashtags} and {@code initialToots} fields — must never contain the string
+     * {@code sharerWallId}.
+     *
+     * <p>Arrange: active link with a distinctive sharer wallId string.
+     *   SubscriptionManager returns two hashtags so the response is non-trivial.
+     * <p>Act: GET /rest/share/{id}/catalog.
+     * <p>Assert: response body is 200 OK and does NOT contain the sharerWallId string anywhere.
+     */
+    @Test
+    void catalogFullBodyDoesNotContainSharerWallId() throws Exception {
+        String sharerWallId = "THIS-SECRET-SHARER-WALL-ID-MUST-NOT-LEAK";
+        ShareLink activeLink = mockActiveShareLinkWithSharer(VALID_SHARE_ID, sharerWallId);
+        when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
+                .thenReturn(Optional.of(activeLink));
+        when(subscriptionManager.getSubscribedHashtags(sharerWallId))
+                .thenReturn(Set.of("cats", "dogs"));
+
+        MvcResult result = mockMvc.perform(get("/rest/share/{id}/catalog", VALID_SHARE_ID)
+                        .cookie(new jakarta.servlet.http.Cookie("shareViewerId",
+                                "sv_" + "V".repeat(40))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        // SR-CAT-01 / SR-SHARE-02: sharerWallId must never appear in the serialized response
+        assertThat(body).doesNotContain(sharerWallId);
+        // Confirm the response is non-trivial (contains the expected fields)
+        assertThat(body).contains("\"hashtags\"");
+        assertThat(body).contains("\"initialToots\"");
+    }
+
+    /**
+     * SR-CAT-02 (SR-SHARE-01): hashtags are only returned for resolved, active links.
+     * Expired or unknown share IDs return 404 regardless of whether SubscriptionManager
+     * has data — the anti-enumeration invariant is preserved.
+     *
+     * <p>Arrange: shareLinkService returns empty (unknown / expired link).
+     * <p>Act: GET /rest/share/{id}/catalog.
+     * <p>Assert: 404, SubscriptionManager is never called.
+     */
+    @Test
+    void catalogReturns404AndDoesNotQuerySubscriptionsForUnknownLink() throws Exception {
+        when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/rest/share/{id}/catalog", UNKNOWN_SHARE_ID))
+                .andExpect(status().isNotFound());
+
+        // SR-CAT-02: SubscriptionManager must not be consulted for unknown/expired links
+        org.mockito.Mockito.verify(subscriptionManager, org.mockito.Mockito.never())
+                .getSubscribedHashtags(anyString());
     }
 
     // -----------------------------------------------------------------------

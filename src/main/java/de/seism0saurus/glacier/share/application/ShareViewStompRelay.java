@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import social.bigbone.api.entity.Status;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -81,6 +82,16 @@ public class ShareViewStompRelay {
     private final ShareLinkActivityRegistry registry;
 
     /**
+     * Rendering service for converting a Bigbone {@link Status} into a viewer-safe
+     * {@link ReadonlyTootView}. Called inside the {@code getActiveLinks} loop so that
+     * each share link receives a proxy-URL-HMAC-scoped view (SR-RENDER-01, ADR-RENDER-01).
+     *
+     * <p>May be {@code null} when constructed by tests that do not exercise the
+     * typed-Status relay path (backward-compatible — the Object overload does not use it).
+     */
+    private final ShareRenderingService shareRenderingService;
+
+    /**
      * Clock used by {@link #emitNoViewersWarnWithDebounce} for debounce timing.
      * Injected so tests can substitute a {@link Clock#fixed} for deterministic assertion
      * (ACC-03 behavioral debounce test, SR-RELAY-20).
@@ -97,12 +108,15 @@ public class ShareViewStompRelay {
     /**
      * Spring-managed constructor.
      *
-     * @param messagingTemplate STOMP messaging template (lazy to break circular dep chain)
-     * @param shareLinkService  share link service (lazy to break circular dep chain)
-     * @param messageCache      message cache (lazy to break circular dep chain)
-     * @param registry          active share link routing table
-     * @param clock             clock for debounce timing; injected so tests can freeze time
-     *                          (ACC-03 behavioral assertion, SR-RELAY-20)
+     * @param messagingTemplate    STOMP messaging template (lazy to break circular dep chain)
+     * @param shareLinkService     share link service (lazy to break circular dep chain)
+     * @param messageCache         message cache (lazy to break circular dep chain)
+     * @param registry             active share link routing table
+     * @param shareRenderingService rendering service for typed-Status relay (ADR-RENDER-01,
+     *                             SR-RENDER-01); injected to perform per-link rendering inside
+     *                             the {@code getActiveLinks} loop
+     * @param clock                clock for debounce timing; injected so tests can freeze time
+     *                             (ACC-03 behavioral assertion, SR-RELAY-20)
      */
     public ShareViewStompRelay(
             // @Lazy on SimpMessagingTemplate and ShareLinkService breaks the mutual circular
@@ -114,11 +128,13 @@ public class ShareViewStompRelay {
             // @Lazy on MessageCache prevents a secondary cycle via the same chain.
             @Lazy final MessageCache messageCache,
             final ShareLinkActivityRegistry registry,
+            final ShareRenderingService shareRenderingService,
             final Clock clock) {
         this.messagingTemplate = messagingTemplate;
         this.shareLinkService = shareLinkService;
         this.messageCache = messageCache;
         this.registry = registry;
+        this.shareRenderingService = shareRenderingService;
         this.clock = clock;
     }
 
@@ -222,6 +238,84 @@ public class ShareViewStompRelay {
             } catch (Exception e) {
                 log.warn("share.relay.publish_failed shareId-hash={} reason={}",
                         LogScrubber.hash8(shareLinkId.value()), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Re-publishes a typed Bigbone {@link Status} to all active share link topics as a
+     * viewer-safe {@link ReadonlyTootView}, rendered per link via {@link ShareRenderingService}.
+     *
+     * <p>Called on the typed {@code StatusCreated} and {@code StatusEdited} paths in
+     * {@link de.seism0saurus.glacier.mastodon.StompCallback} where a full Bigbone
+     * {@link Status} is in scope (ADR-RENDER-01).
+     *
+     * <p>SR-RENDER-01: {@link ShareRenderingService#renderForView(Status, ShareLinkId)} is called
+     * INSIDE the per-link loop with the current link's {@link ShareLinkId}. The view is never
+     * hoisted before the loop or shared across links — each link's image proxy URLs are HMAC-signed
+     * with that link's ID, so a view rendered for LINK_A is NOT valid for LINK_B.
+     *
+     * <p>SR-RENDER-01 failure containment: a render failure for one link is caught per iteration
+     * and logged at WARN level; other links continue to receive their relay event.
+     *
+     * <p>SR-RENDER-02: every published {@link ReadonlyTootView} originates from
+     * {@link ShareRenderingService#renderForView} — the relay never constructs a view directly.
+     *
+     * <p>SR-SHARE-02: the wallId is server-side only; it never appears in any topic path.
+     *
+     * <p>FLAW-2 (resolved — Option B2): The dockerized Mastodon hashtag WebSocket stream delivers
+     * events as {@link de.seism0saurus.glacier.webservice.messaging.messages.GenericMessageContent}
+     * ({@code GenericMessage}), NOT as typed {@link social.bigbone.api.entity.streaming.MastodonApiEvent.StreamEvent}.
+     * The generic path (used by the real streaming subscription via {@code streaming().hashtag()})
+     * now parses the raw payload JSON into a Bigbone {@link Status} using
+     * {@code StompCallback#LENIENT_JSON} (kotlinx.serialization, ignoreUnknownKeys=true, isLenient=true)
+     * and calls this Status-overload relay for full per-link {@link ReadonlyTootView} rendering.
+     * Both the generic path (live dockerized Mastodon) and the typed path (SSE-capable instances)
+     * now use this overload, ensuring consistent rendering across streaming backends.
+     * See ADR-RENDER-01 / SR-FLAW2-01 (B2 resolution).
+     *
+     * @param wallId    the sharer's wallId (server-side use only; never in topic path — SR-SHARE-02)
+     * @param hashtag   the hashtag that produced the event
+     * @param eventType one of {@code creation} or {@code modification}
+     * @param status    the typed Bigbone {@link Status} for per-link rendering (ADR-RENDER-01)
+     */
+    public void relayTootEvent(
+            final String wallId,
+            final String hashtag,
+            final String eventType,
+            final Status status) {
+
+        if (wallId == null || wallId.isBlank()) {
+            // Defensive: null wallId means no share links to relay to
+            return;
+        }
+
+        Set<ShareLinkId> activeLinks = registry.getActiveLinks(wallId);
+
+        if (activeLinks.isEmpty()) {
+            emitNoViewersWarnWithDebounce(wallId);
+            return;
+        }
+
+        for (ShareLinkId shareLinkId : activeLinks) {
+            // Topic path: /topic/share/{shareLinkId}/{hashtag}/{eventType}
+            // wallId is DELIBERATELY absent from this path (SR-SHARE-02)
+            String topic = SHARE_TOPIC_PREFIX + shareLinkId.value()
+                    + "/" + hashtag
+                    + "/" + eventType;
+            try {
+                // SR-RENDER-01: render INSIDE the loop with THIS iteration's shareLinkId —
+                // never hoist or cache the view across links; HMAC signing is per-link.
+                // SR-RENDER-02: the rendered view is the ONLY thing published — never hand-built.
+                ReadonlyTootView view = shareRenderingService.renderForView(status, shareLinkId);
+                messagingTemplate.convertAndSend(topic, view);
+                log.debug("share.relay.published shareId-hash={} hashtag={} event={}",
+                        LogScrubber.hash8(shareLinkId.value()), hashtag, eventType);
+            } catch (Exception e) {
+                // SR-RENDER-01 failure containment: one link's render failure does not block
+                // other links. Log at WARN with hashed IDs only (SR-LOG-01 / D-13 / SR-8).
+                log.warn("share.relay.render_failed shareId-hash={} reason={}",
+                        LogScrubber.hash8(shareLinkId.value()), e.getClass().getSimpleName());
             }
         }
     }

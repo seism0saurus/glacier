@@ -50,8 +50,10 @@ class ShareViewStompRelayTest {
         mockShareLinkService = mock(ShareLinkService.class);
         mockMessageCache = mock(MessageCache.class);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
+        // ShareRenderingService is null here: these tests exercise the Object/CacheEntry overload
+        // only (relay-to-topic routing); the Status overload is tested in ShareViewStompRelayRenderTest.
         relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
-                Clock.systemUTC());
+                null, Clock.systemUTC());
     }
 
     // -----------------------------------------------------------------------
