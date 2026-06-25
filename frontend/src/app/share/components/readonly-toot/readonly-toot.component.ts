@@ -51,12 +51,17 @@ import { CwToggleComponent } from '../cw-toggle/cw-toggle.component';
       [attr.aria-labelledby]="headingId"
       class="readonly-toot"
     >
-      <!-- Heading — identifies the toot for screen reader landmark navigation -->
+      <!-- Heading — identifies the toot for screen reader landmark navigation.
+           The author handle and time are interpolated OUTSIDE the i18n message: an
+           HTML i18n attribute wrapping a {{ }} interpolation serializes the placeholder
+           as {$INTERPOLATION}, which the runtime catalog (loadTranslations) would have
+           to match exactly — a bare {acct}/{time} in messages.en.json is parsed as a
+           malformed ICU expression and throws at render. Keeping the message text
+           placeholder-free (as with share.readonly.expires) avoids that entirely while
+           the screen reader still reads "Toot by <acct> — <time>". -->
       <h3 [id]="headingId">
-        <span
-          i18n="@@share.toot.heading"
-          class="visually-hidden"
-        >Toot von {{ toot.authorAcct }} — </span>
+        <span class="visually-hidden"
+          ><span i18n="@@share.toot.heading">Toot von</span> {{ toot.authorAcct }} — </span>
         <time [attr.datetime]="toot.createdAt">{{ formattedTime }}</time>
       </h3>
 

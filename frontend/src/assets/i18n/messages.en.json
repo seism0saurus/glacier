@@ -61,7 +61,7 @@
   "share.feed.loaded.announce": "{count, plural, one {# toot loaded} other {# toots loaded}}",
   "share.feed.new-toot.announce": "New toot from {acct}",
   "share.feed.new-toots.announce": "{count, plural, one {# new toot} other {# new toots}}",
-  "share.toot.heading": "Toot by {acct} — {time}",
+  "share.toot.heading": "Toot by",
   "share.toot.open-original": "Open original (opens in new tab)",
   "share.toot.cw.toggle.show": "Show content warning: {spoiler}",
   "share.toot.cw.toggle.hide": "Hide content",
