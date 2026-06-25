@@ -222,6 +222,45 @@ describe('ReadonlyWallService', () => {
 
       expect(service.expiresAt).toBe('2026-04-29T12:00:00Z');
     }));
+
+    // FLAW-1 / ADR-RENDER-03: catalog with initialToots:[] must not throw and
+    // must emit an empty array on toots$ so the live-toot path fills the wall.
+    it('service_initialize_populatesHashtagsAndEmptyToots — catalog with initialToots:[] populates hashtags, emits empty toots$, no throw', fakeAsync(() => {
+      const emptyCatalog: ShareCatalog = {
+        ...mockCatalog,
+        hashtags: ['cats'],
+        initialToots: [],
+      };
+
+      let threwError = false;
+      let capturedToots: ReadonlyTootView[] | undefined;
+      let catalogLoaded = false;
+
+      // Subscribe before initialize() fires so we catch the emission
+      service.toots$.subscribe((t) => (capturedToots = t));
+      service.catalogLoaded$.subscribe((loaded) => (catalogLoaded = loaded));
+
+      // Must not throw during or after the HTTP response
+      expect(() => {
+        service.initialize(SHARE_ID);
+      }).not.toThrow();
+
+      const req = httpMock.expectOne(`/rest/share/${SHARE_ID}/catalog`);
+      expect(() => {
+        req.flush(emptyCatalog);
+      }).not.toThrow();
+
+      tick();
+
+      // Catalog must be loaded
+      expect(catalogLoaded).withContext('catalogLoaded$ must emit true').toBeTrue();
+      // Hashtags must be set from the catalog
+      expect(service.hashtags).withContext('hashtags must be populated from catalog').toEqual(['cats']);
+      // toots$ must have emitted [] (not undefined, not thrown)
+      expect(capturedToots).withContext('toots$ must have emitted').toBeDefined();
+      expect(capturedToots!.length).withContext('toots$ must be empty (no initial toots)').toBe(0);
+      expect(threwError).withContext('no error must be thrown').toBeFalse();
+    }));
   });
 
   // ---- Revocation frame handling ----

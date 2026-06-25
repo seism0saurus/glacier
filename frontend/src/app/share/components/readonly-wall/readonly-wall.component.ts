@@ -14,6 +14,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
 import { DomSanitizer } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
+import { filter, take } from 'rxjs/operators';
 import { registerGlacierSvgIcons } from '../../../icons/glacier-svg-icons';
 import { ReadonlyWallService } from '../../services/readonly-wall.service';
 import { ReadonlyWallStompClient } from '../../services/readonly-wall-stomp-client.service';
@@ -380,17 +381,35 @@ export class ReadonlyWallComponent implements OnInit, OnDestroy {
     // SR-RELAY-17: stompClient is per-component — each viewer owns its own connection.
     this.stompClient.connect(shareId);
 
-    // Subscribe to STOMP toot events for each hashtag loaded from the catalog.
-    // The catalog is loaded synchronously enough that hashtags are available
-    // immediately after initialize(); for deferred hashtags, the STOMP client
-    // re-registers topic subscriptions on each reconnect.
-    this.wallService.hashtags.forEach((hashtag) => {
-      this.subscription.add(
-        this.stompClient.tootEvents$(hashtag).subscribe((toot: ReadonlyTootView) => {
-          this.wallService.handleToot(toot);
-        }),
-      );
-    });
+    // FLAW-1 fix: register STOMP topic subscriptions reactively, AFTER the
+    // async catalog HTTP GET resolves.
+    //
+    // wallService.initialize() fires an async HTTP GET.  wallService.hashtags is
+    // [] at the synchronous ngOnInit tick.  Reading hashtags immediately (the old
+    // approach) registered zero topic subscriptions so live toots never arrived.
+    //
+    // The reactive fix: subscribe to catalogLoaded$, skip until it emits true,
+    // take exactly one emission (prevents double-registration if the BehaviorSubject
+    // replays), then iterate over wallService.hashtags — which is now populated —
+    // and register tootEvents$(hashtag) for each one.
+    //
+    // Teardown: the catalogLoaded$ subscription is added to this.subscription and
+    // is therefore cleaned up in ngOnDestroy().  Each inner tootEvents$ subscription
+    // is also added to this.subscription for the same reason.
+    this.subscription.add(
+      this.wallService.catalogLoaded$.pipe(
+        filter((loaded) => loaded),
+        take(1),
+      ).subscribe(() => {
+        this.wallService.hashtags.forEach((hashtag) => {
+          this.subscription.add(
+            this.stompClient.tootEvents$(hashtag).subscribe((toot: ReadonlyTootView) => {
+              this.wallService.handleToot(toot);
+            }),
+          );
+        });
+      }),
+    );
 
     // React to transport mode changes.
     this.subscription.add(

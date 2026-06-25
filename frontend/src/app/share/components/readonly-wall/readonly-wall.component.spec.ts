@@ -307,9 +307,19 @@ describe('ReadonlyWallComponent', () => {
     expect(routerSpy.navigate).toHaveBeenCalledTimes(1);
   }));
 
-  it('tootEvents$_subscribes_to_each_hashtag_on_init', () => {
-    // wallServiceSpy.hashtags is ['glacier']
-    // The component should have subscribed tootEvents$('glacier')
+  it('tootEvents$_subscribes_to_each_hashtag_after_catalogLoaded — tootEvents$ called for each hashtag when catalogLoaded$ emits true', () => {
+    // wallServiceSpy.hashtags is ['glacier'] (set up in beforeEach).
+    // catalogLoaded$ starts false in beforeEach.
+    // The reactive rewire means tootEvents$ is called only AFTER catalogLoaded$ emits true.
+
+    // Before catalog loads: tootEvents$ must NOT have been called yet
+    expect(stompClientSpy.tootEvents$).not.toHaveBeenCalled();
+
+    // Trigger catalog resolution
+    catalogLoadedSubject.next(true);
+    fixture.detectChanges();
+
+    // Now tootEvents$ must have been called with the hashtag from the catalog
     expect(stompClientSpy.tootEvents$).toHaveBeenCalledWith('glacier');
   });
 
@@ -702,5 +712,204 @@ describe('ReadonlyWallComponent', () => {
       const result = component.formattedExpiry;
       expect(result).toBe('');
     });
+  });
+
+});
+
+// ── FLAW-1: reactive topic subscription after async catalog resolves ──────────
+//
+// Context: ReadonlyWallService.initialize() loads the catalog via an async
+// HTTP GET.  wallService.hashtags is [] at the tick when ngOnInit executes.
+// The OLD synchronous code reads hashtags immediately — registering zero
+// topic subscriptions.  The NEW reactive code waits for catalogLoaded$ to
+// emit true, then reads wallService.hashtags and calls tootEvents$() for
+// each hashtag.
+//
+// This suite lives in a separate top-level describe so it gets its own
+// TestBed instance (Jasmine/Karma reset TestBed between top-level describes).
+
+describe('ReadonlyWallComponent — FLAW-1 reactive topic subscription', () => {
+
+  const mockToot: ReadonlyTootView = {
+    id: 'toot-1',
+    authorDisplayName: 'Alice',
+    authorAcct: '@alice@example.com',
+    authorProfileUrl: 'https://example.com/@alice',
+    authorAvatarProxyUrl: 'https://example.com/avatar.png',
+    createdAt: '2026-04-22T12:00:00Z',
+    textContent: 'Hello world',
+    spoilerText: '',
+    sensitive: false,
+    bidiStripped: false,
+    links: [],
+    mentions: [],
+    hashtags: [],
+    customEmojis: [],
+    media: [],
+    poll: null,
+    language: 'en',
+  };
+
+  // Inner subject that starts FALSE (catalog not yet loaded)
+  let asyncCatalogLoaded$: BehaviorSubject<boolean>;
+  let asyncWallServiceSpy: jasmine.SpyObj<ReadonlyWallService>;
+  let asyncStompClientSpy: jasmine.SpyObj<ReadonlyWallStompClient>;
+  let asyncFixture: ComponentFixture<ReadonlyWallComponent>;
+  // asyncComponent kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let asyncComponent: ReadonlyWallComponent;
+  const asyncToots$ = new BehaviorSubject<ReadonlyTootView[]>([]);
+  let asyncTransportMode$: BehaviorSubject<ViewerTransportMode>;
+  let asyncExpired$: Subject<void>;
+  // Shared tootSubject: the tootEvents$ spy returns this so tests can push live toots
+  let tootSubject: Subject<ReadonlyTootView>;
+
+  beforeEach(async () => {
+    // catalogLoaded$ starts false — simulating async HTTP not yet resolved
+    asyncCatalogLoaded$ = new BehaviorSubject<boolean>(false);
+    asyncTransportMode$ = new BehaviorSubject<ViewerTransportMode>(ViewerTransportMode.PROBING);
+    asyncExpired$ = new Subject<void>();
+    tootSubject = new Subject<ReadonlyTootView>();
+
+    // hashtags is empty at init time — the catalog has not resolved yet
+    asyncWallServiceSpy = jasmine.createSpyObj<ReadonlyWallService>(
+      'ReadonlyWallService',
+      ['initialize', 'destroy', 'startFallbackPolling', 'stopFallbackPolling', 'handleToot'],
+      {
+        toots$: asyncToots$,
+        catalogLoaded$: asyncCatalogLoaded$,
+        hashtags: [],         // <-- empty at init time (catalog not yet resolved)
+        expiresAt: '2026-04-29T12:00:00Z',
+        shareId: 'async-share-id',
+        expired$: asyncExpired$.asObservable(),
+      }
+    );
+
+    asyncStompClientSpy = jasmine.createSpyObj<ReadonlyWallStompClient>(
+      'ReadonlyWallStompClient',
+      ['connect', 'disconnect', 'tootEvents$'],
+      { transportMode$: asyncTransportMode$ }
+    );
+    // tootEvents$ returns the shared tootSubject so we can push live toots in tests
+    asyncStompClientSpy.tootEvents$.and.returnValue(tootSubject.asObservable());
+
+    await TestBed.configureTestingModule({
+      imports: [ReadonlyWallComponent],
+      providers: [
+        provideAnimations(),
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: ReadonlyWallService, useValue: asyncWallServiceSpy },
+        { provide: ReadonlyWallStompClient, useValue: asyncStompClientSpy },
+        { provide: LiveAnnouncer, useValue: jasmine.createSpyObj('LiveAnnouncer', ['announce']) },
+        { provide: LOCALE_ID, useValue: 'de' },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { paramMap: { get: () => 'async-share-id' } },
+          },
+        },
+      ],
+    })
+    .overrideComponent(ReadonlyWallComponent, { set: { providers: [] } })
+    .compileComponents();
+
+    asyncFixture = TestBed.createComponent(ReadonlyWallComponent);
+    asyncComponent = asyncFixture.componentInstance;
+    // Run ngOnInit — at this tick, hashtags is [] and catalogLoaded$ is false
+    asyncFixture.detectChanges();
+  });
+
+  afterEach(() => {
+    asyncCatalogLoaded$.complete();
+    asyncTransportMode$.complete();
+    asyncExpired$.complete();
+  });
+
+  /**
+   * FLAW-1 RED test:
+   * The OLD synchronous code would read hashtags synchronously in ngOnInit
+   * (getting []) and never call tootEvents$('cats').
+   *
+   * The NEW reactive code subscribes to catalogLoaded$ and calls
+   * tootEvents$('cats') only after the catalog resolves with that hashtag.
+   *
+   * This test MUST FAIL against the current implementation and PASS after
+   * the reactive rewire.
+   */
+  it('component_subscribesToTopicsAfterCatalogLoads — tootEvents$(hashtag) called only after catalogLoaded$ emits true', () => {
+    // At this point ngOnInit has run with hashtags=[] and catalogLoaded$=false.
+    // The OLD synchronous code registers no subscriptions because hashtags is [].
+    // Assert the subscription has NOT been registered yet (for any hashtag).
+    expect(asyncStompClientSpy.tootEvents$).not.toHaveBeenCalled();
+
+    // Simulate the catalog resolving: push hashtags onto the service spy
+    // then emit catalogLoaded$=true (matching what initialize() actually does).
+    Object.defineProperty(asyncWallServiceSpy, 'hashtags', {
+      get: () => ['cats'],
+      configurable: true,
+    });
+    asyncCatalogLoaded$.next(true);
+    asyncFixture.detectChanges();
+
+    // NOW the reactive code must have called tootEvents$('cats')
+    expect(asyncStompClientSpy.tootEvents$)
+      .withContext('tootEvents$ must be called after catalogLoaded$ emits true')
+      .toHaveBeenCalledWith('cats');
+  });
+
+  /**
+   * FLAW-1 additional guard: no double-registration on catalogLoaded$ emitting
+   * multiple times (e.g., if the BehaviorSubject replays on a late subscriber).
+   * tootEvents$ must be called exactly once per hashtag.
+   */
+  it('component_noDoubleRegistration — multiple catalogLoaded$ true emissions do not double-subscribe', () => {
+    Object.defineProperty(asyncWallServiceSpy, 'hashtags', {
+      get: () => ['cats'],
+      configurable: true,
+    });
+
+    // Emit catalogLoaded$ twice (BehaviorSubject pattern can replay)
+    asyncCatalogLoaded$.next(true);
+    asyncCatalogLoaded$.next(true);
+    asyncFixture.detectChanges();
+
+    // tootEvents$('cats') must have been called exactly once
+    const callsForCats = asyncStompClientSpy.tootEvents$.calls.all()
+      .filter((call) => call.args[0] === 'cats');
+    expect(callsForCats.length)
+      .withContext('tootEvents$ must be called exactly once for cats despite multiple catalogLoaded$ emissions')
+      .toBe(1);
+  });
+
+  /**
+   * Live toot rendering (integration):
+   * A ReadonlyTootView pushed via tootEvents$ must reach wallService.handleToot().
+   * This verifies the subscription chain: tootEvents$ → handleToot.
+   */
+  it('component_rendersReadonlyTootView_onLiveEvent — a live ReadonlyTootView reaches wallService.handleToot', () => {
+    // Resolve the catalog first
+    Object.defineProperty(asyncWallServiceSpy, 'hashtags', {
+      get: () => ['cats'],
+      configurable: true,
+    });
+    asyncCatalogLoaded$.next(true);
+    asyncFixture.detectChanges();
+
+    // Push a live toot via the STOMP subject
+    const liveToot: ReadonlyTootView = {
+      ...mockToot,
+      id: 'live-toot-1',
+      authorDisplayName: 'LiveUser',
+      authorAcct: '@live@example.com',
+    };
+    tootSubject.next(liveToot);
+    asyncFixture.detectChanges();
+
+    // handleToot must have been called with the live toot
+    expect(asyncWallServiceSpy.handleToot)
+      .withContext('handleToot must be called when a live toot arrives via tootEvents$')
+      .toHaveBeenCalledWith(liveToot);
   });
 });
