@@ -7,7 +7,10 @@ import social.bigbone.api.entity.MediaAttachment;
 import social.bigbone.api.entity.Status;
 import social.bigbone.api.entity.Account;
 
+import social.bigbone.PrecisionDateTime;
+
 import java.net.URI;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -62,6 +65,23 @@ class ShareRenderingServiceTest {
         assertThat(view.textContent()).doesNotContain("<script>");
         assertThat(view.textContent()).doesNotContain("alert(");
         assertThat(view.textContent()).contains("Hello, world!");
+    }
+
+    @Test
+    void createdAt_fromRealPrecisionDateTime_isConvertedNotStringParsed() {
+        // Regression: getCreatedAt() returns a Bigbone PrecisionDateTime, whose toString()
+        // is NOT an ISO-8601 instant (e.g. "ExactTime(instant=...)"). The previous
+        // Instant.parse(getCreatedAt().toString()) threw DateTimeParseException on every
+        // real status — which surfaced as share.relay.render_failed for the whole share
+        // wall (the unit suite missed it because mockStatus never stubbed getCreatedAt).
+        Instant ts = Instant.parse("2026-01-01T12:00:00Z");
+        Status status = mockStatus("Hello");
+        when(status.getCreatedAt())
+                .thenReturn(new PrecisionDateTime.ValidPrecisionDateTime.ExactTime(ts));
+
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+
+        assertThat(view.createdAt()).isEqualTo(ts);
     }
 
     @Test

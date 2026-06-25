@@ -116,8 +116,12 @@ public class ShareRenderingService {
         // Poll
         Optional<ReadonlyTootView.PollView> poll = buildPoll(status);
 
+        // Bigbone's getCreatedAt() returns a PrecisionDateTime, NOT an ISO string —
+        // its toString() is "ExactTime(instant=...)", so Instant.parse(toString()) throws
+        // DateTimeParseException on every real status. Use the typed accessor that yields
+        // the Instant (or falls back when the timestamp is invalid/unavailable).
         Instant createdAt = status.getCreatedAt() != null
-                ? Instant.parse(status.getCreatedAt().toString())
+                ? status.getCreatedAt().mostPreciseOrFallback(Instant.now())
                 : Instant.now();
 
         return new ReadonlyTootView(
