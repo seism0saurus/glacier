@@ -139,6 +139,16 @@ jobs:
             # Executes: insecure Playwright project only.
             compose_overrides: "-f docker-compose.override.insecure.yaml"
             artifact_suffix: "-insecure"
+          - variant: share-https
+            # Full owner->viewer share round trip over the realistic HTTPS stack:
+            # owner wall at https://glacier.proxy, readonly share view at
+            # https://share.glacier.proxy (Traefik routers + ALPN http/1.1 + cert SANs
+            # are packed in infrastructure-content.tar.gz). The override sets glacier
+            # MY_DOMAIN=glacier.proxy + GLACIER_SHARE_HOST=share.glacier.proxy and the
+            # playwright BASE_URL, and runs only the 'share-https' Playwright project
+            # (share-wall-roundtrip.spec.ts — excluded from the default chromium project).
+            compose_overrides: "-f docker-compose.override.sharehttps.yaml"
+            artifact_suffix: "-share-https"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
