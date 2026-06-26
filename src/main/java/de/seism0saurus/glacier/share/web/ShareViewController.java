@@ -3,7 +3,7 @@ package de.seism0saurus.glacier.share.web;
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
-import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.share.application.ReadonlyTootView;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.util.LogScrubber;
@@ -183,14 +183,19 @@ public class ShareViewController {
                 LogScrubber.hash8(link.sharerWallId()),
                 hashtags.size());
 
-        // ADR-RENDER-03: initialToots is empty in the MVP — the share wall fills via
-        // live STOMP topics after the frontend subscribes using the returned hashtag list.
-        // History hydration is deferred until the ring buffer stores Status objects.
+        // FLAW-3: hydrate initialToots from the share Status cache, rendered per-link. This shows
+        // recent history on first load AND is the only content source for HTTP-fallback viewers
+        // (who never receive live STOMP frames). Rendering is per-link (image proxy URLs are signed
+        // per share link); sharerWallId stays server-side (SR-SHARE-02).
+        List<ReadonlyTootView> initialToots = new ArrayList<>();
+        for (String tag : hashtags) {
+            initialToots.addAll(shareViewStompRelay.getRecentMessages(linkId, tag, null, now));
+        }
         ShareCatalogResponse catalog = ShareCatalogResponse.active(
                 shareId,
                 hashtags,
                 link.expiresAt(),
-                List.of()
+                List.copyOf(initialToots)
         );
 
         return ResponseEntity.ok(catalog);
@@ -254,7 +259,7 @@ public class ShareViewController {
      * @return 200 with a JSON array of {@link CacheEntry} objects, or an error response
      */
     @GetMapping(value = "/rest/share/{shareId}/messages", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<List<CacheEntry>> getMessages(
+    public ResponseEntity<List<ReadonlyTootView>> getMessages(
             @PathVariable @Pattern(regexp = SHARE_ID_PATTERN) String shareId,
             @RequestParam("hashtag") @Pattern(regexp = HASHTAG_PATTERN) String hashtag,
             @RequestParam(value = "since", required = false)
@@ -304,7 +309,7 @@ public class ShareViewController {
         }
 
         // Fetch from ring buffer via relay — sharerWallId is resolved server-side (SR-SHARE-02)
-        List<CacheEntry> events = shareViewStompRelay.getRecentMessages(linkId, hashtag, since, now);
+        List<ReadonlyTootView> events = shareViewStompRelay.getRecentMessages(linkId, hashtag, since, now);
         log.debug("share.messages.served shareId-hash={} hashtag={} count={}",
                 LogScrubber.hash8(shareId), hashtag, events.size());
 

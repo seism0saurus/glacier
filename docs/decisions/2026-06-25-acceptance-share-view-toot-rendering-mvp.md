@@ -5,6 +5,19 @@ Phase: Acceptance
 Agents: security-auditor, acceptance-test-auditor (Round 1 + Round 2 cross-review)
 Status: Accepted — **PASSED WITH CONDITIONS**
 
+## Post-acceptance update (2026-06-26)
+
+- **Condition 1 (live-relay e2e CI gate) — DONE**: `share-wall-roundtrip.spec.ts` is un-`fixme`'d and
+  wired into `verify.yml` as the `share-https` matrix variant; validated against the live stack.
+- **Condition 2 (SR-CSP-01 recapture) — RESOLVED**: root cause was the critical-CSS-inlining
+  `onload` handler, not JIT; fixed via `inlineCritical=false` (+ `platformBrowser` hardening). See
+  `2026-06-24-sr-csp-01-follow-up.md`.
+- **Accepted residual F-5 (FLAW-3 fallback renders blank) — RESOLVED**: a new `ShareTootCache`
+  (per-(sharerWallId, hashtag) `Status` ring) backs catalog `initialToots` and `/messages` fallback,
+  rendered to per-link `ReadonlyTootView`. Verified by unit (`ShareTootCacheTest`) + IT
+  (`ShareViewControllerIT`, `ShareViewStompRelayRenderTest`) + a forced-fallback e2e (WS blocked,
+  share-https). The remaining residual (F-3 image-proxy bearer surface) is unchanged (held).
+
 ## Summary
 
 The MVP that wires the share-view live toot-rendering pipeline passed acceptance with

@@ -1,8 +1,10 @@
 package de.seism0saurus.glacier.share.application;
 
+import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.util.LogScrubber;
-import de.seism0saurus.glacier.webservice.cache.MessageCache;
+import de.seism0saurus.glacier.webservice.cache.CacheEntry;
+import de.seism0saurus.glacier.webservice.cache.EventType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -46,7 +48,7 @@ class ShareViewStompRelayRenderTest {
 
     private SimpMessagingTemplate mockTemplate;
     private ShareLinkService mockShareLinkService;
-    private MessageCache mockMessageCache;
+    private ShareTootCache shareTootCache;
     private ShareLinkActivityRegistry mockRegistry;
     private ShareRenderingService mockRenderingService;
     private ShareViewStompRelay relay;
@@ -65,11 +67,11 @@ class ShareViewStompRelayRenderTest {
     void setUp() {
         mockTemplate = mock(SimpMessagingTemplate.class);
         mockShareLinkService = mock(ShareLinkService.class);
-        mockMessageCache = mock(MessageCache.class);
+        shareTootCache = new ShareTootCache(20);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
         mockRenderingService = mock(ShareRenderingService.class);
         relay = new ShareViewStompRelay(
-                mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+                mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                 mockRenderingService, Clock.systemUTC());
     }
 
@@ -308,6 +310,57 @@ class ShareViewStompRelayRenderTest {
      * Builds a minimal {@link ReadonlyTootView} with a distinctive {@code id} for test assertions.
      * All other fields are null/empty — sufficient for identity checks in relay tests.
      */
+    // -----------------------------------------------------------------------
+    // FLAW-3: getRecentMessages renders cached Statuses per-link (catalog + fallback source)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void getRecentMessages_rendersCachedStatusesForThisLink() {
+        // A toot was relayed earlier (recorded into the share cache under the sharer's wallId).
+        Status s = mock(Status.class);
+        when(s.getId()).thenReturn("hist-1");
+        shareTootCache.record(WALL_ID, HASHTAG, s);
+
+        ShareLink link = mock(ShareLink.class);
+        when(link.sharerWallId()).thenReturn(WALL_ID);
+        when(mockShareLinkService.resolve(eq(LINK_1), any())).thenReturn(Optional.of(link));
+        ReadonlyTootView view = stubTootView("hist-1");
+        when(mockRenderingService.renderForView(s, LINK_1)).thenReturn(view);
+
+        List<ReadonlyTootView> result = relay.getRecentMessages(LINK_1, HASHTAG, null, Instant.now());
+
+        // Rendered per THIS link (SR-RENDER-01); the cached Status is link-agnostic.
+        assertThat(result).containsExactly(view);
+        verify(mockRenderingService).renderForView(s, LINK_1);
+    }
+
+    @Test
+    void getRecentMessages_emptyCache_returnsEmpty() {
+        ShareLink link = mock(ShareLink.class);
+        when(link.sharerWallId()).thenReturn(WALL_ID);
+        when(mockShareLinkService.resolve(eq(LINK_1), any())).thenReturn(Optional.of(link));
+
+        assertThat(relay.getRecentMessages(LINK_1, HASHTAG, null, Instant.now())).isEmpty();
+        verifyNoInteractions(mockRenderingService);
+    }
+
+    @Test
+    void relayDeletionEvent_removesTootFromCache() {
+        Status s = mock(Status.class);
+        when(s.getId()).thenReturn("del-1");
+        shareTootCache.record(WALL_ID, HASHTAG, s);
+        when(mockRegistry.getActiveLinks(WALL_ID)).thenReturn(Set.of()); // no viewers; removal still runs
+
+        // The deletion path relays a CacheEntry (no Status) on the Object overload.
+        CacheEntry deletion = new CacheEntry(EventType.DELETED, "del-1", null, null, 1L);
+        relay.relayTootEvent(WALL_ID, HASHTAG, "deletion", deletion);
+
+        ShareLink link = mock(ShareLink.class);
+        when(link.sharerWallId()).thenReturn(WALL_ID);
+        when(mockShareLinkService.resolve(eq(LINK_1), any())).thenReturn(Optional.of(link));
+        assertThat(relay.getRecentMessages(LINK_1, HASHTAG, null, Instant.now())).isEmpty();
+    }
+
     private static ReadonlyTootView stubTootView(String id) {
         return new ReadonlyTootView(
                 id,

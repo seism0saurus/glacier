@@ -1,7 +1,6 @@
 package de.seism0saurus.glacier.share.application;
 
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
-import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -31,7 +30,7 @@ class ShareViewStompRelayEventTest {
 
     private SimpMessagingTemplate mockTemplate;
     private ShareLinkService mockShareLinkService;
-    private MessageCache mockMessageCache;
+    private ShareTootCache shareTootCache;
     private ShareLinkActivityRegistry mockRegistry;
     private ShareViewStompRelay relay;
 
@@ -43,10 +42,10 @@ class ShareViewStompRelayEventTest {
     void setUp() {
         mockTemplate = mock(SimpMessagingTemplate.class);
         mockShareLinkService = mock(ShareLinkService.class);
-        mockMessageCache = mock(MessageCache.class);
+        shareTootCache = new ShareTootCache(20);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
         // ShareRenderingService is null here: EventListener tests do not exercise the render path.
-        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                 null, Clock.systemUTC());
     }
 

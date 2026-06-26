@@ -317,4 +317,58 @@ test.describe('Social wall + shared wall — full round trip', () => {
       await viewerContext.close();
     },
   );
+
+  // FLAW-3 regression: the readonly view must render toots in HTTP-fallback mode (WebSocket
+  // blocked), both the history present at open (catalog initialToots) and toots posted later
+  // (/messages polling). With the WS blocked there is NO live STOMP path, so any rendered toot
+  // proves the fallback/catalog now serve rendered ReadonlyTootViews (previously they served bare
+  // CacheEntry → blank).
+  test(
+    'readonly share view renders toots in HTTP-fallback mode with WebSocket blocked (FLAW-3)',
+    async ({ browser }) => {
+      const mastodon = new MastodonClient(
+        process.env['MASTODON_USER_API_URL'] ?? 'https://proxy',
+        process.env['MASTODON_USER_ACCESS_TOKEN'] ?? '',
+      );
+      const run = Date.now();
+      const markerHistory = `fallback history toot ${run}`;
+      const markerPolled = `fallback polled toot ${run}`;
+
+      // 1. Owner subscribes, creates a link, and posts a toot BEFORE any viewer opens — so it is
+      //    cached server-side and must surface via the catalog's initialToots.
+      const ownerContext: BrowserContext = await browser.newContext();
+      const ownerPage: Page = await ownerContext.newPage();
+      await ownerPage.goto('/');
+      await expect(ownerPage.getByTestId('connection-status')).toBeVisible();
+      await ownerPage.locator('div').filter({ hasText: 'Followed hashtags' }).nth(3).click();
+      await subscribe(ownerPage, TAG_A);
+
+      await ownerPage.getByTestId('share-button').click();
+      await ownerPage.getByTestId('create-button').click();
+      const urlInput = ownerPage.getByTestId('share-url-input');
+      await expect(urlInput).toBeVisible({ timeout: 10_000 });
+      const shareUrl = await urlInput.inputValue();
+
+      await mastodon.postToot(toot(markerHistory, TAG_A));
+      await expectWallTootCount(ownerPage, 1); // owner processed it → it is cached
+
+      // 2. Viewer opens with the WebSocket blocked → forced into HTTP fallback (no live STOMP).
+      const viewerContext: BrowserContext = await browser.newContext();
+      await viewerContext.route('**/share-view-ws**', (route) => route.abort());
+      const viewerPage: Page = await viewerContext.newPage();
+      await viewerPage.goto(shareUrl);
+      await expect(viewerPage.getByTestId('share-banner')).toBeVisible({ timeout: 10_000 });
+
+      // 3. The pre-existing toot must render from the catalog initialToots (rendered from the
+      //    Status cache) — WS is blocked, so it cannot have arrived live.
+      await expect(viewerPage.getByText(markerHistory)).toBeVisible({ timeout: 20_000 });
+
+      // 4. A toot posted while the viewer is in fallback must arrive via /messages polling.
+      await mastodon.postToot(toot(markerPolled, TAG_A));
+      await expect(viewerPage.getByText(markerPolled)).toBeVisible({ timeout: 20_000 });
+
+      await ownerContext.close();
+      await viewerContext.close();
+    },
+  );
 });

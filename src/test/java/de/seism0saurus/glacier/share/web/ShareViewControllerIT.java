@@ -1,12 +1,11 @@
 package de.seism0saurus.glacier.share.web;
 
 import de.seism0saurus.glacier.mastodon.SubscriptionManager;
+import de.seism0saurus.glacier.share.application.ReadonlyTootView;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.application.ShareViewStompRelay;
 import de.seism0saurus.glacier.share.domain.ShareLink;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
-import de.seism0saurus.glacier.webservice.cache.CacheEntry;
-import de.seism0saurus.glacier.webservice.cache.EventType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -184,22 +183,25 @@ class ShareViewControllerIT {
     }
 
     /**
-     * Fix 7: GET /rest/share/{id}/messages happy-path — returns CacheEntry list as JSON array.
+     * GET /rest/share/{id}/messages happy-path — returns the rendered ReadonlyTootView list as a
+     * JSON array (FLAW-3: fallback polling now serves renderable toots, not bare CacheEntry).
      *
      * <p>Security: SR-SHARE-12 (rate limiting), SR-SHARE-02 (no wallId in response),
      * glacier-fallback-mode-discipline (fallback.enabled=true in this test).
      */
     @Test
-    void messagesEndpoint_happyPath_returnsCacheEntries() throws Exception {
+    void messagesEndpoint_happyPath_returnsRenderedToots() throws Exception {
         ShareLink activeLink = mockActiveShareLink(VALID_SHARE_ID);
         when(shareLinkService.resolve(any(ShareLinkId.class), any(Instant.class)))
                 .thenReturn(Optional.of(activeLink));
 
-        CacheEntry entry = new CacheEntry(EventType.CREATED, "status-001",
-                "https://example.com/status/1/embed", null, 1L);
+        ReadonlyTootView view = new ReadonlyTootView(
+                "status-001", "Author", "author@example.com", null, null,
+                Instant.parse("2026-01-01T00:00:00Z"), "hello world", null, false, false, "en",
+                List.of(), List.of(), List.of(), List.of(), List.of(), Optional.empty());
         when(shareViewStompRelay.getRecentMessages(
                 any(ShareLinkId.class), eq("cats"), isNull(), any(Instant.class)))
-                .thenReturn(List.of(entry));
+                .thenReturn(List.of(view));
 
         MvcResult result = mockMvc.perform(get("/rest/share/{id}/messages", VALID_SHARE_ID)
                         .param("hashtag", "cats")

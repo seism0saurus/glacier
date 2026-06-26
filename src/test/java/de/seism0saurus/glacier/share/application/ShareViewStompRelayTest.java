@@ -1,7 +1,6 @@
 package de.seism0saurus.glacier.share.application;
 
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
-import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -36,7 +35,7 @@ class ShareViewStompRelayTest {
 
     private SimpMessagingTemplate mockTemplate;
     private ShareLinkService mockShareLinkService;
-    private MessageCache mockMessageCache;
+    private ShareTootCache shareTootCache;
     private ShareLinkActivityRegistry mockRegistry;
     private ShareViewStompRelay relay;
 
@@ -51,11 +50,11 @@ class ShareViewStompRelayTest {
     void setUp() {
         mockTemplate = mock(SimpMessagingTemplate.class);
         mockShareLinkService = mock(ShareLinkService.class);
-        mockMessageCache = mock(MessageCache.class);
+        shareTootCache = new ShareTootCache(20);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
         // ShareRenderingService is null here: these tests exercise the Object/CacheEntry overload
         // only (relay-to-topic routing); the Status overload is tested in ShareViewStompRelayRenderTest.
-        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                 null, Clock.systemUTC());
     }
 

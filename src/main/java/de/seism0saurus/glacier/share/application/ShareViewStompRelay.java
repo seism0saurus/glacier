@@ -3,11 +3,6 @@ package de.seism0saurus.glacier.share.application;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.cache.CacheEntry;
-import de.seism0saurus.glacier.webservice.cache.MessageCache;
-import de.seism0saurus.glacier.webservice.cache.Snapshot;
-import de.seism0saurus.glacier.webservice.cache.UnknownSubscriptionException;
-import de.seism0saurus.glacier.webservice.messaging.PrincipalKey;
-import de.seism0saurus.glacier.webservice.messaging.PrincipalKind;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -78,7 +73,7 @@ public class ShareViewStompRelay {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final ShareLinkService shareLinkService;
-    private final MessageCache messageCache;
+    private final ShareTootCache shareTootCache;
     private final ShareLinkActivityRegistry registry;
 
     /**
@@ -110,7 +105,8 @@ public class ShareViewStompRelay {
      *
      * @param messagingTemplate    STOMP messaging template (lazy to break circular dep chain)
      * @param shareLinkService     share link service (lazy to break circular dep chain)
-     * @param messageCache         message cache (lazy to break circular dep chain)
+     * @param shareTootCache       per-(sharerWallId, hashtag) Status cache backing the share view's
+     *                             initial render + fallback polling (FLAW-3)
      * @param registry             active share link routing table
      * @param shareRenderingService rendering service for typed-Status relay (ADR-RENDER-01,
      *                             SR-RENDER-01); injected to perform per-link rendering inside
@@ -125,14 +121,13 @@ public class ShareViewStompRelay {
             //     ShareViewTopicAuthInterceptor → shareLinkServiceImpl → applicationEvents → shareViewStompRelay
             @Lazy final SimpMessagingTemplate messagingTemplate,
             @Lazy final ShareLinkService shareLinkService,
-            // @Lazy on MessageCache prevents a secondary cycle via the same chain.
-            @Lazy final MessageCache messageCache,
+            final ShareTootCache shareTootCache,
             final ShareLinkActivityRegistry registry,
             final ShareRenderingService shareRenderingService,
             final Clock clock) {
         this.messagingTemplate = messagingTemplate;
         this.shareLinkService = shareLinkService;
-        this.messageCache = messageCache;
+        this.shareTootCache = shareTootCache;
         this.registry = registry;
         this.shareRenderingService = shareRenderingService;
         this.clock = clock;
@@ -218,6 +213,14 @@ public class ShareViewStompRelay {
             return;
         }
 
+        // FLAW-3: keep the Status cache consistent with deletions. The deletion path relays a
+        // CacheEntry (no Status); drop the matching cached toot so it disappears from initial
+        // render + fallback polling. Done before the active-viewers check so the cache stays
+        // correct even with no viewers currently connected. ("deletion" = StompEventType.DELETION.)
+        if ("deletion".equals(eventType) && payload instanceof CacheEntry ce) {
+            shareTootCache.remove(wallId, hashtag, ce.statusId());
+        }
+
         Set<ShareLinkId> activeLinks = registry.getActiveLinks(wallId);
 
         if (activeLinks.isEmpty()) {
@@ -290,6 +293,12 @@ public class ShareViewStompRelay {
             return;
         }
 
+        // FLAW-3: cache the Status for the share view's initial render (catalog) and fallback
+        // polling, BEFORE the active-viewers check — so a viewer who opens the link later (or polls
+        // in fallback) still sees recent history. The Status is link-agnostic; per-link rendering
+        // happens at serve time in getRecentMessages().
+        shareTootCache.record(wallId, hashtag, status);
+
         Set<ShareLinkId> activeLinks = registry.getActiveLinks(wallId);
 
         if (activeLinks.isEmpty()) {
@@ -343,7 +352,7 @@ public class ShareViewStompRelay {
      * @param now         the current time (for active-link resolution)
      * @return list of {@link CacheEntry} objects, empty if none found or link not active
      */
-    public List<CacheEntry> getRecentMessages(
+    public List<ReadonlyTootView> getRecentMessages(
             final ShareLinkId shareLinkId,
             final String hashtag,
             final Long since,
@@ -357,20 +366,25 @@ public class ShareViewStompRelay {
                 return List.of();
             }
 
-            // Use the sharer's wallId to query the message cache.
-            // ADR-SHARE-05 (revised): wrap wallId in PrincipalKey(WALL) to prevent
-            // cross-namespace collision in MessageCacheImpl's PrincipalKey-keyed map.
+            // FLAW-3: render the cached Statuses for THIS link. The sharerWallId is used only here,
+            // server-side, to key the cache; it is never returned (SR-SHARE-02). `since` is not used
+            // for server-side filtering — the viewer de-duplicates by status id and the bound keeps
+            // the payload small (see ShareTootCache#recent).
             String sharerWallId = matchingLink.get().sharerWallId();
-            PrincipalKey sharerKey = new PrincipalKey(PrincipalKind.WALL, sharerWallId);
+            List<Status> cached = shareTootCache.recent(sharerWallId, hashtag);
 
-            try {
-                Snapshot snapshot = messageCache.snapshot(sharerKey, hashtag, since);
-                return snapshot.events();
-            } catch (UnknownSubscriptionException e) {
-                log.debug("share.relay.snapshot_miss shareId-hash={} hashtag={} reason={}",
-                        LogScrubber.hash8(shareLinkId.value()), hashtag, e.getMessage());
-                return List.of();
+            List<ReadonlyTootView> views = new java.util.ArrayList<>(cached.size());
+            for (Status status : cached) {
+                try {
+                    // SR-RENDER-01: render per-link (image proxy URLs are HMAC-signed per link).
+                    views.add(shareRenderingService.renderForView(status, shareLinkId));
+                } catch (Exception e) {
+                    // One toot's render failure must not drop the rest of the history.
+                    log.warn("share.relay.history_render_failed shareId-hash={} hashtag={} reason={}",
+                            LogScrubber.hash8(shareLinkId.value()), hashtag, e.getClass().getSimpleName());
+                }
             }
+            return List.copyOf(views);
         } catch (Exception e) {
             log.warn("share.relay.getRecentMessages_failed shareId-hash={} hashtag={} reason={}",
                     LogScrubber.hash8(shareLinkId.value()), hashtag, e.getMessage());

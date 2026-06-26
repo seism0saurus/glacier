@@ -5,7 +5,6 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import de.seism0saurus.glacier.share.domain.ShareLinkId;
-import de.seism0saurus.glacier.webservice.cache.MessageCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -38,7 +37,7 @@ class ShareViewStompRelayRelayTest {
 
     private SimpMessagingTemplate mockTemplate;
     private ShareLinkService mockShareLinkService;
-    private MessageCache mockMessageCache;
+    private ShareTootCache shareTootCache;
     private ShareLinkActivityRegistry mockRegistry;
     private ShareViewStompRelay relay;
 
@@ -56,11 +55,11 @@ class ShareViewStompRelayRelayTest {
     void setUp() {
         mockTemplate = mock(SimpMessagingTemplate.class);
         mockShareLinkService = mock(ShareLinkService.class);
-        mockMessageCache = mock(MessageCache.class);
+        shareTootCache = new ShareTootCache(20);
         mockRegistry = mock(ShareLinkActivityRegistry.class);
         // ShareRenderingService is null here: relay routing tests use the Object overload.
         // Real-time relay for tests that do not exercise the debounce clock path.
-        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+        relay = new ShareViewStompRelay(mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                 null, Clock.systemUTC());
     }
 
@@ -167,7 +166,7 @@ class ShareViewStompRelayRelayTest {
 
             // ---- Act / Assert: phase 1 — T0, first call → warn emitted ----
             ShareViewStompRelay relayT0 = new ShareViewStompRelay(
-                    mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+                    mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                     null, Clock.fixed(t0, ZoneOffset.UTC));
             relayT0.relayTootEvent(WALL_ID, HASHTAG, "creation", Map.of());
 
@@ -183,7 +182,7 @@ class ShareViewStompRelayRelayTest {
 
             // ---- Act / Assert: phase 2 — T0+15s (inside 30s), second call → suppressed ----
             ShareViewStompRelay relayT0plus15 = new ShareViewStompRelay(
-                    mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+                    mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                     null, Clock.fixed(t0plus15, ZoneOffset.UTC));
             // Transfer debounce state by re-using the same relay would be ideal, but since
             // the debounce map is internal we call the same relay instance with a clock that
@@ -197,7 +196,7 @@ class ShareViewStompRelayRelayTest {
             // The test uses a MutableClock helper (inner class below).
             MutableClock mutableClock = new MutableClock(t0);
             ShareViewStompRelay relay1 = new ShareViewStompRelay(
-                    mockTemplate, mockShareLinkService, mockMessageCache, mockRegistry,
+                    mockTemplate, mockShareLinkService, shareTootCache, mockRegistry,
                     null, mutableClock);
 
             // Clear previous captures
