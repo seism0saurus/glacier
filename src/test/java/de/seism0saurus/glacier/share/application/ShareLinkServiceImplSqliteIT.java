@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Full Spring context integration test for {@link ShareLinkServiceImpl} wired with the
@@ -129,5 +130,53 @@ class ShareLinkServiceImplSqliteIT {
         assertThat(summaries).hasSize(3);
         assertThat(summaries).allSatisfy(s ->
                 assertThat(s.status()).isEqualTo(ShareLinkStatus.ACTIVE));
+    }
+
+    /**
+     * Revoking by the non-secret {@code idHash8} through the full wiring (real service + registry +
+     * SQLite adapter) marks the link REVOKED. This is the integration boundary the unit tests can
+     * only mock (registry + repository): the service either recovers the token from the in-memory
+     * registry or falls back to {@code markRevokedByHash8} on SQLite — either way the persisted
+     * link must end up revoked.
+     */
+    @Test
+    void revokeByHash8_throughRealWiring_marksLinkRevoked() {
+        Instant now = clock.instant();
+
+        var link = shareLinkService.create(SHARER_WALL_ID, SHARER_IP, now);
+        String idHash8 = link.id().hash8();
+        Instant revokedAt = now.plusSeconds(10);
+
+        shareLinkService.revokeByHash8(idHash8, SHARER_WALL_ID, revokedAt);
+
+        List<ShareLinkSummary> summaries =
+                shareLinkService.listSummaryBySharer(SHARER_WALL_ID, revokedAt.plusSeconds(1));
+        assertThat(summaries).hasSize(1);
+        assertThat(summaries.get(0).status()).isEqualTo(ShareLinkStatus.REVOKED);
+        assertThat(summaries.get(0).revokedAt()).isNotNull();
+    }
+
+    /**
+     * Anti-enumeration through the real stack: a foreign sharer presenting the correct {@code idHash8}
+     * cannot revoke another sharer's link — the call throws and the link stays ACTIVE. This verifies
+     * the {@code sharer_wall_id} scoping is enforced end-to-end (registry getActiveLinks is keyed by
+     * the caller, and the SQLite fallback's WHERE clause includes sharer_wall_id).
+     */
+    @Test
+    void revokeByHash8_foreignSharer_throwsAndLeavesLinkActive() {
+        Instant now = clock.instant();
+
+        var link = shareLinkService.create(SHARER_WALL_ID, SHARER_IP, now);
+        String idHash8 = link.id().hash8();
+
+        assertThatThrownBy(() -> shareLinkService.revokeByHash8(
+                idHash8, "other-sharer-wall-id-99999999999999999", now.plusSeconds(5)))
+                .isInstanceOf(ShareLinkNotFoundOrNotAuthorisedException.class);
+
+        List<ShareLinkSummary> summaries = shareLinkService.listSummaryBySharer(SHARER_WALL_ID, now.plusSeconds(6));
+        assertThat(summaries).hasSize(1);
+        assertThat(summaries.get(0).status())
+                .as("a foreign sharer must not be able to revoke the link")
+                .isEqualTo(ShareLinkStatus.ACTIVE);
     }
 }

@@ -246,7 +246,11 @@ test.describe('Social wall + shared wall — full round trip', () => {
       // The secret token must NOT appear anywhere in the revoke URL (no proxy-access-log leak).
       expect(deleteReq.url()).not.toContain(shareToken);
 
-      // 7. The live revocation control frame redirects the viewer to /expired.
+      // 7. The revoked link disappears from the owner's "Active links" list (the only link),
+      //    confirming the list UI updates on successful revocation.
+      await expect(ownerPage.getByTestId('revoke-row-button')).toHaveCount(0, { timeout: 10_000 });
+
+      // 8. The live revocation control frame redirects the viewer to /expired.
       await expect(viewerPage).toHaveURL(/\/expired/, { timeout: 10_000 });
 
       await ownerContext.close();
