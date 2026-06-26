@@ -399,4 +399,60 @@ describe('SubscriptionStateService — isRecentlyTerminated edge cases', () => {
     // Act: check with '#Glacier' (mixed case, leading hash)
     expect(service.isRecentlyTerminated('#Glacier')).toBeTrue();
   });
+
+  // -------------------------------------------------------------------------
+  // ingestCacheEntries: UPDATED / DELETED paths (existing tests only cover CREATED)
+  // -------------------------------------------------------------------------
+
+  describe('ingestCacheEntries — UPDATED / DELETED', () => {
+    it('UPDATED with url + editedAt applies an update to the queue', () => {
+      const updateSpy = spyOn(service['receivedMessages'], 'update').and.stub();
+
+      service.ingestCacheEntries('glacier', [
+        {id: 'x', type: 'UPDATED' as const, url: 'https://e/x', editedAt: '2026-01-01T00:00:00Z', sequence: 2},
+      ]);
+
+      expect(updateSpy).toHaveBeenCalledOnceWith(
+        jasmine.objectContaining({id: 'x', url: 'https://e/x', editedAt: '2026-01-01T00:00:00Z'}));
+    });
+
+    it('UPDATED missing editedAt is skipped (the url && editedAt guard)', () => {
+      const updateSpy = spyOn(service['receivedMessages'], 'update').and.stub();
+
+      service.ingestCacheEntries('glacier', [
+        {id: 'x', type: 'UPDATED' as const, url: 'https://e/x', sequence: 2}, // no editedAt
+      ]);
+
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('DELETED dequeues the message by id', () => {
+      const dequeueSpy = spyOn(service['receivedMessages'], 'dequeue').and.stub();
+
+      service.ingestCacheEntries('glacier', [
+        {id: 'gone', type: 'DELETED' as const, sequence: 3},
+      ]);
+
+      expect(dequeueSpy).toHaveBeenCalledOnceWith('gone');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Settling-state auto-clear timer (FIND-P3-SEC-5/6)
+  // -------------------------------------------------------------------------
+
+  it('settling state auto-clears after the guard TTL elapses', fakeAsync(() => {
+    const seen: Set<string>[] = [];
+    service.settlingHashtags$.subscribe(s => seen.push(s));
+
+    service.seedRecentlyTerminated('glacier');
+    expect(seen[seen.length - 1].has('glacier'))
+      .withContext('settling set must contain the hashtag right after seeding').toBeTrue();
+
+    // guardTtlMs (10_000) + 50 ms safety margin → the scheduled clear fires.
+    tick(10_100);
+
+    expect(seen[seen.length - 1].has('glacier'))
+      .withContext('settling spinner must clear automatically once the TTL elapses').toBeFalse();
+  }));
 });
