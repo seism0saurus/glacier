@@ -175,6 +175,51 @@ class SqliteShareLinkRepositoryTest {
                 .isFalse();
     }
 
+    @Test
+    void markRevokedByHash8_revokesOnlyTheMatchingLink_amongSeveralForSameSharer() {
+        ShareLink link1 = buildLink(T0);
+        ShareLink link2 = buildLink(T0.plusSeconds(1));
+        repository.save(link1);
+        repository.save(link2);
+
+        boolean revoked = repository.markRevokedByHash8(link1.id().hash8(), SHARER_WALL_ID, T0.plusSeconds(60));
+
+        assertThat(revoked).isTrue();
+        // Selectivity: only link1 transitions; link2 stays ACTIVE.
+        assertThat(repository.findById(link1.id()).orElseThrow().status(T0.plusSeconds(60)))
+                .isEqualTo(ShareLinkStatus.REVOKED);
+        assertThat(repository.findById(link2.id()).orElseThrow().status(T0.plusSeconds(60)))
+                .isEqualTo(ShareLinkStatus.ACTIVE);
+    }
+
+    @Test
+    void markRevokedByHash8_uppercaseHash_doesNotMatchLowercaseStoredHash() {
+        ShareLink link = buildLink(T0);
+        repository.save(link);
+
+        // Stored id-hash is lowercase hex; an uppercased idHash8 must not match (the service
+        // also rejects non-lowercase-hex before reaching the repository).
+        boolean revoked = repository.markRevokedByHash8(
+                link.id().hash8().toUpperCase(), SHARER_WALL_ID, T0.plusSeconds(60));
+
+        assertThat(revoked).isFalse();
+        assertThat(repository.findById(link.id()).orElseThrow().status(T0)).isEqualTo(ShareLinkStatus.ACTIVE);
+    }
+
+    @Test
+    void markRevokedByHash8_expiredButNotRevokedLink_isStillRevoked() {
+        // Behavior is consistent with markRevoked(id): the gate is revoked_at IS NULL, not expiry.
+        // A link past its TTL but never revoked is transitioned to revoked (harmless — already dead).
+        ShareLink link = buildLink(T0);
+        repository.save(link);
+        Instant afterExpiry = T0.plus(TTL).plusSeconds(1);
+
+        boolean revoked = repository.markRevokedByHash8(link.id().hash8(), SHARER_WALL_ID, afterExpiry);
+
+        assertThat(revoked).isTrue();
+        assertThat(repository.findById(link.id()).orElseThrow().revokedAt()).isPresent();
+    }
+
     // ---------------------------------------------------------------------------
     // sweepExpired
     // ---------------------------------------------------------------------------

@@ -177,4 +177,80 @@ test.describe('Social wall + shared wall — full round trip', () => {
       await viewerContext.close();
     },
   );
+
+  // Complete coverage of the list-revoke path — the one the original "undefined-id" bug broke.
+  // Instead of revoking the freshly-created link via the active-link card, the owner CLOSES and
+  // REOPENS the dialog so the link appears in the "Active links" LIST (whose row only carries the
+  // non-secret idHash8, never the token), and revokes from there. Also asserts the DELETE targets
+  // /rest/share-links/{idHash8} — proving the token no longer leaks into request URLs / proxy logs.
+  test(
+    'owner revokes a shared wall from the reopened "Active links" list (by idHash8), viewer expires',
+    async ({ browser }) => {
+      const mastodon = new MastodonClient(
+        process.env['MASTODON_USER_API_URL'] ?? 'https://proxy',
+        process.env['MASTODON_USER_ACCESS_TOKEN'] ?? '',
+      );
+
+      const run = Date.now();
+      const markerShared = `list-revoke shared toot ${run}`;
+
+      // 1. Owner opens the wall, waits for the shell, subscribes to one hashtag.
+      const ownerContext: BrowserContext = await browser.newContext();
+      const ownerPage: Page = await ownerContext.newPage();
+      await ownerPage.goto('/');
+      await expect(ownerPage.getByTestId('connection-status')).toBeVisible();
+      await ownerPage.locator('div').filter({ hasText: 'Followed hashtags' }).nth(3).click();
+      await subscribe(ownerPage, TAG_A);
+
+      // 2. Create a share link (shown once as the active-link card).
+      await ownerPage.getByTestId('share-button').click();
+      await expect(ownerPage.getByTestId('create-button')).toBeVisible();
+      await ownerPage.getByTestId('create-button').click();
+      const urlInput = ownerPage.getByTestId('share-url-input');
+      await expect(urlInput).toBeVisible({ timeout: 10_000 });
+      const shareUrl = await urlInput.inputValue();
+      expect(shareUrl).toContain('/share/');
+      const shareToken = shareUrl.split('/share/').pop() ?? '';
+      expect(shareToken.length).toBeGreaterThan(20); // the real opaque token, not idHash8
+
+      // 3. Close the dialog and REOPEN it: the link now renders in the "Active links" list,
+      //    whose revoke-row-button is wired to the link's idHash8 (the token is never re-served).
+      await ownerPage.getByTestId('close-button').click();
+      await expect(ownerPage.getByTestId('share-url-input')).toBeHidden();
+      await ownerPage.getByTestId('share-button').click();
+      const revokeRow = ownerPage.getByTestId('revoke-row-button').first();
+      await expect(revokeRow).toBeVisible({ timeout: 10_000 });
+
+      // 4. Viewer opens the shared wall and reaches LIVE before any toot is posted.
+      const viewerContext: BrowserContext = await browser.newContext();
+      const viewerPage: Page = await viewerContext.newPage();
+      await viewerPage.goto(shareUrl);
+      await expect(viewerPage.getByTestId('share-banner')).toBeVisible({ timeout: 10_000 });
+      await expect(viewerPage.getByTestId('transport-status'))
+          .toHaveClass(/transport-status--live/, { timeout: 15_000 });
+
+      // 5. A toot relays to the viewer — proves the link is genuinely live before revocation.
+      await mastodon.postToot(toot(markerShared, TAG_A));
+      await expect(viewerPage.getByText(markerShared)).toBeVisible({ timeout: 15_000 });
+
+      // 6. Revoke from the LIST row. Capture the DELETE to assert it targets the idHash8 only.
+      const deleteReqPromise = ownerPage.waitForRequest((req) =>
+          req.method() === 'DELETE' && req.url().includes('/rest/share-links/'));
+      await revokeRow.click();
+      await expect(ownerPage.getByTestId('revoke-confirm')).toBeVisible();
+      await ownerPage.getByTestId('revoke-confirm').click();
+
+      const deleteReq = await deleteReqPromise;
+      const lastSegment = new URL(deleteReq.url()).pathname.split('/').pop() ?? '';
+      expect(lastSegment).toMatch(/^[0-9a-f]{8}$/);
+      // The secret token must NOT appear anywhere in the revoke URL (no proxy-access-log leak).
+      expect(deleteReq.url()).not.toContain(shareToken);
+
+      // 7. The live revocation control frame redirects the viewer to /expired.
+      await expect(viewerPage).toHaveURL(/\/expired/, { timeout: 10_000 });
+
+      await ownerContext.close();
+      await viewerContext.close();
+    },
+  );
 });

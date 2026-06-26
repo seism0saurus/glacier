@@ -131,4 +131,41 @@ class ShareLinkServiceImplRevokeByHashTest {
 
         verifyNoInteractions(repository, registry, eventPublisher);
     }
+
+    @Test
+    void uppercaseHexIdHash8_rejectedBeforeAnyLookup() {
+        // hash8() is lowercase hex; the format gate is [0-9a-f]{8}, so an uppercased value can
+        // never identify a real link and is rejected up front (no enumeration via case folding).
+        assertThatThrownBy(() -> service.revokeByHash8("ABCD1234", WALL_ID, T0))
+                .isInstanceOf(ShareLinkNotFoundOrNotAuthorisedException.class);
+
+        verifyNoInteractions(repository, registry, eventPublisher);
+    }
+
+    @Test
+    void wrongLengthIdHash8_rejectedBeforeAnyLookup() {
+        // 7 hex chars (too short) and 9 hex chars (too long) are both malformed.
+        assertThatThrownBy(() -> service.revokeByHash8("abc1234", WALL_ID, T0))
+                .isInstanceOf(ShareLinkNotFoundOrNotAuthorisedException.class);
+        assertThatThrownBy(() -> service.revokeByHash8("abc123456", WALL_ID, T0))
+                .isInstanceOf(ShareLinkNotFoundOrNotAuthorisedException.class);
+
+        verifyNoInteractions(repository, registry, eventPublisher);
+    }
+
+    @Test
+    void registryHit_butLinkGoneFromDb_propagates404_withoutDbFallback() {
+        // Stale registry: the link is still registered in memory but has vanished from the
+        // repository (e.g. swept). The reused revoke(token) path resolves empty → throws the
+        // anti-enumeration exception; revokeByHash8 must NOT then silently fall through to the
+        // DB-by-hash path (that would also fail) — the outcome is a uniform 404 either way.
+        when(registry.getActiveLinks(WALL_ID)).thenReturn(Set.of(activeLinkId));
+        when(repository.findById(activeLinkId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.revokeByHash8(activeLinkId.hash8(), WALL_ID, T0))
+                .isInstanceOf(ShareLinkNotFoundOrNotAuthorisedException.class);
+
+        verify(repository, never()).markRevokedByHash8(any(), any(), any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
 }

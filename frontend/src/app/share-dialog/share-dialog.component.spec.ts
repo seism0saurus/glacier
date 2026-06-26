@@ -244,6 +244,61 @@ describe('ShareDialogComponent', () => {
         .not.toHaveBeenCalledWith(undefined as unknown as string);
     }));
 
+    it('revokes the SECOND listed link by ITS idHash8 (per-row selectivity)', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+
+      component.existingLinks.set([
+        { idHash8: 'aaaa1111', createdAt: '2026-04-21T12:00:00Z', expiresAt: '2026-04-28T12:00:00Z', status: 'ACTIVE' },
+        { idHash8: 'bbbb2222', createdAt: '2026-04-22T12:00:00Z', expiresAt: '2026-04-29T12:00:00Z', status: 'ACTIVE' },
+      ]);
+      fixture.detectChanges();
+
+      const rows: NodeListOf<HTMLButtonElement> =
+        fixture.nativeElement.querySelectorAll('[data-testid="revoke-row-button"]');
+      expect(rows.length).toBe(2);
+
+      rows[1].click();
+      tick();
+
+      expect(shareLinkServiceSpy.revokeShareLink).toHaveBeenCalledWith('bbbb2222');
+      expect(shareLinkServiceSpy.revokeShareLink).not.toHaveBeenCalledWith('aaaa1111');
+    }));
+
+    it('removes ONLY the revoked link from the list, leaving the others', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+
+      component.existingLinks.set([
+        { idHash8: 'aaaa1111', createdAt: '2026-04-21T12:00:00Z', expiresAt: '2026-04-28T12:00:00Z', status: 'ACTIVE' },
+        { idHash8: 'bbbb2222', createdAt: '2026-04-22T12:00:00Z', expiresAt: '2026-04-29T12:00:00Z', status: 'ACTIVE' },
+      ]);
+
+      component.confirmRevoke('aaaa1111');
+      tick();
+
+      expect(component.existingLinks().map((l) => l.idHash8)).toEqual(['bbbb2222']);
+    }));
+
+    it('revoking a LISTED link does NOT clear an unrelated activeLink', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+
+      // activeLink is mockCreated (idHash8 'abc12345'); revoke a DIFFERENT listed link.
+      component.activeLink.set(mockCreated);
+      component.existingLinks.set([
+        { idHash8: 'bbbb2222', createdAt: '2026-04-22T12:00:00Z', expiresAt: '2026-04-29T12:00:00Z', status: 'ACTIVE' },
+      ]);
+
+      component.confirmRevoke('bbbb2222');
+      tick();
+
+      expect(component.activeLink()).toBe(mockCreated);
+    }));
+
     it('announces "Link widerrufen" after successful revocation', fakeAsync(() => {
       const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
       confirmRef.afterClosed.and.returnValue(of(true));
