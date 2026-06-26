@@ -222,6 +222,155 @@ class HandshakeRateLimitInterceptorTest {
     }
 
     // -------------------------------------------------------------------------
+    // MutationKill: L108 — if (ip == null) fail-open BEFORE bucketing (RemoveConditional_EQUAL_ELSE)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Kills L108 RemoveConditional_EQUAL_ELSE on {@code if (ip == null)}.
+     *
+     * <p>When the IP cannot be extracted the interceptor must take the dedicated fail-open path:
+     * log {@code "cannot extract remote IP — fail-open"} and return {@code true} WITHOUT creating a
+     * bucket. If the conditional were removed (always-false), control would fall through to
+     * {@code ipBuckets.computeIfAbsent(null, ...)} which throws NPE and lands in the generic
+     * {@code "unexpected error — fail-open"} catch instead. Asserting the specific WARN token and
+     * that NO bucket was created discriminates the two.
+     */
+    @Test
+    void nullIp_takesDedicatedFailOpenPath_noBucketCreated() throws Exception {
+        when(mockRequest.getRemoteAddress()).thenReturn(null);
+        HandshakeRateLimitInterceptor interceptor =
+                new HandshakeRateLimitInterceptor(10, Clock.systemUTC());
+
+        Logger classLogger = (Logger) LoggerFactory.getLogger(HandshakeRateLimitInterceptor.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        classLogger.addAppender(listAppender);
+        try {
+            boolean result = interceptor.beforeHandshake(mockRequest, mockResponse, mockWsHandler, attributes);
+
+            assertThat(result).as("null IP fails open (true)").isTrue();
+            assertThat(ipBucketCount(interceptor))
+                    .as("null-IP path must NOT create a bucket (the conditional short-circuits before computeIfAbsent)")
+                    .isZero();
+
+            boolean hasCannotExtract = listAppender.list.stream()
+                    .anyMatch(e -> e.getFormattedMessage().contains("cannot extract remote IP"));
+            assertThat(hasCannotExtract)
+                    .as("null IP must log the dedicated 'cannot extract remote IP' WARN, not the generic catch")
+                    .isTrue();
+            boolean hasGenericCatch = listAppender.list.stream()
+                    .anyMatch(e -> e.getFormattedMessage().contains("unexpected error"));
+            assertThat(hasGenericCatch)
+                    .as("null IP must NOT fall through to the generic catch (would mean the conditional was bypassed)")
+                    .isFalse();
+        } finally {
+            classLogger.detachAppender(listAppender);
+        }
+    }
+
+    // Reflection accessor: ipBucketCount() is package-private on HandshakeRateLimitInterceptor,
+    // which lives in package ...webservice.security — a different package than this test — so it
+    // cannot be called directly. (setAccessible works: the app runs on the classpath, no modules.)
+    private static int ipBucketCount(HandshakeRateLimitInterceptor interceptor) {
+        try {
+            java.lang.reflect.Method m =
+                    HandshakeRateLimitInterceptor.class.getDeclaredMethod("ipBucketCount");
+            m.setAccessible(true);
+            return (int) m.invoke(interceptor);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("reflective ipBucketCount() failed", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // MutationKill: evictStaleBuckets — 600s boundary, Clock.instant, minusSeconds, removeIf/entrySet
+    // (L155, L156)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Kills L155 ("600 with 601" boundary, Clock::instant, Instant::minusSeconds) and L156
+     * (Set::removeIf, ConcurrentHashMap::entrySet) on {@code evictStaleBuckets()}.
+     *
+     * <p>Bucket created at t0, clock advanced to t0+601s. threshold = (t0+601) - 600 = t0+1;
+     * lastAccessedAt (t0) isBefore(t0+1) → stale → removed. Under minusSeconds(601) threshold = t0
+     * and isBefore(t0) is false → survives → assertion fails. Under no-op removeIf/entrySet the
+     * bucket survives → assertion fails.
+     */
+    @Test
+    void evictStaleBuckets_removesBucketIdlePast600s() throws Exception {
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        HandshakeRateLimitInterceptor interceptor = new HandshakeRateLimitInterceptor(10, clock);
+
+        interceptor.beforeHandshake(mockRequest, mockResponse, mockWsHandler, attributes);
+        assertThat(ipBucketCount(interceptor)).as("one bucket at t0").isEqualTo(1);
+
+        clock.advance(java.time.Duration.ofSeconds(601));
+        interceptor.evictStaleBuckets();
+
+        assertThat(ipBucketCount(interceptor))
+                .as("bucket idle 601s (> 600s) must be evicted")
+                .isZero();
+    }
+
+    /**
+     * Pins the 600s boundary from the other side: a bucket idle for EXACTLY 600s must be KEPT.
+     * threshold = (t0+600) - 600 = t0; lastAccessedAt (t0) isBefore(t0) is false → not stale.
+     * Kills minusSeconds(599)-style boundary mutants (which would set threshold t0+1 and wrongly evict).
+     */
+    @Test
+    void evictStaleBuckets_keepsBucketIdleExactly600s() throws Exception {
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        HandshakeRateLimitInterceptor interceptor = new HandshakeRateLimitInterceptor(10, clock);
+
+        interceptor.beforeHandshake(mockRequest, mockResponse, mockWsHandler, attributes);
+
+        clock.advance(java.time.Duration.ofSeconds(600));
+        interceptor.evictStaleBuckets();
+
+        assertThat(ipBucketCount(interceptor))
+                .as("bucket idle exactly 600s is on the boundary (not yet stale) and must be kept")
+                .isEqualTo(1);
+    }
+
+    /**
+     * Kills L156 Set::removeIf / entrySet together with the predicate: a FRESH bucket (touched at
+     * the eviction instant) must be KEPT while a STALE one is removed in the same pass.
+     */
+    @Test
+    void evictStaleBuckets_keepsFreshBucket_removesStaleOne() throws Exception {
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        HandshakeRateLimitInterceptor interceptor = new HandshakeRateLimitInterceptor(10, clock);
+
+        // Stale bucket for IP_A at t0
+        ServerHttpRequest reqA = mock(ServerHttpRequest.class);
+        when(reqA.getRemoteAddress()).thenReturn(new InetSocketAddress("10.0.0.1", 1000));
+        interceptor.beforeHandshake(reqA, mock(ServerHttpResponse.class), mockWsHandler, attributes);
+
+        // Advance past window, fresh bucket for IP_B at t0+601s
+        clock.advance(java.time.Duration.ofSeconds(601));
+        ServerHttpRequest reqB = mock(ServerHttpRequest.class);
+        when(reqB.getRemoteAddress()).thenReturn(new InetSocketAddress("10.0.0.2", 1001));
+        interceptor.beforeHandshake(reqB, mock(ServerHttpResponse.class), mockWsHandler, attributes);
+        assertThat(ipBucketCount(interceptor)).as("two buckets before eviction").isEqualTo(2);
+
+        interceptor.evictStaleBuckets();
+
+        assertThat(ipBucketCount(interceptor))
+                .as("stale IP_A bucket (t0) evicted, fresh IP_B bucket (t0+601) kept")
+                .isEqualTo(1);
+    }
+
+    /** Minimal advanceable clock for exercising eviction window boundaries. */
+    private static final class MutableClock extends Clock {
+        private java.time.Instant now;
+        private MutableClock(java.time.Instant start) { this.now = start; }
+        void advance(java.time.Duration d) { now = now.plus(d); }
+        @Override public java.time.Instant instant() { return now; }
+        @Override public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+        @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+    }
+
+    // -------------------------------------------------------------------------
     // UT-WS-RL-06: different source IPs have independent buckets
     // -------------------------------------------------------------------------
 

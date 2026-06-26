@@ -370,6 +370,279 @@ class SubscribeRateLimitInterceptorTest {
                 .isNotNull();
     }
 
+    // -------------------------------------------------------------------------
+    // MutationKill: AUDIT masked-IP prefix present (LogScrubber.maskIp arg-propagation, L131)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Kills L131 ArgumentPropagation / removed-call mutants on {@code LogScrubber.maskIp(ip)}:
+     * the AUDIT line must contain the masked-IP prefix {@code 10.0.0} (last octet stripped).
+     * If maskIp is replaced by a no-op or its argument propagated, the masked prefix disappears.
+     */
+    @Test
+    void auditLog_containsMaskedIpPrefix() {
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(1, Clock.systemUTC());
+
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("AUDIT");
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        auditLogger.addAppender(listAppender);
+        try {
+            Message<?> msg = buildSubscribeMessage(TEST_PRINCIPAL, TEST_IP);
+            interceptor.preSend(msg, mockChannel); // consume
+            interceptor.preSend(msg, mockChannel); // rate-limited → AUDIT
+
+            boolean hasMaskedPrefix = listAppender.list.stream()
+                    .anyMatch(e -> e.getFormattedMessage().contains(MASKED_IP_PREFIX));
+            assertThat(hasMaskedPrefix)
+                    .as("AUDIT line must contain masked IP prefix '%s' (LogScrubber.maskIp)", MASKED_IP_PREFIX)
+                    .isTrue();
+        } finally {
+            auditLogger.detachAppender(listAppender);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // MutationKill: extractIp / extractPrincipalName exact non-empty values
+    // (EmptyObjectReturnVals "" at L191, L205; RemoveConditional at L194)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Captures AUDIT output for the rate-limited path and returns the joined formatted messages.
+     */
+    private String captureRateLimitedAudit(SubscribeRateLimitInterceptor interceptor, Message<?> msg) {
+        Logger auditLogger = (Logger) LoggerFactory.getLogger("AUDIT");
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        auditLogger.addAppender(listAppender);
+        try {
+            interceptor.preSend(msg, mockChannel); // consume
+            interceptor.preSend(msg, mockChannel); // rate-limited → AUDIT
+            StringBuilder sb = new StringBuilder();
+            listAppender.list.forEach(e -> sb.append(e.getFormattedMessage()).append('\n'));
+            return sb.toString();
+        } finally {
+            auditLogger.detachAppender(listAppender);
+        }
+    }
+
+    /**
+     * Kills L191 EmptyObjectReturnVals ({@code extractIp} returns {@code ""} instead of {@code null}
+     * on the {@code sessionAttributes == null} path).
+     *
+     * <p>When there is no session-attributes map, {@code extractIp} returns {@code null}, so the
+     * AUDIT line logs {@code maskIp(null)} = {@code "null"} → {@code ip-hash=null}. The mutant returns
+     * {@code ""}, so the AUDIT line logs {@code maskIp("")} = {@code "redacted"} → {@code ip-hash=redacted}.
+     * Asserting the exact {@code ip-hash=null} token discriminates the two.
+     */
+    @Test
+    void extractIp_nullWhenNoSessionAttributes_auditLogsIpHashNull() {
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(1, Clock.systemUTC());
+        // No session attributes at all (ip == null path, L191)
+        Message<?> msg = buildSubscribeMessage(TEST_PRINCIPAL, null);
+
+        String audit = captureRateLimitedAudit(interceptor, msg);
+
+        assertThat(audit)
+                .as("no-session-attrs path: extractIp returns null → maskIp(null) → ip-hash=null (NOT 'redacted' from \"\")")
+                .contains("ip-hash=null")
+                .doesNotContain("ip-hash=redacted");
+    }
+
+    /**
+     * Kills L194 RemoveConditional_EQUAL_IF on the {@code remoteAddr instanceof String} guard.
+     *
+     * <p>Here the REMOTE_ADDR session attribute holds a NON-String value. The original guard is
+     * false, so {@code extractIp} falls through to {@code return null} → {@code ip-hash=null}.
+     * Removing/forcing the conditional would attempt to treat the non-String as the IP (or change
+     * the path), producing a different {@code ip-hash} token. Asserting {@code ip-hash=null}
+     * pins the instanceof check.
+     */
+    @Test
+    void extractIp_nonStringRemoteAddr_treatedAsNull_auditLogsIpHashNull() {
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(1, Clock.systemUTC());
+
+        SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.SUBSCRIBE);
+        accessor.setDestination("/topic/hashtags/some-wall-id/foo/creation");
+        accessor.setLeaveMutable(true);
+        accessor.setUser((Principal) () -> TEST_PRINCIPAL);
+        Map<String, Object> sessionAttrs = new HashMap<>();
+        sessionAttrs.put(SubscribeRateLimitInterceptor.REMOTE_ADDR, 12345); // non-String
+        accessor.setSessionAttributes(sessionAttrs);
+        Message<?> msg = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        String audit = captureRateLimitedAudit(interceptor, msg);
+
+        assertThat(audit)
+                .as("non-String REMOTE_ADDR: instanceof guard is false → extractIp returns null → ip-hash=null")
+                .contains("ip-hash=null");
+    }
+
+    /**
+     * Kills L205 EmptyObjectReturnVals: {@code extractPrincipalName} returns the literal
+     * {@code "anonymous"} (non-empty) when there is no Principal — NOT {@code ""}.
+     *
+     * <p>The AUDIT line logs {@code hash8(principalName)}. With "anonymous" that is a real 8-char
+     * hash; with the {@code ""} mutant {@code hash8("")} = {@code "blank"} → {@code wallid-hash=blank}.
+     * Asserting that the AUDIT line carries {@code hash8("anonymous")} (and NOT {@code blank})
+     * discriminates the two.
+     */
+    @Test
+    void extractPrincipalName_returnsAnonymous_notEmpty_whenNoUser() {
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(1, Clock.systemUTC());
+        // No principal on the message → extractPrincipalName must return "anonymous"
+        Message<?> msg = buildSubscribeMessage(null, TEST_IP);
+
+        String audit = captureRateLimitedAudit(interceptor, msg);
+
+        String expectedHash = de.seism0saurus.glacier.util.LogScrubber.hash8("anonymous");
+        assertThat(audit)
+                .as("no-principal path: extractPrincipalName returns 'anonymous' → wallid-hash=%s (NOT 'blank' from \"\")", expectedHash)
+                .contains("wallid-hash=" + expectedHash)
+                .doesNotContain("wallid-hash=blank");
+    }
+
+    /**
+     * Kills L118 (one-shot {@code !buckets.containsKey(bucketKey)} guard + NegateConditionals) and
+     * L121 ({@code LogScrubber.hash8(principalName)} arg-propagation / removed-call) on the
+     * missing-REMOTE_ADDR WARN path.
+     *
+     * <p>First missing-ip SUBSCRIBE for a fresh "unknown:principal" key emits exactly ONE WARN
+     * carrying {@code principal-hash=<hash8(principal)>}. The hash8 of the UUID is asserted present
+     * and the raw UUID absent. A second SUBSCRIBE on the same key must NOT emit a second WARN
+     * (one-shot guard) — proving the {@code !containsKey} branch is honoured.
+     */
+    @Test
+    void missingRemoteAddr_emitsOneShotWarn_withHashedPrincipal_notRaw() {
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(30, Clock.systemUTC());
+
+        Logger classLogger = (Logger) LoggerFactory.getLogger(SubscribeRateLimitInterceptor.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        classLogger.addAppender(listAppender);
+        try {
+            Message<?> msg = buildSubscribeMessage(TEST_PRINCIPAL, null);
+
+            interceptor.preSend(msg, mockChannel); // fresh "unknown:principal" → one WARN
+            interceptor.preSend(msg, mockChannel); // existing key → NO second WARN
+
+            long warnCount = listAppender.list.stream()
+                    .filter(e -> e.getFormattedMessage().contains("REMOTE_ADDR missing"))
+                    .count();
+            assertThat(warnCount)
+                    .as("missing-REMOTE_ADDR WARN must fire exactly once per fresh bucket key (L118 one-shot guard)")
+                    .isEqualTo(1);
+
+            String joined = listAppender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .reduce("", (a, b) -> a + "\n" + b);
+            String expectedHash = de.seism0saurus.glacier.util.LogScrubber.hash8(TEST_PRINCIPAL);
+            assertThat(joined)
+                    .as("WARN must carry hash8(principal) (L121), not the raw UUID")
+                    .contains(expectedHash)
+                    .doesNotContain(TEST_PRINCIPAL);
+        } finally {
+            classLogger.detachAppender(listAppender);
+        }
+    }
+
+    // Reflection accessor: bucketCount() is package-private on SubscribeRateLimitInterceptor,
+    // which lives in package ...webservice.security — a different package than this test — so it
+    // cannot be called directly. (setAccessible works: the app runs on the classpath, no modules.)
+    private static int bucketCount(SubscribeRateLimitInterceptor interceptor) {
+        try {
+            java.lang.reflect.Method m =
+                    SubscribeRateLimitInterceptor.class.getDeclaredMethod("bucketCount");
+            m.setAccessible(true);
+            return (int) m.invoke(interceptor);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("reflective bucketCount() failed", e);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // MutationKill: evictStaleBuckets — 600s boundary, Clock.instant, minusSeconds, removeIf/entrySet
+    // (L153, L154)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Kills L153 ("600 with 601" boundary, Clock::instant, Instant::minusSeconds) and
+     * L154 (Set::removeIf, ConcurrentHashMap::entrySet) mutants on {@code evictStaleBuckets()}.
+     *
+     * <p>Creates one bucket at t0, advances the clock to t0+601s, and evicts. The bucket's
+     * {@code lastAccessedAt} (t0) is strictly before the threshold (t0+601-600 = t0+1), so it is
+     * removed. If minusSeconds(600) were minusSeconds(601) the threshold would be exactly t0 and
+     * {@code isBefore(t0)} would be false → bucket survives → assertion fails. If removeIf/entrySet
+     * were no-ops the bucket survives → assertion fails.
+     */
+    @Test
+    void evictStaleBuckets_removesBucketIdlePast600s() {
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        SubscribeRateLimitInterceptor interceptor = new SubscribeRateLimitInterceptor(30, clock);
+
+        interceptor.preSend(buildSubscribeMessage(TEST_PRINCIPAL, TEST_IP), mockChannel);
+        assertThat(bucketCount(interceptor))
+                .as("one bucket created at t0")
+                .isEqualTo(1);
+
+        clock.advance(java.time.Duration.ofSeconds(601));
+        interceptor.evictStaleBuckets();
+
+        assertThat(bucketCount(interceptor))
+                .as("bucket idle for 601s (> 600s threshold) must be evicted")
+                .isZero();
+    }
+
+    /**
+     * Pins the 600s boundary from the other side: a bucket idle for exactly 600s is NOT stale and
+     * must be KEPT. threshold = (t0+600) - 600 = t0; isIdleSince checks lastAccessedAt.isBefore(t0)
+     * which is false (lastAccessedAt == t0). This kills the "600 with 601" / >= vs > boundary mutants:
+     * under minusSeconds(599) the threshold would be t0+1 and the bucket would be wrongly evicted.
+     */
+    @Test
+    void evictStaleBuckets_keepsBucketIdleExactly600s() {
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        SubscribeRateLimitInterceptor interceptor = new SubscribeRateLimitInterceptor(30, clock);
+
+        interceptor.preSend(buildSubscribeMessage(TEST_PRINCIPAL, TEST_IP), mockChannel);
+
+        clock.advance(java.time.Duration.ofSeconds(600));
+        interceptor.evictStaleBuckets();
+
+        assertThat(bucketCount(interceptor))
+                .as("bucket idle exactly 600s is on the boundary (not yet stale) and must be kept")
+                .isEqualTo(1);
+    }
+
+    /**
+     * Kills L154 Set::removeIf / entrySet mutants together with the predicate: a FRESH bucket
+     * (accessed at the eviction instant) must be KEPT while a STALE one is removed in the same pass.
+     */
+    @Test
+    void evictStaleBuckets_keepsFreshBucket_removesStaleOne() {
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        SubscribeRateLimitInterceptor interceptor = new SubscribeRateLimitInterceptor(30, clock);
+
+        // Stale bucket touched at t0
+        interceptor.preSend(buildSubscribeMessage(TEST_PRINCIPAL, "10.0.0.1"), mockChannel);
+
+        // Advance past the window, then touch a fresh bucket at t0+601s
+        clock.advance(java.time.Duration.ofSeconds(601));
+        interceptor.preSend(buildSubscribeMessage(TEST_PRINCIPAL, "10.0.0.2"), mockChannel);
+        assertThat(bucketCount(interceptor)).as("two buckets before eviction").isEqualTo(2);
+
+        interceptor.evictStaleBuckets();
+
+        assertThat(bucketCount(interceptor))
+                .as("stale bucket (t0) evicted, fresh bucket (t0+601) kept")
+                .isEqualTo(1);
+    }
+
     /** Minimal advanceable clock for exercising the token-bucket refill window. */
     private static final class MutableClock extends Clock {
         private java.time.Instant now;

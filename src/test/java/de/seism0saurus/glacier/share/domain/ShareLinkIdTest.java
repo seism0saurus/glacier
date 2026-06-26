@@ -46,6 +46,35 @@ class ShareLinkIdTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    /**
+     * Kills L57 <init> "removed isBlank + RemoveConditional": a whitespace-only (non-empty
+     * but blank) token must be rejected via the blank guard. Pinning the message proves the
+     * blank branch fires; removing {@code isBlank()} or its conditional changes which branch
+     * rejects (or accepts) the value.
+     */
+    @Test
+    void rejectsWhitespaceOnlyToken_blankGuardFires() {
+        assertThatThrownBy(() -> new ShareLinkId("   "))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("null or blank");
+    }
+
+    /**
+     * Kills L62 <init> "removed String::length": the too-short rejection message must embed
+     * the actual {@code token.length()}. Asserting the exact length number kills the
+     * length()-removal mutant; the boundary (42 rejected, 43 accepted) pins the comparison.
+     */
+    @Test
+    void tooShortTokenMessageContainsActualLength_lengthBoundary() {
+        assertThatThrownBy(() -> new ShareLinkId("A".repeat(42)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("length 42")
+                .hasMessageContaining("minimum of 43");
+
+        // Boundary: exactly MIN_LENGTH (43) is accepted.
+        assertThat(new ShareLinkId("A".repeat(43)).value()).hasSize(43);
+    }
+
     @ParameterizedTest(name = "too-short token [{0}] is rejected")
     @ValueSource(strings = {
             "abc",

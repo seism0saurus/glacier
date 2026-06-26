@@ -110,9 +110,44 @@ Test strength 79% (was 78%) · Killed incl. timeouts 74% (was 73%) · 70% gate: 
 IpAddressClassifier survivors 50 → 41 (SSRF hex-colon + CGNAT branches pinned)
 ```
 
-Net: total survivors 241 → 232; the SSRF-classifier P1 gap is closed. The remaining delta
-between 232 and a hypothetical zero is the documented Tier-A equivalents plus the Tier-B P2/P3
-backlog above — all above the enforced 70% threshold.
+Net: total survivors 241 → 232; the SSRF-classifier P1 gap is closed.
+
+## Tier-B kill campaign (2026-06-26, follow-up)
+
+A focused campaign then closed the killable Tier-B gaps across the remaining classes (~88 new
+TDD tests, observable-behavior assertions only — no production changes). Results:
+
+```
+Generated 1172 mutations · SURVIVED 232 → 98 · Test strength 79% → ~92% · Killed incl. timeouts → ~90%
+```
+
+Per-class survivor drop:
+
+| Class | Before | After | Note |
+|---|---:|---:|---|
+| FallbackRateLimiter | 10 | **0** | clock-driven eviction + bucket-count + token-consumption tests |
+| HandshakeRateLimitInterceptor | 9 | **0** | eviction boundary + IP-extraction + fail-open path |
+| ShareRateLimiter | 23 | 1 | map-size eviction tests (token-count was refill-confounded); residual L165 is a convergent two-axis consume (equivalent) |
+| SubscribeRateLimitInterceptor | 19 | 2 | eviction + masked-log + extract tests; residual 2 convergent preSend conditionals |
+| ShareSecurityHeadersFilter | 13 | 4 | exact header-value + nonce + path tests; residual `isSharePath` OR-branch convergence |
+| ShareImageProxyUrlBuilder | 16 | 7 | sign/verify boundary + expiry + padding tests; residual incl. documented L80/L125 equivalents |
+| LogScrubber | 17 | 4 | exact masked-output tests; residual incl. xfoSummary empty-list equivalent |
+| DefaultSafeUrlValidator | 54 | 19 | bidi/control-char + obfuscateHost + resolveAndPin tests; residual are fail-secure re-guards |
+| ShareViewerId / ShareLinkId | 13 | 4 | blank/length/equals/fromUrlPath tests; residual = hashCode contract-equivalence |
+| IframeEmbedPolicy | 16 | 16 | **all equivalent** — fail-safe convergence (DENY/SAMEORIGIN and "unknown XFO" both → false, so the XFO-detection mutants are outcome-equivalent) + boolean-initializers unconditionally reassigned + blank-domain re-guard |
+| IpAddressClassifier | 50 | 41 | security branches pinned (P1); residual = fail-secure-masked normalization + `getByName`-backstopped hex-colon helper |
+
+### Residual 98 — confirmed equivalent classes
+
+The remaining survivors are dominated by genuine equivalent mutants, now confirmed by inspection:
+- **IpAddressClassifier (41)** and **IframeEmbedPolicy (16)** — fail-secure / fail-safe convergence:
+  a mutated branch yields the same blocked/forbidden verdict via a different path, so no assertion
+  can observe it. (This is a *desirable* property — multiple paths converge on "deny".)
+- **DefaultSafeUrlValidator (19)** — fail-secure re-guards backstopped by later guards or by
+  `URI`/`getAllByName` contracts; `obfuscateHost`/bidi boundaries are pinned.
+- **hashCode (4)** — contract-equivalent (`equals` carries identity; hash distribution is unspecified).
+- **A handful (ShareImageProxy L80/L125, LogScrubber xfoSummary, ShareRateLimiter L165, Subscribe ×2,
+  ShareSecurityHeaders isSharePath ×4)** — convergent-path / unobservable, documented above.
 
 ## Disposition
 

@@ -6,6 +6,8 @@ import de.seism0saurus.glacier.share.domain.SecureRandomTokenGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -40,6 +42,53 @@ class SecureRandomTokenGeneratorTest {
     void generatedShareLinkIdHasAtLeast43Characters() {
         ShareLinkId id = generator.generateShareLinkId();
         assertThat(id.value()).hasSizeGreaterThanOrEqualTo(43);
+    }
+
+    /**
+     * MUT-KILL L71 (InlineConstant "Substituted 32 with 33"): 32 entropy bytes encode to
+     * EXACTLY 43 base64url chars (⌈32×8/6⌉, no padding); 33 bytes would encode to 44.
+     *
+     * <p>The pre-existing tests only assert {@code >= 43}, so a 44-char token (the 33-byte
+     * mutant) would still pass them. Pinning the exact length to 43 kills the mutation.
+     */
+    @Test
+    void generatedShareLinkIdHasExactlyFortyThreeCharacters() {
+        ShareLinkId id = generator.generateShareLinkId();
+        assertThat(id.value()).hasSize(43);
+    }
+
+    /**
+     * MUT-KILL L71 (complementary, ShareViewerId path): exactly 43 chars.
+     */
+    @Test
+    void generatedShareViewerIdHasExactlyFortyThreeCharacters() {
+        ShareViewerId id = generator.generateShareViewerId();
+        assertThat(id.value()).hasSize(43);
+    }
+
+    /**
+     * MUT-KILL L71 (decoded-byte anchor): with a deterministic all-zero SecureRandom,
+     * the generated token decodes back to EXACTLY 32 bytes. The 33-byte mutant would decode
+     * to 33 bytes (and produce a 44-char token). Asserting both the decoded byte length (32)
+     * and the exact token string for known input bytes double-pins the entropy size.
+     */
+    @Test
+    void generatedTokenDecodesToExactlyThirtyTwoBytes() {
+        SecureRandom zeros = new SecureRandom() {
+            @Override
+            public void nextBytes(byte[] bytes) {
+                // leave as all-zero; only the length of the buffer matters for this assertion
+            }
+        };
+        SecureRandomTokenGenerator deterministic = new SecureRandomTokenGenerator(zeros);
+
+        String token = deterministic.generateShareLinkId().value();
+        assertThat(token).hasSize(43);
+
+        byte[] decoded = Base64.getUrlDecoder().decode(token);
+        assertThat(decoded).hasSize(32);
+        // 32 zero bytes -> base64url without padding is 43 'A's
+        assertThat(token).isEqualTo("A".repeat(43));
     }
 
     @Test

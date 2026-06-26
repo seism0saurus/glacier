@@ -454,6 +454,101 @@ class IframeEmbedPolicyTest {
     }
 
     // -------------------------------------------------------------------------
+    // Mutation-kill tests (PITest survivors)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Kills L112 "removed isBlank + RemoveConditional_EQUAL_ELSE": pairs the fail-closed
+     * blank-domain path against a non-blank domain that must PROCEED. The blank variants
+     * return {@code false} (fail-closed); the non-blank domain with the same permissive CSP
+     * returns {@code true}. A mutant that drops the blank guard (or inverts the conditional)
+     * cannot satisfy both halves: it would either let the blank domain through (true) or
+     * block the valid domain (false).
+     */
+    @Test
+    @DisplayName("L112: blank domain fails closed but a non-blank matching domain proceeds")
+    void isEmbeddable_blankFailsClosed_nonBlankProceeds() {
+        List<String> cspAnyHost = List.of("frame-ancestors https://glacier.events");
+
+        // Fail-closed: blank / null domain → false even though CSP would otherwise match.
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, cspAnyHost, "")).isFalse();
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, cspAnyHost, "   ")).isFalse();
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, cspAnyHost, null)).isFalse();
+
+        // Non-blank domain proceeds past the guard and matches → true.
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, cspAnyHost, "glacier.events")).isTrue();
+    }
+
+    /**
+     * Kills L128 "RemoveConditional_EQUAL_IF" (the {@code if (frameAncestorsExists)} branch)
+     * and L130 "NakedReceiver Stream::filter + lambda BooleanTrueReturnVals": a CSP whose
+     * {@code frame-ancestors} directive does NOT include the domain → {@code false}; one that
+     * does → {@code true}. If the filter/lambda is forced true, the mismatch case would wrongly
+     * pass; if the frameAncestorsExists branch is skipped, both fall through to the XFO default.
+     */
+    @Test
+    @DisplayName("L128/L130: frame-ancestors mismatch is false, match is true")
+    void isEmbeddable_frameAncestorsMatchVsMismatch() {
+        List<String> mismatch = List.of("frame-ancestors https://other.example.com");
+        List<String> match = List.of("frame-ancestors https://glacier.example.com");
+
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, mismatch, GLACIER_DOMAIN)).isFalse();
+        assertThat(IframeEmbedPolicy.isEmbeddable(null, match, GLACIER_DOMAIN)).isTrue();
+    }
+
+    /**
+     * Kills L149 lambda "InlineConstant + removed equalsIgnoreCase (x2) + RemoveConditional":
+     * the XFO DENY/SAMEORIGIN/ALLOWALL classifier. DENY → false, SAMEORIGIN → false,
+     * ALLOWALL → true, evaluated case-insensitively. The lowercase/mixed-case variants
+     * ("deny", "Deny", "sameorigin", "allowall") force {@code equalsIgnoreCase} to matter — a
+     * mutant downgrading to {@code equals} would mis-classify them. No CSP is supplied so the
+     * XFO branch is the deciding one.
+     */
+    @ParameterizedTest(name = "XFO [{0}] case-insensitively blocks embedding")
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "DENY", "deny", "Deny", "DeNy",
+            "SAMEORIGIN", "sameorigin", "SameOrigin"
+    })
+    @DisplayName("L149: DENY/SAMEORIGIN block embedding case-insensitively")
+    void isEmbeddable_xfoDenyAndSameOrigin_blockCaseInsensitively(final String xfo) {
+        assertThat(IframeEmbedPolicy.isEmbeddable(List.of(xfo), null, GLACIER_DOMAIN))
+                .as("X-Frame-Options %s must block embedding regardless of case", xfo)
+                .isFalse();
+    }
+
+    /**
+     * Kills L149 lambda for the ALLOWALL arm (and L173 explicitly-allowed branch): ALLOWALL
+     * permits embedding, case-insensitively. A mutant replacing {@code equalsIgnoreCase} with
+     * {@code equals} would reject the lowercase/mixed-case spellings.
+     */
+    @ParameterizedTest(name = "XFO [{0}] case-insensitively permits embedding")
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "ALLOWALL", "allowall", "AllowAll", "aLLOWALL"
+    })
+    @DisplayName("L149: ALLOWALL permits embedding case-insensitively")
+    void isEmbeddable_xfoAllowAll_permitsCaseInsensitively(final String xfo) {
+        assertThat(IframeEmbedPolicy.isEmbeddable(List.of(xfo), null, GLACIER_DOMAIN))
+                .as("X-Frame-Options %s must permit embedding regardless of case", xfo)
+                .isTrue();
+    }
+
+    /**
+     * Kills L170 "RemoveConditional_EQUAL_ELSE" (the unknown-XFO else-arm): an XFO header that
+     * is present but holds an unrecognised value is neither explicitly-not-allowed nor
+     * explicitly-allowed nor default-allowed → must return {@code false}. This separates the
+     * unknown-value branch from the explicitly-not-allowed branch (L170): a mutant collapsing
+     * that conditional would still return false here only via the wrong path; combined with the
+     * DENY/SAMEORIGIN tests above, both arms are pinned.
+     */
+    @Test
+    @DisplayName("L156/L170: unknown XFO value is forbidden")
+    void isEmbeddable_xfoUnknownValue_isForbidden() {
+        assertThat(IframeEmbedPolicy.isEmbeddable(List.of("BOGUS-VALUE"), null, GLACIER_DOMAIN))
+                .as("Unknown X-Frame-Options value must fail closed")
+                .isFalse();
+    }
+
+    // -------------------------------------------------------------------------
     // Helper types
     // -------------------------------------------------------------------------
 

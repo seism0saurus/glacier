@@ -151,6 +151,45 @@ class LogScrubberTest {
         assertThat(LogScrubber.maskIp("127.0.0.1")).isEqualTo("127.0.0.xxx");
     }
 
+    // --- Mutation-kill: maskIp boundary + sentinel (L132/L133/L134) ---
+
+    /**
+     * MUT-KILL L132 (ConditionalsBoundaryMutator on {@code lastDot > 0}):
+     * an input whose only dot is at index 0 must NOT be treated as a maskable IPv4.
+     *
+     * <p>{@code ".foo"} → lastDot=0, lastColon=-1. With {@code > 0} the dot branch is skipped
+     * and (no colon either) the method returns {@code "redacted"}. The boundary mutant
+     * {@code >= 0} would instead return {@code "" + ".xxx"} = {@code ".xxx"}.
+     */
+    @Test
+    void maskIp_dotAtIndexZero_returnsRedacted_notXxx() {
+        assertThat(LogScrubber.maskIp(".foo")).isEqualTo("redacted");
+    }
+
+    /**
+     * MUT-KILL L133 (ConditionalsBoundaryMutator on {@code lastColon > 0}):
+     * an input whose only colon is at index 0 (and no dot) must NOT be treated as IPv6.
+     *
+     * <p>{@code ":foo"} → lastDot=-1, lastColon=0. With {@code > 0} the colon branch is skipped
+     * and the method returns {@code "redacted"}. The boundary mutant {@code >= 0} would instead
+     * return {@code "" + ":xxxx"} = {@code ":xxxx"}.
+     */
+    @Test
+    void maskIp_colonAtIndexZero_returnsRedacted_notXxxx() {
+        assertThat(LogScrubber.maskIp(":foo")).isEqualTo("redacted");
+    }
+
+    /**
+     * MUT-KILL L134 (EmptyObjectReturnVals — {@code return ""} instead of {@code "redacted"}):
+     * an input with neither dot nor colon must return the exact sentinel {@code "redacted"},
+     * which is non-empty. The empty-return mutant produces {@code ""}.
+     */
+    @Test
+    void maskIp_noDotNoColon_returnsExactRedactedSentinel() {
+        assertThat(LogScrubber.maskIp("localhost")).isEqualTo("redacted");
+        assertThat(LogScrubber.maskIp("localhost")).isNotEmpty();
+    }
+
     // -------------------------------------------------------------------------
     // hashtagLen — returns int
     // -------------------------------------------------------------------------
@@ -290,6 +329,59 @@ class LogScrubberTest {
         assertThat(LogScrubber.urlHostHash("https://mastodon.social/@user/1"))
                 .hasSize(8)
                 .matches("[0-9a-f]{8}");
+    }
+
+    // --- Mutation-kill: urlHostHash conditionals (L176, L186) ---
+
+    /**
+     * MUT-KILL L176 (RemoveConditional_EQUAL_IF — force the early {@code return hash8("unparseable")}):
+     * a valid URL must produce a host-derived hash that is NOT equal to the unparseable sentinel hash.
+     *
+     * <p>The pre-existing "returns eight hex chars" test does not kill this mutant because the
+     * unparseable hash is also eight hex chars. Asserting inequality with {@code hash8("unparseable")}
+     * is what distinguishes the real host hash from the fail-secure sentinel.
+     */
+    @Test
+    void urlHostHash_validUrl_isNotTheUnparseableSentinelHash() {
+        assertThat(LogScrubber.urlHostHash("https://mastodon.social/@user/1"))
+                .isNotEqualTo(LogScrubber.hash8("unparseable"));
+    }
+
+    /**
+     * MUT-KILL L186 (RemoveConditional_EQUAL_IF on {@code if (port == -1)} — force normalization
+     * even when an explicit port is present): an explicit non-default port must produce a different
+     * hash than the same host on its default port.
+     *
+     * <p>{@code https://host:8443/} carries explicit port 8443. The correct code hashes
+     * {@code "host:8443"}; the mutant forces {@code port = 443} (https default) and hashes
+     * {@code "host:443"} — so the explicit-port hash must differ from the default-port hash.
+     */
+    @Test
+    void urlHostHash_explicitNonDefaultPort_differsFromDefaultPort() {
+        String explicit = LogScrubber.urlHostHash("https://mastodon.social:8443/about");
+        String defaultPort = LogScrubber.urlHostHash("https://mastodon.social/about"); // -> :443
+        assertThat(explicit).isNotEqualTo(defaultPort);
+    }
+
+    /**
+     * MUT-KILL L186 (complementary): the explicit-port hash must equal a deterministic
+     * reconstruction {@code hash8("host:port")}, pinning that the explicit port (not the
+     * normalized default) is what feeds the hash.
+     */
+    @Test
+    void urlHostHash_explicitPort_matchesHostColonPortHash() {
+        assertThat(LogScrubber.urlHostHash("https://mastodon.social:8443/about"))
+                .isEqualTo(LogScrubber.hash8("mastodon.social:8443"));
+    }
+
+    /**
+     * Complementary pin for the default-port normalization (guards L187 path):
+     * an https URL without a port hashes {@code "host:443"}.
+     */
+    @Test
+    void urlHostHash_httpsDefaultPort_matchesHostColon443Hash() {
+        assertThat(LogScrubber.urlHostHash("https://mastodon.social/about"))
+                .isEqualTo(LogScrubber.hash8("mastodon.social:443"));
     }
 
     // -------------------------------------------------------------------------
@@ -696,6 +788,84 @@ class LogScrubberTest {
      *       U+202E (RIGHT-TO-LEFT OVERRIDE), U+FEFF (BOM/ZERO-WIDTH NO-BREAK SPACE).</li>
      * </ol>
      */
+    // --- Mutation-kill: xfoSummary guard (L228) ---
+
+    /**
+     * MUT-KILL L228 (RemoveConditional_EQUAL_ELSE / NonVoidMethodCall on the null check):
+     * {@code null} must return the exact sentinel and must NOT throw.
+     *
+     * <p>Removing the {@code values == null} half of the guard makes the surviving condition
+     * {@code values.isEmpty()}, which NPEs on null. Pinning the exact return value while a null
+     * is passed kills that mutation (the mutant throws instead of returning).
+     */
+    @Test
+    void xfoSummary_null_returnsExactSentinelWithoutThrowing() {
+        assertThat(LogScrubber.xfoSummary(null)).isEqualTo("xfo-values=0 xfo-totallen=0");
+    }
+
+    /**
+     * Complementary pin for the loop path: a populated list must be summarised by the loop
+     * (not the early sentinel), producing the exact computed count and total length.
+     */
+    @Test
+    void xfoSummary_populatedList_isComputedByLoop_notSentinel() {
+        String result = LogScrubber.xfoSummary(List.of("AB", "CDE"));
+        assertThat(result).isEqualTo("xfo-values=2 xfo-totallen=5");
+    }
+
+    // --- Mutation-kill: forErrorMessage (L259/L260/L261) ---
+
+    /**
+     * MUT-KILL L259 (NegateConditionals / RemoveConditional on {@code value == null}):
+     * {@code null} returns exactly {@code "[scrubbed null]"}.
+     */
+    @Test
+    void forErrorMessage_null_returnsScrubbedNull() {
+        assertThat(LogScrubber.forErrorMessage(null)).isEqualTo("[scrubbed null]");
+    }
+
+    /**
+     * MUT-KILL L260 (removed {@code isBlank} / RemoveConditional on the blank check):
+     * a blank (whitespace-only) value returns exactly {@code "[scrubbed blank]"} — not the
+     * len/hash form. If the blank branch is removed, a whitespace string would fall through to
+     * {@code "[scrubbed len=3 hash=...]"}, failing this exact-equality assertion.
+     */
+    @Test
+    void forErrorMessage_blank_returnsScrubbedBlank() {
+        assertThat(LogScrubber.forErrorMessage("   ")).isEqualTo("[scrubbed blank]");
+        assertThat(LogScrubber.forErrorMessage("")).isEqualTo("[scrubbed blank]");
+    }
+
+    /**
+     * MUT-KILL L261 (removed {@code length} call / removed {@code hash8} call):
+     * a non-blank value returns the exact {@code "[scrubbed len=N hash=XXXXXXXX]"} form,
+     * pinning BOTH the exact character length and the exact hash8 prefix.
+     *
+     * <p>"super-secret-token" has length 18; the hash term must equal {@code hash8(value)}.
+     * Removing the {@code length()} call changes {@code len=18}; removing the {@code hash8}
+     * call changes the {@code hash=} term — either mutation breaks this exact-equality.
+     */
+    @Test
+    void forErrorMessage_nonBlank_returnsExactLenAndHash() {
+        String value = "super-secret-token";
+        assertThat(value).hasSize(18); // sanity: pins the expected len term
+        assertThat(LogScrubber.forErrorMessage(value))
+                .isEqualTo("[scrubbed len=18 hash=" + LogScrubber.hash8(value) + "]");
+    }
+
+    /**
+     * MUT-KILL L261 (removed {@code length} call) — second anchor with a different length so the
+     * {@code len=N} term cannot be coincidentally satisfied by a constant/inlined value.
+     */
+    @Test
+    void forErrorMessage_differentLength_pinsExactLenTerm() {
+        assertThat(LogScrubber.forErrorMessage("abc"))
+                .isEqualTo("[scrubbed len=3 hash=" + LogScrubber.hash8("abc") + "]");
+        // and the raw value must never appear verbatim (D-13/SR-8)
+        assertThat(LogScrubber.forErrorMessage("super-secret-token"))
+                .doesNotContain("super-secret-token");
+    }
+
     @Property
     void xfoSummary_longBased_propertyTest_neverContainsControlBytes(
             @ForAll @Size(max = 10) List<@StringLength(max = 200) String> values) {

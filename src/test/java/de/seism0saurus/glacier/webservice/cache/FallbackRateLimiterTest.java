@@ -314,6 +314,182 @@ class FallbackRateLimiterTest {
                 .isEqualTo(1);
     }
 
+    /** Mutable test clock so eviction timing is deterministic. */
+    private static Clock movableClock(AtomicReference<Instant> nowRef) {
+        return new Clock() {
+            @Override public ZoneId getZone() { return ZoneId.of("UTC"); }
+            @Override public Clock withZone(ZoneId zone) { return this; }
+            @Override public Instant instant() { return nowRef.get(); }
+        };
+    }
+
+    /**
+     * MUTATION-KILL: pins the 600 s eviction boundary ("600 with 601" mutant, L179)
+     * and the {@code removeIf} lambda boolean return values (L181).
+     *
+     * <p>threshold = now - 600 s; {@code isIdleSince} returns
+     * {@code lastAccessedAt.isBefore(threshold)}.
+     * A bucket whose last access was EXACTLY 600 s ago is at the threshold and
+     * therefore NOT idle (must be kept). A bucket 601 s ago IS idle (must be evicted).
+     *
+     * <p>Lambda boolean mutants: a stale bucket must yield {@code true} (evicted) and a
+     * fresh bucket must yield {@code false} (kept). Asserting both an evicted and a
+     * retained bucket in the same map kills BooleanTrue/BooleanFalse return mutants.
+     */
+    @Test
+    void evictStaleBuckets_600sBoundary_exactBoundaryKept_justPastEvicted() {
+        // --- Exactly 600 s: must be KEPT ---
+        AtomicReference<Instant> nowRef = new AtomicReference<>(Instant.parse("2024-03-01T00:00:00Z"));
+        FallbackRateLimiter atBoundary = new FallbackRateLimiter(30, 120, movableClock(nowRef));
+        atBoundary.check(wall("wall-boundary-aaaaaaaaaaaaaaaaaa"), "10.6.0.1");
+
+        nowRef.set(Instant.parse("2024-03-01T00:10:00Z")); // +600 s exactly
+        atBoundary.evictStaleBuckets();
+        assertThat(atBoundary.wallIdBucketCount())
+                .as("bucket exactly at 600 s boundary must NOT be evicted")
+                .isEqualTo(1);
+        assertThat(atBoundary.ipBucketCount())
+                .as("ip bucket exactly at 600 s boundary must NOT be evicted")
+                .isEqualTo(1);
+
+        // --- 601 s: must be EVICTED ---
+        AtomicReference<Instant> nowRef2 = new AtomicReference<>(Instant.parse("2024-03-01T01:00:00Z"));
+        FallbackRateLimiter pastBoundary = new FallbackRateLimiter(30, 120, movableClock(nowRef2));
+        pastBoundary.check(wall("wall-past-aaaaaaaaaaaaaaaaaaaaa"), "10.6.0.2");
+
+        nowRef2.set(Instant.parse("2024-03-01T01:10:01Z")); // +601 s
+        pastBoundary.evictStaleBuckets();
+        assertThat(pastBoundary.wallIdBucketCount())
+                .as("bucket 601 s past last access must be evicted (lambda true)")
+                .isEqualTo(0);
+        assertThat(pastBoundary.ipBucketCount())
+                .as("ip bucket 601 s past last access must be evicted (lambda true)")
+                .isEqualTo(0);
+    }
+
+    /**
+     * MUTATION-KILL: in a single eviction pass over the SAME map, a stale bucket is
+     * evicted (lambda returns {@code true}) while a fresh bucket is retained (lambda
+     * returns {@code false}). Kills the {@code removeIf} call removal (L181) and both
+     * lambda BooleanTrue/BooleanFalse return mutants — a constant-true lambda would
+     * also drop the fresh bucket; a constant-false lambda would keep the stale one.
+     */
+    @Test
+    void evictStaleBuckets_lambda_staleEvicted_freshKept_sameMap() {
+        AtomicReference<Instant> nowRef = new AtomicReference<>(Instant.parse("2024-04-01T00:00:00Z"));
+        FallbackRateLimiter limiter = new FallbackRateLimiter(30, 120, movableClock(nowRef));
+
+        // stale bucket created at t0
+        limiter.check(wall("wall-stale-aaaaaaaaaaaaaaaaaaaa"), "10.7.0.1");
+
+        // advance past the window, then create the fresh bucket so it has a recent access
+        nowRef.set(Instant.parse("2024-04-01T00:11:00Z")); // +660 s
+        limiter.check(wall("wall-fresh-aaaaaaaaaaaaaaaaaaaa"), "10.7.0.2");
+
+        assertThat(limiter.wallIdBucketCount()).isEqualTo(2);
+        assertThat(limiter.ipBucketCount()).isEqualTo(2);
+
+        limiter.evictStaleBuckets();
+
+        // Exactly one survives in each map: the stale one gone, the fresh one kept.
+        assertThat(limiter.wallIdBucketCount())
+                .as("stale wallId evicted, fresh wallId kept")
+                .isEqualTo(1);
+        assertThat(limiter.ipBucketCount())
+                .as("stale ip evicted, fresh ip kept")
+                .isEqualTo(1);
+        // Confirm the surviving wallId bucket is the FRESH one (still admits requests).
+        assertThat(limiter.check(wall("wall-fresh-aaaaaaaaaaaaaaaaaaaa"), "10.7.0.2").permitted()).isTrue();
+    }
+
+    /**
+     * MUTATION-KILL: {@code ipBucketCount()} returns {@code ipBuckets.size()} (L193).
+     * Adds exactly N distinct IP buckets and asserts the count == N. Kills the
+     * {@code ConcurrentHashMap::size} removal and the {@code PrimitiveReturns}
+     * "return 0" mutant (which would report 0 instead of N).
+     */
+    @Test
+    void ipBucketCount_returnsExactNumberOfDistinctIpBuckets() {
+        FallbackRateLimiter limiter = new FallbackRateLimiter(30, 120, Clock.systemUTC());
+        int n = 7;
+        for (int i = 0; i < n; i++) {
+            // distinct IPs, distinct wallIds — creates exactly n IP buckets
+            limiter.check(wall("wall-count-" + i + "-aaaaaaaaaaaaaa"), "10.8.0." + i);
+        }
+        assertThat(limiter.ipBucketCount())
+                .as("ipBucketCount must equal the number of distinct IPs seen")
+                .isEqualTo(n);
+        // Sanity: not zero (kills PrimitiveReturns return-0 mutant explicitly).
+        assertThat(limiter.ipBucketCount()).isNotZero();
+    }
+
+    /**
+     * MUTATION-KILL: checkIpOnly debits the per-IP bucket (L156 removed
+     * {@code iBucket.tryConsume()} / removed {@code secondsUntilRefill}).
+     * Exhausts the IP bucket via checkIpOnly and asserts the next call is rejected
+     * with a positive retry-after — a removed consume would never reject.
+     */
+    @Test
+    void checkIpOnly_rejected_returnsPositiveRetryAfter() {
+        AtomicReference<Instant> nowRef = new AtomicReference<>(Instant.parse("2024-05-01T00:00:00Z"));
+        FallbackRateLimiter limiter = new FallbackRateLimiter(30, 120, movableClock(nowRef));
+        String ip = "10.9.0.1";
+        for (int i = 0; i < 120; i++) {
+            assertThat(limiter.checkIpOnly(ip).permitted()).isTrue();
+        }
+        FallbackRateLimiter.RateLimitResult result = limiter.checkIpOnly(ip);
+        assertThat(result.permitted()).isFalse();
+        // clock pinned at window start -> full 61 s retry-after.
+        assertThat(result.retryAfterSeconds()).isEqualTo(61L);
+    }
+
+    /**
+     * MUTATION-KILL: check() IP-axis rejection + wallId refund (L131-L135).
+     * Makes the per-IP axis the binding constraint while the per-wallId axis still
+     * has tokens. This is the only path through
+     * {@code if (!iBucket.tryConsume()) { wBucket.refund(); ... }}.
+     *
+     * <p>Kills: removed {@code iBucket.tryConsume()} (L131 — IP limit would never fire),
+     * removed {@code wBucket.refund()} (L134 — proven by the refund assertion below),
+     * removed {@code iBucket.secondsUntilRefill()} (L135 — proven by positive retry-after).
+     */
+    @Test
+    void check_ipAxisBinding_rejectsAndRefundsWallIdToken() {
+        AtomicReference<Instant> nowRef = new AtomicReference<>(Instant.parse("2024-06-01T00:00:00Z"));
+        // per-wallId 30, per-IP 5 -> IP is the binding constraint.
+        FallbackRateLimiter limiter = new FallbackRateLimiter(30, 5, movableClock(nowRef));
+        String ip = "10.10.0.1";
+
+        // Exhaust the IP bucket across 5 distinct wallIds (each wallId bucket keeps tokens).
+        for (int i = 0; i < 5; i++) {
+            assertThat(limiter.check(wall("wall-ipbind-" + i + "-aaaaaaaaaa"), ip).permitted())
+                    .as("request %d should be permitted", i + 1).isTrue();
+        }
+
+        // 6th: fresh wallId (wallId axis passes) but IP bucket exhausted -> IP rejects.
+        FallbackRateLimiter.RateLimitResult rejected =
+                limiter.check(wall("wall-ipbind-fresh-aaaaaaaaaaaa"), ip);
+        assertThat(rejected.permitted())
+                .as("IP axis must reject when exhausted")
+                .isFalse();
+        assertThat(rejected.retryAfterSeconds())
+                .as("rejection carries IP bucket's positive retry-after")
+                .isEqualTo(61L);
+
+        // The fresh wallId's token must have been refunded. Prove its bucket holds
+        // exactly 30 by spending all 30 against DISTINCT fresh IPs (per-IP limit is 5,
+        // so we rotate IPs every 5 requests to avoid the IP axis binding here).
+        for (int i = 0; i < 30; i++) {
+            String freshIp = "10.10.1." + (i / 5); // new IP every 5 requests
+            assertThat(limiter.check(wall("wall-ipbind-fresh-aaaaaaaaaaaa"), freshIp).permitted())
+                    .as("refunded wallId token: request %d of 30", i + 1).isTrue();
+        }
+        // 31st on the fresh wallId (with yet another fresh IP) -> wallId axis exhausted.
+        assertThat(limiter.check(wall("wall-ipbind-fresh-aaaaaaaaaaaa"), "10.10.2.0").permitted())
+                .as("wallId bucket holds exactly 30 after refund")
+                .isFalse();
+    }
+
     // -------------------------------------------------------------------------
     // RateLimitResult factory methods
     // -------------------------------------------------------------------------

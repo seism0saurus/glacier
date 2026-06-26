@@ -100,4 +100,70 @@ class ShareViewerIdTest {
         assertThat(id.hash8()).hasSize(8).matches("[0-9a-f]+");
         assertThat(id.hash8()).isEqualTo(id.hash8());
     }
+
+    // ---------------------------------------------------------------------------
+    // Mutation-kill tests (PITest survivors)
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Kills L45 <init> "removed isBlank + RemoveConditional": a whitespace-only token
+     * (non-empty but blank) must be rejected. If the {@code isBlank()} call or its
+     * conditional is removed, this whitespace string proceeds past the blank guard and is
+     * then rejected only by length/charset checks with a different message — or accepted if
+     * long enough. A pure-whitespace 43-char string would slip past the blank guard once it
+     * is removed (it satisfies length) and fail at the charset check instead; pinning the
+     * message proves the blank branch is the one that fires.
+     */
+    @Test
+    void rejectsWhitespaceOnlyToken_blankGuardFires() {
+        String whitespace = "   ";
+        assertThatThrownBy(() -> new ShareViewerId(whitespace))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("null or blank");
+    }
+
+    /**
+     * Kills L50 <init> "removed String::length": the rejection message for a too-short token
+     * must embed the actual {@code token.length()}. Removing the {@code length()} call would
+     * change the interpolated number, so asserting the exact length value in the message
+     * fails the mutant. Also asserts a too-short token (length 42) is rejected while the
+     * minimum-length token (43) is accepted — pinning the length comparison itself.
+     */
+    @Test
+    void tooShortTokenMessageContainsActualLength_lengthCallSurvives() {
+        String token42 = "A".repeat(42);
+        assertThatThrownBy(() -> new ShareViewerId(token42))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("length 42")
+                .hasMessageContaining("minimum of 43");
+
+        // Boundary: exactly MIN_LENGTH (43) is accepted, proving the < comparison bound.
+        String token43 = "A".repeat(43);
+        assertThat(new ShareViewerId(token43).value()).hasSize(43);
+    }
+
+    /**
+     * Kills L68 fromUrlPath "ConstructorCall + NullReturnVals": the factory must return a
+     * real, non-null {@link ShareViewerId} carrying the supplied token for valid input. A
+     * mutant that returns {@code null} (or skips the constructor) fails these assertions.
+     */
+    @Test
+    void fromUrlPathReturnsRealInstanceForValidInput() {
+        String token = "A".repeat(43);
+        ShareViewerId id = ShareViewerId.fromUrlPath(token);
+        assertThat(id).isNotNull();
+        assertThat(id.value()).isEqualTo(token);
+        assertThat(id).isInstanceOf(ShareViewerId.class);
+    }
+
+    /**
+     * Kills L95 equals "BooleanTrueReturnVals": two ShareViewerIds with DIFFERENT tokens must
+     * NOT be equal. A mutant forcing {@code equals} to return {@code true} fails here.
+     */
+    @Test
+    void twoViewerIdsWithDifferentTokensAreNotEqual() {
+        ShareViewerId a = new ShareViewerId("A".repeat(43));
+        ShareViewerId b = new ShareViewerId("B".repeat(43));
+        assertThat(a).isNotEqualTo(b);
+    }
 }
