@@ -179,6 +179,122 @@ class ShareRenderingServiceTest {
     }
 
     // -----------------------------------------------------------------------
+    // Null / empty / edge-branch coverage (the uncovered ~half of renderForView)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void minimalStatus_allFieldsNull_rendersSafelyWithDefaults() {
+        // A bare mock: every getter returns null/false. Exercises the null-account ternaries,
+        // the four null-collection early returns, null id → "", null content → "", the null
+        // spoiler branch, and the createdAt fallback — i.e. the branches the populated
+        // happy-path fixtures never reach. Must not throw.
+        Status status = mock(Status.class);
+
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+
+        assertThat(view.id()).isEqualTo("");
+        assertThat(view.authorDisplayName()).isNull();
+        assertThat(view.authorAcct()).isNull();
+        assertThat(view.authorProfileUrl()).isNull();
+        assertThat(view.authorAvatarProxyUrl()).isNull();
+        assertThat(view.textContent()).isEmpty();
+        assertThat(view.spoilerText()).isNull();
+        assertThat(view.sensitive()).isFalse();
+        assertThat(view.createdAt()).isNotNull(); // fallback to "now"
+        assertThat(view.mentions()).isEmpty();
+        assertThat(view.hashtags()).isEmpty();
+        assertThat(view.customEmojis()).isEmpty();
+        assertThat(view.media()).isEmpty();
+        assertThat(view.poll()).isEmpty();
+    }
+
+    @Test
+    void oversizeContent_isTruncatedWithMarker() {
+        // > MAX_TEXT_BYTES (8192) → JsoupTextExtractor truncates and appends "[…]", which
+        // triggers the SR-SHARE-17 oversize AUDIT branch.
+        Status status = mockStatus("a".repeat(10_000));
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+        assertThat(view.textContent()).endsWith("[…]");
+    }
+
+    @Test
+    void spoilerText_present_isExtractedToPlainText() {
+        Status status = mockStatus("body");
+        when(status.getSpoilerText()).thenReturn("<b>Content warning</b>");
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+        assertThat(view.spoilerText()).isEqualTo("Content warning");
+        assertThat(view.spoilerText()).doesNotContain("<b>");
+    }
+
+    @Test
+    void blankSpoilerText_isNull() {
+        Status status = mockStatus("body");
+        when(status.getSpoilerText()).thenReturn("   ");
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+        assertThat(view.spoilerText()).isNull();
+    }
+
+    @Test
+    void sensitiveFlag_true_isPropagated() {
+        Status status = mockStatus("body");
+        when(status.isSensitive()).thenReturn(true);
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+        assertThat(view.sensitive()).isTrue();
+    }
+
+    @Test
+    void customEmojis_present_areMappedToProxiedRefs() {
+        Status status = mockStatus("body");
+        social.bigbone.api.entity.CustomEmoji emoji = mock(social.bigbone.api.entity.CustomEmoji.class);
+        when(emoji.getShortcode()).thenReturn("party");
+        when(emoji.getUrl()).thenReturn("https://mastodon.social/emoji/party.png");
+        when(status.getEmojis()).thenReturn(List.of(emoji));
+
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+
+        assertThat(view.customEmojis()).hasSize(1);
+        assertThat(view.customEmojis().get(0).shortcode()).isEqualTo("party");
+        assertThat(view.customEmojis().get(0).proxyUrl()).isNotNull();
+    }
+
+    @Test
+    void customEmoji_withInvalidUrl_isFilteredOut() {
+        Status status = mockStatus("body");
+        social.bigbone.api.entity.CustomEmoji emoji = mock(social.bigbone.api.entity.CustomEmoji.class);
+        when(emoji.getShortcode()).thenReturn("evil");
+        when(emoji.getUrl()).thenReturn("javascript:alert(1)");
+        when(status.getEmojis()).thenReturn(List.of(emoji));
+        when(mockUrlValidator.validate("javascript:alert(1)")).thenReturn(Optional.empty());
+
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+
+        assertThat(view.customEmojis()).isEmpty();
+    }
+
+    @Test
+    void media_withInvalidUrl_isFilteredOut() {
+        Status status = mockStatusWithMedia("javascript:alert(1)", "alt text");
+        when(mockUrlValidator.validate("javascript:alert(1)")).thenReturn(Optional.empty());
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+        assertThat(view.media()).isEmpty();
+    }
+
+    @Test
+    void hashtags_present_areMappedWithNullSearchUrl() {
+        // Hashtags never carry an external URL (searchUrl always null) — anti-tracking.
+        Status status = mockStatus("body");
+        social.bigbone.api.entity.Tag tag = mock(social.bigbone.api.entity.Tag.class);
+        when(tag.getName()).thenReturn("glacier");
+        when(status.getTags()).thenReturn(List.of(tag));
+
+        ReadonlyTootView view = service.renderForView(status, SHARE_LINK_ID);
+
+        assertThat(view.hashtags()).hasSize(1);
+        assertThat(view.hashtags().get(0).tag()).isEqualTo("glacier");
+        assertThat(view.hashtags().get(0).searchUrl()).isNull();
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 
