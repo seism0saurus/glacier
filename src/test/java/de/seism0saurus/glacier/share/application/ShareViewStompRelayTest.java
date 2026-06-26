@@ -6,9 +6,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import social.bigbone.api.entity.Status;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -161,6 +164,41 @@ class ShareViewStompRelayTest {
         when(mockRegistry.getActiveLinks(any())).thenReturn(Set.of());
         assertThatCode(() -> relay.relayTootEvent(WALL_ID, "", "creation", Map.of()))
                 .doesNotThrowAnyException();
+    }
+
+    // -----------------------------------------------------------------------
+    // Defensive wallId guards on both overloads + getRecentMessages empty path
+    // -----------------------------------------------------------------------
+
+    @Test
+    void relayTootEvent_statusOverload_nullWallId_doesNotThrowOrPublish() {
+        // The Status overload's null-wallId guard returns before touching the (null) render
+        // service, so no NPE and no fan-out.
+        assertThatCode(() -> relay.relayTootEvent(null, HASHTAG, "creation", (Status) null))
+                .doesNotThrowAnyException();
+        verifyNoInteractions(mockTemplate);
+    }
+
+    @Test
+    void relayTootEvent_statusOverload_blankWallId_doesNotThrow() {
+        assertThatCode(() -> relay.relayTootEvent("  ", HASHTAG, "creation", (Status) null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void relayTootEvent_objectOverload_blankWallId_doesNotThrow() {
+        assertThatCode(() -> relay.relayTootEvent("  ", HASHTAG, "creation", Map.of()))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void getRecentMessages_linkNotActive_returnsEmptyList() {
+        // resolve() empty means the link is unknown/expired/revoked → no catalog leaked.
+        when(mockShareLinkService.resolve(eq(LINK_ID), any())).thenReturn(Optional.empty());
+
+        var result = relay.getRecentMessages(LINK_ID, HASHTAG, null, Instant.now());
+
+        assertThat(result).isEmpty();
     }
 
 }

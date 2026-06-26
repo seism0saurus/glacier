@@ -131,4 +131,31 @@ class ShareCsrfGuardTest {
         Cookie cookie = new Cookie("__Host-shareCsrf", token);
         when(request.getCookies()).thenReturn(new Cookie[]{cookie});
     }
+
+    // -----------------------------------------------------------------------
+    // Blank-origin + blank/short header-token rejections (SR-SHARE-08/12)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void rejectsWhenOriginBlank() {
+        when(request.getHeader("Origin")).thenReturn("   ");
+        assertThat(guard.verify(request)).isFalse();
+    }
+
+    @Test
+    void rejectsWhenHeaderTokenBlank() {
+        when(request.getHeader("Origin")).thenReturn("https://glacier.example.com");
+        when(request.getHeader("X-Share-CSRF")).thenReturn("   ");
+        setupCookieToken(TOKEN);
+        assertThat(guard.verify(request)).isFalse();
+    }
+
+    @Test
+    void rejectsWhenHeaderTokenShorterThanMinimum() {
+        // < MIN_TOKEN_LENGTH (32) — too short to be a real token.
+        when(request.getHeader("Origin")).thenReturn("https://glacier.example.com");
+        when(request.getHeader("X-Share-CSRF")).thenReturn("short-token");
+        setupCookieToken(TOKEN);
+        assertThat(guard.verify(request)).isFalse();
+    }
 }
