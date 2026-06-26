@@ -386,4 +386,66 @@ describe('ReadonlyWallStompClient', () => {
     // Drain pending timers
     tick(6000);
   }));
+
+  // ── EXPIRED is terminal + control-channel receive wiring ────────────────────
+
+  it('onStompDisconnected after EXPIRED stays EXPIRED (no flip back to PROBING)', () => {
+    // Viewer-kick invariant: once a revoked/expired control frame flips the viewer to EXPIRED,
+    // the subsequent WebSocket close must NOT downgrade it to PROBING (which would hide the
+    // "link expired" state and start a pointless reconnect loop).
+    (service as unknown as { handleControlFrame(f: { type: string }): void })
+      .handleControlFrame({ type: 'revoked' });
+    expect(service.transportMode$.getValue()).toBe(ViewerTransportMode.EXPIRED);
+
+    (service as unknown as { onStompDisconnected(): void }).onStompDisconnected();
+
+    expect(service.transportMode$.getValue())
+      .withContext('a WS close after revocation must remain EXPIRED')
+      .toBe(ViewerTransportMode.EXPIRED);
+  });
+
+  it('onStompConnected with an active client subscribes to the control channel', () => {
+    const shareId = 'wiring-id-1';
+    service.connect(shareId);
+    const subscribeSpy = Client.prototype.subscribe as jasmine.Spy;
+    subscribeSpy.calls.reset();
+
+    (service as unknown as { onStompConnected(): void }).onStompConnected();
+
+    expect(subscribeSpy).toHaveBeenCalledWith(`/topic/share/${shareId}/control`, jasmine.any(Function));
+  });
+
+  it('a revoked control frame received on the control subscription flips to EXPIRED', () => {
+    const shareId = 'wiring-id-2';
+    let controlCb: ((m: { body: string }) => void) | undefined;
+    (Client.prototype.subscribe as jasmine.Spy).and.callFake(
+      (dest: string, cb: (m: { body: string }) => void) => {
+        if (dest.endsWith('/control')) controlCb = cb;
+        return { id: 'fake-sub', unsubscribe: jasmine.createSpy('unsubscribe') };
+      });
+
+    service.connect(shareId);
+    (service as unknown as { onStompConnected(): void }).onStompConnected();
+
+    expect(controlCb).withContext('control subscription callback must be registered').toBeDefined();
+    controlCb!({ body: JSON.stringify({ type: 'revoked' }) });
+
+    expect(service.transportMode$.getValue()).toBe(ViewerTransportMode.EXPIRED);
+  });
+
+  it('a malformed control frame is ignored (no throw, mode unchanged)', () => {
+    const shareId = 'wiring-id-3';
+    let controlCb: ((m: { body: string }) => void) | undefined;
+    (Client.prototype.subscribe as jasmine.Spy).and.callFake(
+      (dest: string, cb: (m: { body: string }) => void) => {
+        if (dest.endsWith('/control')) controlCb = cb;
+        return { id: 'fake-sub', unsubscribe: jasmine.createSpy('unsubscribe') };
+      });
+
+    service.connect(shareId);
+    (service as unknown as { onStompConnected(): void }).onStompConnected();
+
+    expect(() => controlCb!({ body: 'this is not json' })).not.toThrow();
+    expect(service.transportMode$.getValue()).toBe(ViewerTransportMode.LIVE);
+  });
 });
