@@ -277,7 +277,7 @@
   "share.dialog.revoke.in-progress.announce": "Revoking link…",
   "share.dialog.revoke.failed.announce": "Revocation failed. Please try again.",
   "share.dialog.revoke.button.label": "Revoke",
-  "share.dialog.revoke.button.label.aria": "Revoke link {ordinal} — expires on {date}",
+  "share.dialog.revoke.button.label.aria": "Revoke link",
 
   "share.feed.empty.message": "No toots yet — new entries will appear here live as they arrive."
 }

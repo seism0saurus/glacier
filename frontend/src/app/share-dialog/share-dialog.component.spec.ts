@@ -621,6 +621,20 @@ describe('ShareDialogComponent', () => {
         expect(catalog[key].length).toBeGreaterThan(0);
       });
     }
+
+    // The revoke-row aria-label is built by composing the ordinal + expiry date OUTSIDE the
+    // localized fragment. The catalog value must therefore be placeholder-free: a bare {x}
+    // here does not match the source message's auto-generated placeholder name and renders
+    // literally (e.g. "Revoke link {ordinal} — expires on {date}") to screen readers in EN.
+    it("messages.en.json revoke aria-label must be placeholder-free (no literal '{')", async () => {
+      const response = await fetch('/assets/i18n/messages.en.json');
+      const catalog: Record<string, string> = await response.json();
+      const value = catalog['share.dialog.revoke.button.label.aria'];
+      expect(value).withContext('aria-label key must exist').toBeDefined();
+      expect(value)
+        .withContext('aria-label catalog value must not contain unsubstituted {placeholder} tokens')
+        .not.toContain('{');
+    });
   });
 
   // ---- TOOT-13: formatExpiry uses injected LOCALE_ID ----

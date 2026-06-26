@@ -755,9 +755,6 @@ describe('ReadonlyWallComponent — FLAW-1 reactive topic subscription', () => {
   let asyncWallServiceSpy: jasmine.SpyObj<ReadonlyWallService>;
   let asyncStompClientSpy: jasmine.SpyObj<ReadonlyWallStompClient>;
   let asyncFixture: ComponentFixture<ReadonlyWallComponent>;
-  // asyncComponent kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  let asyncComponent: ReadonlyWallComponent;
   const asyncToots$ = new BehaviorSubject<ReadonlyTootView[]>([]);
   let asyncTransportMode$: BehaviorSubject<ViewerTransportMode>;
   let asyncExpired$: Subject<void>;
@@ -816,7 +813,6 @@ describe('ReadonlyWallComponent — FLAW-1 reactive topic subscription', () => {
     .compileComponents();
 
     asyncFixture = TestBed.createComponent(ReadonlyWallComponent);
-    asyncComponent = asyncFixture.componentInstance;
     // Run ngOnInit — at this tick, hashtags is [] and catalogLoaded$ is false
     asyncFixture.detectChanges();
   });

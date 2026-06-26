@@ -420,7 +420,13 @@ export class ShareDialogComponent implements OnInit {
   revokeButtonLabel(index: number, expiresAt: string): string {
     const ordinal = index + 1;
     const formattedDate = this.formatExpiry(expiresAt);
-    return $localize`:@@share.dialog.revoke.button.label.aria:Link ${ordinal} widerrufen — läuft ab am ${formattedDate}`;
+    // i18n: keep the localized text placeholder-free. A bare {x} placeholder in the runtime
+    // catalog (messages.en.json) does not match the source message's auto-generated placeholder
+    // name, so it renders literally in non-source locales (and bare braces risk a malformed-ICU
+    // throw at render). Compose the dynamic ordinal + expiry date OUTSIDE the localized fragment —
+    // the same approach used for the readonly-toot heading.
+    const label = $localize`:@@share.dialog.revoke.button.label.aria:Link widerrufen`;
+    return `${label} ${ordinal} — ${formattedDate}`;
   }
 
   formatExpiry(isoDate: string): string {
