@@ -2,6 +2,7 @@ import {TestBed} from '@angular/core/testing';
 import {SubscriptionPersistence} from './subscription-persistence.service';
 import {MessageQueue} from './subscription.service';
 import {WallMessage, WallMessageSchemaVersion} from './model/wall-message';
+import {StatusUpdatedMessage} from './message-types/status-updated-message';
 
 /**
  * Unit tests for SubscriptionPersistence service.
@@ -449,6 +450,76 @@ describe('MessageQueue.restore', () => {
 
       // Assert
       expect(queue.size()).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // MessageQueue.enqueue dedup + update (edit-ordering, D-07) — previously uncovered
+  // -------------------------------------------------------------------------
+
+  describe('MessageQueue.enqueue / update', () => {
+    let queue: MessageQueue;
+
+    // localStorage is already spied by the enclosing describe's beforeEach
+    // (setItem stubbed, getItem → null), so a fresh queue restores empty.
+    beforeEach(() => {
+      queue = new MessageQueue();
+    });
+
+    function wm(id: string, url = `https://e/${id}`): WallMessage {
+      return {id, url, hashtags: ['glacier']};
+    }
+
+    function upd(id: string, editedAt: string, url = `https://e/${id}`): StatusUpdatedMessage {
+      return {id, url, editedAt} as StatusUpdatedMessage;
+    }
+
+    it('enqueue ignores a duplicate id (dedup)', () => {
+      queue.enqueue(wm('1'));
+      queue.enqueue(wm('1')); // same id → ignored
+      expect(queue.size()).toBe(1);
+    });
+
+    it('update is a no-op when the id is not in the queue', () => {
+      queue.enqueue(wm('1'));
+      queue.update(upd('does-not-exist', '2026-01-01T00:00:00Z'));
+      expect(queue.size()).toBe(1);
+      expect(queue.toArray()[0].editedAt).toBeUndefined();
+    });
+
+    it('update applies a newer edit (cache-breaks the url, records editedAt)', () => {
+      queue.enqueue(wm('1'));
+      queue.update(upd('1', '2026-02-01T00:00:00Z'));
+      const item = queue.toArray()[0];
+      expect(item.editedAt).toBe('2026-02-01T00:00:00Z');
+      expect(item.url).toContain('cachebreaker=');
+    });
+
+    it('update ignores a stale edit older than the stored edit (D-07)', () => {
+      queue.enqueue(wm('1'));
+      queue.update(upd('1', '2026-02-01T00:00:00Z')); // becomes the stored edit
+      queue.update(upd('1', '2026-01-01T00:00:00Z')); // older → must be ignored
+      expect(queue.toArray()[0].editedAt).toBe('2026-02-01T00:00:00Z');
+    });
+
+    it('update skips an unparseable editedAt without corrupting the queue', () => {
+      queue.enqueue(wm('1'));
+      queue.update(upd('1', 'not-a-real-date'));
+      const item = queue.toArray()[0];
+      // Unchanged — the original enqueue had no editedAt and the url was not cache-broken.
+      expect(item.editedAt).toBeUndefined();
+      expect(item.url).not.toContain('cachebreaker=');
+    });
+
+    it('update touches only the matching message, leaving others intact', () => {
+      queue.enqueue(wm('1'));
+      queue.enqueue(wm('2'));
+      queue.update(upd('1', '2026-02-01T00:00:00Z'));
+
+      const byId = (id: string) => queue.toArray().find(m => m.id === id)!;
+      expect(byId('1').editedAt).toBe('2026-02-01T00:00:00Z');
+      expect(byId('2').editedAt).toBeUndefined();
+      expect(byId('2').url).not.toContain('cachebreaker=');
     });
   });
 });
