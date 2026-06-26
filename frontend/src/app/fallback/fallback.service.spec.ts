@@ -375,4 +375,97 @@ describe('FallbackService', () => {
       ])
     );
   }));
+
+  // -------------------------------------------------------------------------
+  // Mode-machine recovery + terminal-state guards (D-04/D-05) + poll edges
+  // -------------------------------------------------------------------------
+
+  it('FALLBACK → WEBSOCKET and emits WsRestored when the WebSocket reopens', fakeAsync(() => {
+    const modes: TransportMode[] = [];
+    const events: string[] = [];
+    service.transportMode$.subscribe(m => modes.push(m));
+    service.events$.subscribe(e => events.push(e.type));
+
+    driveToFallback(connectionState$);
+    expect(modes[modes.length - 1]).toBe(TransportMode.FALLBACK);
+
+    connectionState$.next(RX_STOMP_OPEN);
+    tick(0);
+
+    expect(modes[modes.length - 1]).toBe(TransportMode.WEBSOCKET);
+    expect(events).toContain('WsRestored');
+  }));
+
+  it('ignores a WS CLOSED event once KILLSWITCHED (terminal state, no reconnect)', fakeAsync(() => {
+    const modes: TransportMode[] = [];
+    service.transportMode$.subscribe(m => modes.push(m));
+
+    driveToFallback(connectionState$);
+    service.onHashtagSubscribed('test');
+    tick(0);
+    httpMock.expectOne(r => r.url.includes('/rest/messages'))
+      .flush('', {status: 404, statusText: 'Not Found'});
+    expect(modes[modes.length - 1]).toBe(TransportMode.KILLSWITCHED);
+
+    connectionState$.next(RX_STOMP_CLOSED);
+    tick(0);
+
+    expect(modes[modes.length - 1])
+      .withContext('a terminal KILLSWITCHED state must not be reset by a WS close')
+      .toBe(TransportMode.KILLSWITCHED);
+  }));
+
+  it('does not restart the reconnect sequence when already in FALLBACK', fakeAsync(() => {
+    const modes: TransportMode[] = [];
+    service.transportMode$.subscribe(m => modes.push(m));
+
+    driveToFallback(connectionState$);
+    expect(modes[modes.length - 1]).toBe(TransportMode.FALLBACK);
+
+    connectionState$.next(RX_STOMP_CLOSED);
+    tick(0);
+
+    // No flip back to PROBING — the fallback poller stays in charge.
+    expect(modes[modes.length - 1]).toBe(TransportMode.FALLBACK);
+  }));
+
+  it('confirms WEBSOCKET when a hashtag ack arrives while PROBING (reconnect succeeded)', fakeAsync(() => {
+    const modes: TransportMode[] = [];
+    service.transportMode$.subscribe(m => modes.push(m));
+
+    connectionState$.next(RX_STOMP_CLOSED); // schedules attempt 1 → PROBING
+    expect(modes[modes.length - 1]).toBe(TransportMode.PROBING);
+
+    service.onHashtagSubscribed('test'); // ack while probing → confirm WEBSOCKET
+
+    expect(modes[modes.length - 1]).toBe(TransportMode.WEBSOCKET);
+    tick(1_000); // drain the pending reconnect-attempt timer
+  }));
+
+  it('poll returning 204 ingests nothing (no new events)', fakeAsync(() => {
+    driveToFallback(connectionState$);
+    service.onHashtagSubscribed('test');
+    tick(0);
+
+    httpMock.expectOne(r => r.url.includes('/rest/messages'))
+      .flush(null, {status: 204, statusText: 'No Content'});
+
+    expect(subscriptionSpy.ingestCacheEntries).not.toHaveBeenCalled();
+  }));
+
+  it('429 without a Retry-After header emits RateLimited with undefined retryAfterSeconds', fakeAsync(() => {
+    const events: any[] = [];
+    service.events$.subscribe(e => events.push(e));
+
+    driveToFallback(connectionState$);
+    service.onHashtagSubscribed('test');
+    tick(0);
+
+    httpMock.expectOne(r => r.url.includes('/rest/messages'))
+      .flush('', {status: 429, statusText: 'Too Many Requests'}); // no Retry-After
+
+    const rl = events.find(e => e.type === 'RateLimited');
+    expect(rl).toBeDefined();
+    expect(rl.retryAfterSeconds).toBeUndefined();
+  }));
 });
