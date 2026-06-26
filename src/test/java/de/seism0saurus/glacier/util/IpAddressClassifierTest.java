@@ -90,6 +90,102 @@ class IpAddressClassifierTest {
     }
 
     // -----------------------------------------------------------------------
+    // IPv4 — CGNAT exact boundaries (RFC 6598: 100.64.0.0 .. 100.127.255.255).
+    // Mutation gate (SR-FUZZ-13): pins the `first == 100 && second >= 64 && second <= 127`
+    // comparison so ConditionalsBoundary / InlineConstant mutants on isCgnat are killed.
+    // The just-outside hosts are otherwise-public and MUST classify as NOT private.
+    // -----------------------------------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "100.64.0.0",        // lower bound — inclusive
+            "100.127.255.255"    // upper bound — inclusive
+    })
+    void isPrivate_ipv4CgnatBoundary_inclusive_returnsTrue(String ip) {
+        assertThat(IpAddressClassifier.isPrivate(ip))
+                .as("CGNAT boundary %s is inside 100.64.0.0/10 → private", ip)
+                .isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "100.63.255.255",    // one below the lower bound — public
+            "100.128.0.0",       // one above the upper bound — public
+            "99.64.0.1",         // first octet not 100 — public
+            "101.64.0.1"         // first octet not 100 — public
+    })
+    void isPrivate_justOutsideCgnat_returnsFalse(String ip) {
+        assertThat(IpAddressClassifier.isPrivate(ip))
+                .as("%s is outside CGNAT 100.64.0.0/10 and otherwise public → NOT private", ip)
+                .isFalse();
+    }
+
+    // -----------------------------------------------------------------------
+    // IPv4-mapped IPv6 in HEX-COLON form (e.g. 0:0:0:0:0:ffff:7f00:0001 == 127.0.0.1).
+    // Mutation gate (SR-FUZZ-13): the hexColonToIpv4 bit arithmetic (>>8, &0xFF, radix-16
+    // parse) was completely uncovered — 11 survivors. A private IP disguised in this
+    // textual form must still be blocked (SSRF defence-in-depth, OWASP SSRF Cheat Sheet).
+    // -----------------------------------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "0:0:0:0:0:ffff:7f00:0001",   // 127.0.0.1 — loopback
+            "0:0:0:0:0:ffff:7f00:0002",   // 127.0.0.2 — loopback
+            "0:0:0:0:0:ffff:a9fe:a9fe",   // 169.254.169.254 — cloud metadata
+            "0:0:0:0:0:ffff:0a00:0001",   // 10.0.0.1 — site-local
+            "0:0:0:0:0:ffff:6440:0001",   // 100.64.0.1 — CGNAT
+            "0:0:0:0:0:FFFF:7f00:0001"    // uppercase prefix — toLowerCase() must normalise it
+    })
+    void isPrivate_ipv4MappedHexColon_privateEmbedded_returnsTrue(String ip) {
+        assertThat(IpAddressClassifier.isPrivate(ip))
+                .as("hex-colon IPv4-mapped %s decodes to a private IPv4 → must be blocked", ip)
+                .isTrue();
+    }
+
+    // Full-prefix form with a DOTTED embedded IPv4 (the `embedded.contains(".")` branch).
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "0:0:0:0:0:ffff:192.168.1.1",  // site-local
+            "0:0:0:0:0:ffff:127.0.0.1"     // loopback
+    })
+    void isPrivate_ipv4MappedFullPrefixDotted_privateEmbedded_returnsTrue(String ip) {
+        assertThat(IpAddressClassifier.isPrivate(ip))
+                .as("full-prefix dotted IPv4-mapped %s is private → must be blocked", ip)
+                .isTrue();
+    }
+
+    @Test
+    void isPrivate_ipv4MappedFullPrefixDotted_publicEmbedded_returnsFalse() {
+        assertThat(IpAddressClassifier.isPrivate("0:0:0:0:0:ffff:8.8.8.8"))
+                .as("full-prefix dotted IPv4-mapped 8.8.8.8 is public → NOT private")
+                .isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "0:0:0:0:0:ffff:0808:0808",   // 8.8.8.8 — public
+            "0:0:0:0:0:ffff:0101:0101"    // 1.1.1.1 — public
+    })
+    void isPrivate_ipv4MappedHexColon_publicEmbedded_returnsFalse(String ip) {
+        assertThat(IpAddressClassifier.isPrivate(ip))
+                .as("hex-colon IPv4-mapped %s decodes to a public IPv4 → NOT private", ip)
+                .isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "0:0:0:0:0:ffff:zzzz:0001",   // non-hex group → hexColonToIpv4 returns null
+            "0:0:0:0:0:ffff:7f:00:01",    // three colon-groups → parts.length != 2 → null
+            "0:0:0:0:0:ffff:7f000001"     // no colon in embedded → !contains(":") → null
+    })
+    void isPrivate_ipv4MappedHexColon_malformed_failsSecureTrue(String ip) {
+        // hexColonToIpv4 returns null; the address is then unresolvable → fail-secure (blocked).
+        assertThat(IpAddressClassifier.isPrivate(ip))
+                .as("malformed hex-colon %s must fail secure (blocked)", ip)
+                .isTrue();
+    }
+
+    // -----------------------------------------------------------------------
     // IPv4 — cloud metadata endpoint
     // -----------------------------------------------------------------------
 

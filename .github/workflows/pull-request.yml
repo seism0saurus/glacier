@@ -71,6 +71,15 @@ jobs:
             https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.49.1.0/sqlite-jdbc-3.49.1.0.jar
           sha256sum -c dependency-checksums/sqlite-jdbc-3.49.1.0.sha256
           rm dependency-checksums/sqlite-jdbc-3.49.1.0.jar
+      # ADR-SEC-02 supply-chain tripwire: bigbone is the one sanctioned SNAPSHOT (no upstream
+      # release exists). A SNAPSHOT is mutable, so resolve it and compare the SHA-256 of the
+      # exact jar the build will use against the recorded known-good value. A mismatch fails the
+      # job loudly so a human reviews the upstream change and consciously re-pins before merge.
+      - name: Verify bigbone snapshot SHA-256 (supply-chain tripwire)
+        run: |
+          ./mvnw --batch-mode -q dependency:get -Dartifact=social.bigbone:bigbone:2.0.0-SNAPSHOT --file pom.xml
+          JAR="$HOME/.m2/repository/social/bigbone/bigbone/2.0.0-SNAPSHOT/bigbone-2.0.0-SNAPSHOT.jar"
+          echo "$(awk '{print $1}' dependency-checksums/bigbone-2.0.0-SNAPSHOT.sha256)  $JAR" | sha256sum -c -
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results

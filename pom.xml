@@ -205,16 +205,21 @@
             change the artifact served from the Sonatype snapshot repository. This is a known
             security risk: supply-chain attack via snapshot mutation.
 
-            Interim mitigation status (Sec-02/P1-09):
-            - SHA256 checksum enforcement is not directly supported by maven-enforcer for
-              SNAPSHOT artifacts (requireReleaseDependencies would break the build here).
+            Mitigation status (Sec-02/P1-09, QR-3 2026-06-26):
+            - maven-enforcer cannot pin a SNAPSHOT by checksum (requireReleaseDependencies
+              would break the build here), so the pin is enforced at the CI layer instead.
+            - SHA-256 TRIPWIRE: dependency-checksums/bigbone-2.0.0-SNAPSHOT.sha256 records the
+              known-good hash of the resolved jar. The "Verify bigbone snapshot SHA-256" step
+              in verify.yml and pull-request.yml resolves the artifact and compares its hash
+              before the build runs; a mismatch fails the workflow loudly so a human reviews
+              the upstream change and consciously re-pins (see dependency-checksums/README.md).
+              Structural gate: BigboneSnapshotTripwireTest keeps the step from silently regressing.
             - The `-Pallow-snapshot` escape-hatch profile is intentionally NOT added because
               SNAPSHOT is the ONLY available version of bigbone upstream. Prohibiting it
               would prevent the build entirely.
-            - Instead, the CI pipeline runs mvnw with the update-snapshots flag only in the
-              compile step (build-and-deploy.yml) and the test/package steps use the cached
-              local repository (no snapshot re-download). This limits the SNAPSHOT fetch to
-              a single controlled step with a known Maven cache key.
+            - The CI pipeline runs mvnw with the update-snapshots flag only in the compile step
+              (build-and-deploy.yml); test/package steps use the cached local repository. This
+              limits the SNAPSHOT fetch to a single controlled step with a known Maven cache key.
 
             TODO (Sec-02): replace with a stable release version once bigbone upstream tags
             a release. Track at https://github.com/andregasser/bigbone/releases.

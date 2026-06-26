@@ -1,8 +1,17 @@
 <h2 id="legal-notice" mat-dialog-title i18n="@@gdpr.dialog.title">Legal Notice and Privacy Policy</h2>
 <!--
-  TODO(i18n): The template defaults below are placeholder English text pending German authoring.
-  German is the source locale for this project. Before shipping the German build, replace every
-  default text with the authoritative German legal translation while keeping the @@ids stable.
+  i18n / QR-2: The template defaults below are placeholder English text pending authoritative
+  German legal authoring. German is the SOURCE locale for this project.
+
+  Operator handoff: the German wording is supplied (not machine-translated) in the worksheet
+  frontend/src/assets/i18n/gdpr.de.worksheet.json — fill every empty "de" slot with the legal
+  German translation (keep {{ data.* }} tokens verbatim). Once all slots are filled, swap the
+  "de" values into the defaults below as the source text, keeping the @@ids stable; the English
+  stays in messages.en.json.
+
+  The worksheet is kept complete and in sync with messages.en.json by the ratchet test
+  GdprGermanAuthoringWorksheetTest (runs in `mvnw verify`): a new gdpr.* string here must be
+  registered in the worksheet, and the worksheet "en" must match the catalog.
 -->
 <!--suppress HtmlUnknownTag -->
 <mat-dialog-content>

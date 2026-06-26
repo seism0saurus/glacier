@@ -218,6 +218,7 @@ When writing a new ADR, add a row here in the acceptance commit.
 | [2026-05-01-planning-fuzz-mutation-testing.md](2026-05-01-planning-fuzz-mutation-testing.md) | P1: Plan jqwik property-based fuzz tests and PIT mutation testing for critical paths |
 | [2026-05-01-implementation-fuzz-mutation-testing.md](2026-05-01-implementation-fuzz-mutation-testing.md) | P2: Implement jqwik fuzz tests for `IframeEmbedPolicy`, `LogScrubber`, and `HashtagFormat` |
 | [2026-05-01-acceptance-fuzz-mutation-testing.md](2026-05-01-acceptance-fuzz-mutation-testing.md) | P3: PASSED — fuzz and mutation testing accepted |
+| [2026-06-26-mutation-survivor-equivalents.md](2026-06-26-mutation-survivor-equivalents.md) | SR-FUZZ-13: first-run PITest census (241 survivors), equivalents vs killable-gap classification; closes the SSRF `IpAddressClassifier` hex-colon/CGNAT coverage gap (P1); P2/P3 gaps tracked |
 
 ### jqwik Fuzz-Test Flake Fix (`fuzz-flake-fix`)
 | File | Summary |
