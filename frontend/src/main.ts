@@ -15,7 +15,11 @@
 import '@angular/localize/init';
 import {loadTranslations} from '@angular/localize';
 
-import {platformBrowserDynamic} from '@angular/platform-browser-dynamic';
+// SR-CSP-01: use the static AOT platform (platformBrowser), NOT platformBrowserDynamic.
+// platformBrowserDynamic pulls in the JIT compiler, whose Function/eval-style template
+// compilation is blocked by the share route's `require-trusted-types-for 'script'` CSP
+// (SR-SHARE-15) in Chromium. The app is AOT-compiled (`ng build`), so JIT is never needed.
+import {platformBrowser} from '@angular/platform-browser';
 import {AppModule} from './app/app.module';
 
 /**
@@ -45,7 +49,7 @@ async function loadI18n(): Promise<void> {
 }
 
 loadI18n().then(() => {
-  platformBrowserDynamic()
+  platformBrowser()
     .bootstrapModule(AppModule)
     .catch(err => console.error(err));
 });

@@ -257,4 +257,64 @@ test.describe('Social wall + shared wall — full round trip', () => {
       await viewerContext.close();
     },
   );
+
+  // SR-CSP-01 regression guard: the share route enforces `require-trusted-types-for 'script'`
+  // (ShareSecurityHeadersFilter). The AOT `platformBrowser()` bootstrap (no JIT compiler) must
+  // load the readonly view with zero script-src / Trusted-Types CSP violations. This captures the
+  // browser's securitypolicyviolation events live — it would have failed under the old
+  // platformBrowserDynamic (JIT) bootstrap.
+  test(
+    'readonly share view loads with no script-src / trusted-types CSP violations (SR-CSP-01)',
+    async ({ browser }) => {
+      const ownerContext: BrowserContext = await browser.newContext();
+      const ownerPage: Page = await ownerContext.newPage();
+      await ownerPage.goto('/');
+      await expect(ownerPage.getByTestId('connection-status')).toBeVisible();
+      await ownerPage.locator('div').filter({ hasText: 'Followed hashtags' }).nth(3).click();
+      await subscribe(ownerPage, TAG_A);
+
+      await ownerPage.getByTestId('share-button').click();
+      await ownerPage.getByTestId('create-button').click();
+      const urlInput = ownerPage.getByTestId('share-url-input');
+      await expect(urlInput).toBeVisible({ timeout: 10_000 });
+      const shareUrl = await urlInput.inputValue();
+
+      const viewerContext: BrowserContext = await browser.newContext();
+      const viewerPage: Page = await viewerContext.newPage();
+      // Register the CSP-violation listener BEFORE any document loads.
+      await viewerPage.addInitScript(() => {
+        (window as unknown as { __cspViolations: unknown[] }).__cspViolations = [];
+        document.addEventListener('securitypolicyviolation', (e: SecurityPolicyViolationEvent) => {
+          (window as unknown as { __cspViolations: unknown[] }).__cspViolations.push({
+            directive: e.effectiveDirective || e.violatedDirective,
+            blockedURI: e.blockedURI,
+            sample: e.sample,
+            sourceFile: e.sourceFile,
+            lineNumber: e.lineNumber,
+            columnNumber: e.columnNumber,
+          });
+        });
+      });
+
+      await viewerPage.goto(shareUrl);
+      await expect(viewerPage.getByTestId('share-banner')).toBeVisible({ timeout: 10_000 });
+      // Wait for LIVE so the full Angular bootstrap + STOMP setup has run under the CSP.
+      await expect(viewerPage.getByTestId('transport-status'))
+          .toHaveClass(/transport-status--live/, { timeout: 15_000 });
+
+      const violations = await viewerPage.evaluate(
+        () => (window as unknown as { __cspViolations: { directive?: string }[] }).__cspViolations ?? []);
+      // eslint-disable-next-line no-console
+      console.log('CSP violations on share route:', JSON.stringify(violations, null, 2));
+      const scriptViolations = violations.filter(
+        (v) => /script-src|trusted-types/i.test(v.directive ?? ''));
+      expect(
+        scriptViolations,
+        `unexpected script-src/Trusted-Types CSP violations: ${JSON.stringify(scriptViolations)}`,
+      ).toEqual([]);
+
+      await ownerContext.close();
+      await viewerContext.close();
+    },
+  );
 });

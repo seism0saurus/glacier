@@ -568,7 +568,12 @@
                         </goals>
                         <phase>generate-resources</phase>
                         <configuration>
-                            <arguments>run build -- --optimization true --aot --configuration production --output-hashing none --delete-output-path true</arguments>
+                            <!-- SR-CSP-01: the optimization boolean-shorthand CLI flag is intentionally
+                                 omitted here. It re-enables critical-CSS inlining, whose onload="..."
+                                 inline handler violates the share route script-src/require-trusted-types
+                                 CSP. Optimization is governed by the production configuration in
+                                 angular.json, which sets styles.inlineCritical=false. -->
+                            <arguments>run build -- --aot --configuration production --output-hashing none --delete-output-path true</arguments>
                         </configuration>
                     </execution>
                     <!-- Angular test during test phase-->

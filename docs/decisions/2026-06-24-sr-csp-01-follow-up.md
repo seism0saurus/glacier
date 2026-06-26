@@ -1,9 +1,49 @@
 # SR-CSP-01: Inline-Handler CSP Violation — Follow-up
 
-Date: 2026-06-24
+Date: 2026-06-24 (resolved 2026-06-26)
 Phase: Phase 2 (frontend lane)
-Status: **Open — deferred follow-up**
+Status: **RESOLVED (2026-06-26)**
 Related plan: `docs/decisions/2026-06-24-planning-share-view-toot-rendering-mvp.md` §SR-CSP-01
+
+---
+
+## Resolution (2026-06-26)
+
+The runtime violation was captured live against the dockerized HTTPS stack (a Playwright
+`securitypolicyviolation` listener on the readonly `/share/{id}` route, share-https project):
+
+```
+{ directive: "script-src-attr", blockedURI: "inline", sourceFile: ".../share/{id}", lineNumber: 9 }
+```
+
+**Root cause** (NOT the suspected JIT/Trusted-Types path): Angular's production **critical-CSS
+inlining** optimization (beasties — note the `data-beasties-container` attribute it adds to
+`<html>`) rewrites the deferred stylesheet link to the async-CSS pattern
+`<link rel="stylesheet" href="styles.css" media="print" onload="this.media='all'">`. That
+`onload="…"` is an **inline event-handler attribute**, which the share route's
+`script-src 'self' 'nonce-…'` CSP (no `'unsafe-inline'`) blocks as `script-src-attr: inline`.
+Static source analysis missed it because it is a build-time transform, not source.
+
+**Fix (two parts + complementary hardening):**
+1. `angular.json` production config: explicit `optimization.styles.inlineCritical = false` (keeps
+   script/style minification + font inlining; drops the critical-CSS inlining that injects the
+   inline handler). Served HTML now emits a plain `<link rel="stylesheet">` and no
+   `data-beasties-container`.
+2. `pom.xml` frontend build: removed the `--optimization true` CLI boolean shorthand, which
+   otherwise **overrides** the granular angular.json setting and re-enables inlining. Optimization
+   is now governed by the production configuration.
+3. Complementary hardening: `main.ts` now bootstraps via the static AOT `platformBrowser()` instead
+   of `platformBrowserDynamic()` — removes the JIT compiler (the `eval`/`Function` surface that
+   `require-trusted-types-for 'script'` also targets). The app is AOT-compiled, so JIT is never
+   needed.
+
+**Validation:** a permanent e2e regression guard (`share-wall-roundtrip.spec.ts`, share-https
+project) captures `securitypolicyviolation` events on the readonly route and asserts none for
+`script-src`/`trusted-types`. After the fix: `CSP violations on share route: []`, 3/3 e2e passed
+against the live stack; `./mvnw verify` green.
+
+Options A/B/C below are retained for historical context; none was needed — the actual cause was
+the build-time critical-CSS inlining, addressed by option (1) above.
 
 ---
 
