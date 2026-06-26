@@ -234,4 +234,34 @@ class ShareHostRouterTest {
         req.setRequestURI(path);
         return req;
     }
+
+    // -----------------------------------------------------------------------
+    // Share-host config fallback: when glacier.share.host is unset/blank the router
+    // derives "share.{glacier.domain}" (the GLACIER_SHARE_HOST-not-wired default).
+    // -----------------------------------------------------------------------
+
+    @Test
+    void nullShareHostConfig_derivesShareDotDomain_andRoutesSharePathToIt() throws Exception {
+        ShareHostRouter derived = new ShareHostRouter(MAIN_HOST, null);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        // The derived share host "share.glacier.example.com" must accept a share path.
+        derived.doFilterInternal(request("share." + MAIN_HOST, "/rest/share/sv_AAAA/catalog"), response, chain);
+
+        assertThat(chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void blankShareHostConfig_derivesShareDotDomain_andBlocksMainPathOnIt() throws Exception {
+        ShareHostRouter derived = new ShareHostRouter(MAIN_HOST, "   ");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        // The derived share host must still enforce origin isolation (main-wall path → 404).
+        derived.doFilterInternal(request("share." + MAIN_HOST, "/rest/wall-id"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(404);
+        assertThat(chain.getRequest()).isNull();
+    }
 }
