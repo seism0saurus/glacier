@@ -29,11 +29,14 @@ import {TransportMode} from "../fallback/transport-mode";
 import {BehaviorSubject, Subject} from "rxjs";
 import {MatMenuModule} from "@angular/material/menu";
 import {MatIconModule} from "@angular/material/icon";
+import {MatSnackBar} from "@angular/material/snack-bar";
 
 describe('MainWallComponent', () => {
+  let eventsSubject: Subject<any>;
+
   beforeEach(() => {
     const modeSubject = new BehaviorSubject<TransportMode>(TransportMode.WEBSOCKET);
-    const eventsSubject = new Subject<any>();
+    eventsSubject = new Subject<any>();
     const fallbackServiceSpy = jasmine.createSpyObj<FallbackService>(
       'FallbackService', [],
       {transportMode$: modeSubject.asObservable(), events$: eventsSubject.asObservable()}
@@ -176,5 +179,78 @@ describe('MainWallComponent', () => {
     const headerIndex = children.findIndex(el => el.tagName.toLowerCase() === 'app-header');
     expect(skipLinkIndex).withContext('skip link must be found').toBeGreaterThanOrEqual(0);
     expect(skipLinkIndex).withContext('skip link must precede header').toBeLessThan(headerIndex);
+  });
+
+  // ---------------------------------------------------------------------------
+  // FallbackService event wiring (D-16 / D-17) — previously 0% covered: the spec
+  // only asserted DOM structure and never pushed an event through events$.
+  // ---------------------------------------------------------------------------
+
+  describe('fallback event handling', () => {
+    it('SessionExpired event sets the session-expired banner flag (D-17)', () => {
+      const fixture = TestBed.createComponent(MainWallComponent);
+      fixture.detectChanges(); // ngOnInit subscribes
+      expect(fixture.componentInstance.sessionExpired).toBeFalse();
+
+      eventsSubject.next({type: 'SessionExpired'});
+
+      expect(fixture.componentInstance.sessionExpired).toBeTrue();
+    });
+
+    it('GapObserved opens a gap snackbar, and debounces repeats per hashtag (D-16)', () => {
+      const fixture = TestBed.createComponent(MainWallComponent);
+      const snackBar = TestBed.inject(MatSnackBar);
+      const dismissed = new Subject<any>();
+      const openSpy = spyOn(snackBar, 'open').and.returnValue(
+        {afterDismissed: () => dismissed.asObservable()} as any);
+      fixture.detectChanges();
+
+      eventsSubject.next({type: 'GapObserved', hashtag: 'java'});
+      eventsSubject.next({type: 'GapObserved', hashtag: 'java'}); // same hashtag — suppressed
+
+      expect(openSpy).toHaveBeenCalledTimes(1);
+
+      // After the first snackbar is dismissed, a fresh gap for the same hashtag re-toasts.
+      dismissed.next({});
+      eventsSubject.next({type: 'GapObserved', hashtag: 'java'});
+      expect(openSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('RateLimited with retryAfterSeconds > 60 shows a countdown message (D-17)', () => {
+      const fixture = TestBed.createComponent(MainWallComponent);
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.stub();
+      fixture.detectChanges();
+
+      eventsSubject.next({type: 'RateLimited', retryAfterSeconds: 120});
+
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(openSpy.calls.mostRecent().args[0]).toContain('120');
+    });
+
+    it('RateLimited without a long retry shows the generic message (no countdown)', () => {
+      const fixture = TestBed.createComponent(MainWallComponent);
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.stub();
+      fixture.detectChanges();
+
+      eventsSubject.next({type: 'RateLimited'}); // retryAfterSeconds undefined
+
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(openSpy.calls.mostRecent().args[0]).not.toContain('undefined');
+    });
+
+    it('KillSwitched / WsRestored events are no-ops here (handled by ConnectionStatus)', () => {
+      const fixture = TestBed.createComponent(MainWallComponent);
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = spyOn(snackBar, 'open').and.stub();
+      fixture.detectChanges();
+
+      eventsSubject.next({type: 'KillSwitched'});
+      eventsSubject.next({type: 'WsRestored'});
+
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.sessionExpired).toBeFalse();
+    });
   });
 });
