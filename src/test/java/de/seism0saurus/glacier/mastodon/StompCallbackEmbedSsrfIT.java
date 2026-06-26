@@ -286,6 +286,90 @@ class StompCallbackEmbedSsrfIT {
     }
 
     // -------------------------------------------------------------------------
+    // Embeddability decision from REAL embed-response headers (the iframe-safety
+    // gatekeeper, integrated end-to-end: real HEAD → CSP/X-Frame-Options → isLoadable
+    // → publish vs. silently drop). The IframeEmbedPolicy decision is unit-covered;
+    // this verifies the wiring carries real upstream headers into that decision.
+    // -------------------------------------------------------------------------
+
+    @Test
+    void embedAllowed_tootIsPublishedToCache() {
+        MessageCache cache = runEmbedScenario("allowed-pub",
+                aResponse().withStatus(200).withHeader("X-Frame-Options", "ALLOWALL"));
+
+        org.mockito.Mockito.verify(cache).recordThenPublish(
+                org.mockito.ArgumentMatchers.any(PrincipalKey.class),
+                org.mockito.ArgumentMatchers.any(String.class),
+                org.mockito.ArgumentMatchers.any(CacheEntry.class));
+    }
+
+    @Test
+    void embedForbiddenByXFrameOptionsDeny_tootIsDropped() {
+        MessageCache cache = runEmbedScenario("xfo-deny",
+                aResponse().withStatus(200).withHeader("X-Frame-Options", "DENY"));
+
+        // Not embeddable → isLoadable returns false → the toot never reaches the cache (dropped).
+        org.mockito.Mockito.verify(cache, org.mockito.Mockito.never()).recordThenPublish(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        wireMockServer.verify(exactly(1), headRequestedFor(urlPathMatching("/status/xfo-deny/embed")));
+    }
+
+    @Test
+    void embedForbiddenByCspFrameAncestorsNone_tootIsDropped() {
+        MessageCache cache = runEmbedScenario("csp-none",
+                aResponse().withStatus(200).withHeader("Content-Security-Policy", "frame-ancestors 'none'"));
+
+        org.mockito.Mockito.verify(cache, org.mockito.Mockito.never()).recordThenPublish(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    /**
+     * Builds an opted-in StatusCreated event whose embed URL points at WireMock (stubbed with the
+     * given HEAD response), fires it through a real {@link StompCallback} + real {@link RestTemplate}
+     * and a permissive SSRF validator, and returns the mock {@link MessageCache} so the caller can
+     * assert whether the toot was published (loadable) or dropped (not loadable).
+     */
+    private MessageCache runEmbedScenario(
+            final String key,
+            final com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder headResponse) {
+        wireMockServer.stubFor(head(urlPathMatching("/status/" + key + "/embed")).willReturn(headResponse));
+
+        String url = "http://127.0.0.1:" + wireMockServer.port() + "/status/" + key;
+        Status status = mock(Status.class);
+        Account account = mock(Account.class);
+        when(status.getId()).thenReturn(key);
+        when(status.getUrl()).thenReturn(url);
+        when(status.getAccount()).thenReturn(account);
+        Status.Mention botMention = mock(Status.Mention.class);
+        when(botMention.getAcct()).thenReturn("glacier");
+        when(status.getMentions()).thenReturn(List.of(botMention));
+
+        SafeUrlValidator permissiveValidator = raw -> {
+            try {
+                return Optional.of(URI.create(raw));
+            } catch (IllegalArgumentException e) {
+                return Optional.empty();
+            }
+        };
+
+        MessageCache mockMessageCache = mock(MessageCache.class);
+        when(mockMessageCache.recordThenPublish(
+                org.mockito.ArgumentMatchers.any(PrincipalKey.class),
+                org.mockito.ArgumentMatchers.any(String.class),
+                org.mockito.ArgumentMatchers.any(CacheEntry.class)))
+                .thenReturn(new CacheEntry(EventType.CREATED, key, "https://stub.example.com/embed", null, 1L));
+
+        StompCallback callback = new StompCallback(
+                subscriptionManager, mockMessageCache, null, new RestTemplate(), permissiveValidator,
+                UUID.randomUUID().toString(), "test",
+                MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
+
+        callback.onEvent(new MastodonApiEvent.StreamEvent(
+                new ParsedStreamEvent.StatusCreated(status), List.of()));
+        return mockMessageCache;
+    }
+
+    // -------------------------------------------------------------------------
     // Bean wiring sanity check
     // -------------------------------------------------------------------------
 
