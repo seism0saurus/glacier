@@ -96,6 +96,30 @@ public class InMemoryShareLinkRepository implements ShareLinkRepository {
     }
 
     @Override
+    public boolean markRevokedByHash8(final String idHash8, final String sharerWallId, final Instant when) {
+        // Find the sharer's single active link whose id hash8 matches. The match uses
+        // ShareLinkId.hash8() so it is byte-for-byte consistent with the idHash8 the summary
+        // projection (and the SQLite adapter's substr(id,1,8)) expose. The sharerWallId filter
+        // is the authorization scope — a sharer can only revoke their own links.
+        Optional<ShareLink> match = store.values().stream()
+                .filter(link -> sharerWallId.equals(link.sharerWallId()))
+                .filter(link -> link.id().hash8().equals(idHash8))
+                .filter(link -> link.revokedAt().isEmpty())
+                .findFirst();
+        if (match.isEmpty()) {
+            LOGGER.debug("markRevokedByHash8: idHash8={} — not found, not owned, or already revoked (no-op)",
+                    idHash8);
+            return false;
+        }
+        ShareLinkId id = match.get().id();
+        store.computeIfPresent(id, (k, stored) -> {
+            stored.revoke(stored.sharerWallId(), when);
+            return stored;
+        });
+        return true;
+    }
+
+    @Override
     public int sweepExpired(final Instant now) {
         // Collect IDs of links that are EXPIRED (not REVOKED — revoked links stay until
         // they are also expired, to preserve the audit trail for the sweep interval)

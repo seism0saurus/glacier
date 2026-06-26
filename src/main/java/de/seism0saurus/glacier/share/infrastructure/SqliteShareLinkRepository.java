@@ -295,6 +295,41 @@ public class SqliteShareLinkRepository implements ShareLinkRepository {
     }
 
     /**
+     * Revokes the active link identified by its {@code idHash8}, scoped to {@code sharerWallId}.
+     *
+     * <p>The stored {@code id} column is SHA-256(token) (64 lowercase hex chars); {@code idHash8}
+     * is the first 8 of that same digest, so {@code substr(id,1,8) = idHash8} matches exactly
+     * without re-hashing the (unavailable) raw token. The {@code sharer_wall_id} predicate is the
+     * authorization boundary — a sharer can only revoke their own links — and
+     * {@code revoked_at IS NULL} makes the operation idempotent. Returns {@code false} for
+     * not-found, not-owned, and already-revoked alike (anti-enumeration, T-07).
+     *
+     * @param idHash8      first 8 lowercase hex chars of SHA-256(token); format pre-validated by caller
+     * @param sharerWallId the authenticated sharer's wallId; the authorization scope
+     * @param when         the revocation instant
+     * @return {@code true} if exactly one active link was transitioned to revoked
+     */
+    @Override
+    public boolean markRevokedByHash8(final String idHash8, final String sharerWallId, final Instant when) {
+        try {
+            int rowsUpdated = jdbcTemplate.update(
+                    "UPDATE share_links SET revoked_at = ? "
+                            + "WHERE substr(id, 1, 8) = ? AND sharer_wall_id = ? AND revoked_at IS NULL",
+                    when.toEpochMilli(),
+                    idHash8,
+                    sharerWallId);
+            if (rowsUpdated == 0) {
+                log.debug("markRevokedByHash8: idHash8={} — not found, not owned, or already revoked (no-op)",
+                        idHash8);
+            }
+            return rowsUpdated > 0;
+        } catch (DataAccessException e) {
+            // SR-SQLITE-03: scrub JDBC error messages before propagating.
+            throw new UncategorizedDataAccessException(LogScrubber.forErrorMessage(e.getMessage()), e) {};
+        }
+    }
+
+    /**
      * Removes all non-revoked links whose {@code expires_at} is not after {@code now}.
      *
      * <p>Revoked links survive the sweep regardless of their expiry time — the

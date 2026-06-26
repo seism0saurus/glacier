@@ -130,6 +130,52 @@ class SqliteShareLinkRepositoryTest {
     }
 
     // ---------------------------------------------------------------------------
+    // markRevokedByHash8 — sharer-scoped revoke by the non-secret idHash8 (list path)
+    // ---------------------------------------------------------------------------
+
+    @Test
+    void markRevokedByHash8_transitionsMatchingLinkToRevoked() {
+        ShareLink link = buildLink(T0);
+        repository.save(link);
+        Instant revokeTime = T0.plusSeconds(60);
+
+        boolean revoked = repository.markRevokedByHash8(link.id().hash8(), SHARER_WALL_ID, revokeTime);
+
+        assertThat(revoked).isTrue();
+        ShareLink found = repository.findById(link.id()).orElseThrow();
+        assertThat(found.status(revokeTime)).isEqualTo(ShareLinkStatus.REVOKED);
+    }
+
+    @Test
+    void markRevokedByHash8_wrongSharer_isNoOpReturningFalse() {
+        ShareLink link = buildLink(T0);
+        repository.save(link);
+
+        boolean revoked = repository.markRevokedByHash8(
+                link.id().hash8(), "someone-else-wall-id-0000000000000000000", T0.plusSeconds(60));
+
+        assertThat(revoked).isFalse();
+        // The link is untouched — anti-enumeration: a foreign sharer cannot revoke it.
+        assertThat(repository.findById(link.id()).orElseThrow().status(T0)).isEqualTo(ShareLinkStatus.ACTIVE);
+    }
+
+    @Test
+    void markRevokedByHash8_unknownHash_returnsFalse() {
+        assertThat(repository.markRevokedByHash8("deadbeef", SHARER_WALL_ID, T0)).isFalse();
+    }
+
+    @Test
+    void markRevokedByHash8_alreadyRevoked_returnsFalse() {
+        ShareLink link = buildLink(T0);
+        repository.save(link);
+        repository.markRevoked(link.id(), T0.plusSeconds(30));
+
+        // Second revoke (now via hash) is idempotent — no row transitions, returns false.
+        assertThat(repository.markRevokedByHash8(link.id().hash8(), SHARER_WALL_ID, T0.plusSeconds(60)))
+                .isFalse();
+    }
+
+    // ---------------------------------------------------------------------------
     // sweepExpired
     // ---------------------------------------------------------------------------
 

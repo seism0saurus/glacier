@@ -77,6 +77,28 @@ public interface ShareLinkService {
     void revoke(ShareLinkId id, String callerWallId, Instant now);
 
     /**
+     * Revokes a share link by its non-secret {@code idHash8}, on behalf of {@code callerWallId}.
+     *
+     * <p>This is the revoke path for the sharer's self-management list, which only ever sees the
+     * {@code idHash8} (first 8 hex chars of SHA-256(token)) — the raw token is shown exactly once
+     * at creation and is never re-served (ADR-SQLITE-05). The implementation recovers the full
+     * token from the in-memory activity registry when the link is currently active there (so the
+     * standard live-revocation control frame is delivered to viewers), and otherwise revokes the
+     * link authoritatively at the persistence layer, scoped to {@code callerWallId}.
+     *
+     * <p>Anti-enumeration (T-07): a malformed {@code idHash8}, an unknown link, a link owned by a
+     * different sharer, and an already-revoked link all throw
+     * {@link ShareLinkNotFoundOrNotAuthorisedException} with the same type and message.
+     *
+     * @param idHash8      the first 8 lowercase hex chars of SHA-256(token); format is validated
+     * @param callerWallId the wallId authorising the revocation; the authorization scope
+     * @param now          the current clock instant
+     * @throws ShareLinkNotFoundOrNotAuthorisedException if malformed, not found, not owned, or
+     *                                                   already revoked
+     */
+    void revokeByHash8(String idHash8, String callerWallId, Instant now);
+
+    /**
      * Returns summary projections for all share links created by the given sharer,
      * regardless of status.
      *

@@ -77,7 +77,8 @@ class ShareLinkServiceTest {
         lifetimePolicy.setTtl(TTL);
         capPolicy = new ShareLinkCapPolicy();
         tokenGenerator = new SecureRandomTokenGenerator();
-        service = new ShareLinkServiceImpl(repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher, fixedClock);
+        service = new ShareLinkServiceImpl(repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher,
+                new ShareLinkActivityRegistry(), fixedClock);
     }
 
     // ---------------------------------------------------------------------------

@@ -4,7 +4,6 @@ import de.seism0saurus.glacier.share.application.CapacityExceededException;
 import de.seism0saurus.glacier.share.application.ShareLinkNotFoundOrNotAuthorisedException;
 import de.seism0saurus.glacier.share.application.ShareLinkService;
 import de.seism0saurus.glacier.share.domain.ShareLink;
-import de.seism0saurus.glacier.share.domain.ShareLinkId;
 import de.seism0saurus.glacier.share.domain.ShareLinkSummary;
 import de.seism0saurus.glacier.util.LogScrubber;
 import de.seism0saurus.glacier.webservice.FallbackAuthGuard;
@@ -184,16 +183,22 @@ public class ShareLinkController {
      * {@code 404 Not Found} with the same empty body — preventing callers from
      * determining whether a given ID exists (T-07).
      *
+     * <p>The path variable is the non-secret {@code idHash8} (first 8 hex chars of
+     * SHA-256(token)), NOT the raw token. The token is shown exactly once at creation and is
+     * never re-served (ADR-SQLITE-05); revoking by {@code idHash8} keeps the secret out of
+     * request URLs and reverse-proxy access logs, and lets the sharer revoke any of their links
+     * from the self-management list (which only ever carries {@code idHash8}).
+     *
      * @param rawWallId the {@code wallId} cookie value; null when absent
-     * @param idStr     the share-link ID from the URL path
+     * @param idHash8   the link's {@code idHash8} from the URL path
      * @param request   the raw servlet request
-     * @return 204 No Content on success; 401 on missing auth; 404 on not-found or
-     *         not-authorised; 400 on malformed ID
+     * @return 204 No Content on success; 401 on missing auth; 404 on not-found, not-authorised,
+     *         or malformed id (anti-enumeration)
      */
-    @DeleteMapping(value = "/{id}")
+    @DeleteMapping(value = "/{idHash8}")
     public ResponseEntity<?> revokeShareLink(
             @CookieValue(value = "wallId", required = false) final String rawWallId,
-            @PathVariable("id") final String idStr,
+            @PathVariable("idHash8") final String idHash8,
             final HttpServletRequest request) {
 
         FallbackAuthGuard.AuthResult auth = authGuard.authenticate(request, rawWallId);
@@ -211,20 +216,13 @@ public class ShareLinkController {
             return ResponseEntity.status(403).body(Map.of("error", "csrf_validation_failed"));
         }
 
-        ShareLinkId id;
         try {
-            id = ShareLinkId.fromUrlPath(idStr);
-        } catch (IllegalArgumentException e) {
-            // Malformed ID — treat the same as not-found (anti-enumeration)
-            LOGGER.debug("DELETE /rest/share-links malformed id (hash8={})", LogScrubber.hash8(idStr));
-            return ResponseEntity.notFound().build();
-        }
-
-        try {
-            shareLinkService.revoke(id, principal, clock.instant());
+            // The service validates the idHash8 format and maps malformed/not-found/not-owned
+            // alike to ShareLinkNotFoundOrNotAuthorisedException → a uniform 404 (anti-enumeration).
+            shareLinkService.revokeByHash8(idHash8, principal, clock.instant());
             return ResponseEntity.noContent().build();
         } catch (ShareLinkNotFoundOrNotAuthorisedException e) {
-            // Anti-enumeration: 404 for both not-found and not-authorised
+            // Anti-enumeration: 404 for malformed, not-found, and not-authorised
             return ResponseEntity.notFound().build();
         }
     }
@@ -271,6 +269,7 @@ public class ShareLinkController {
     private CreateShareLinkResponse toCreateResponse(final ShareLink link) {
         return new CreateShareLinkResponse(
                 link.id().value(),
+                link.id().hash8(),
                 link.expiresAt(),
                 buildReadonlyUrl(link.id().value()));
     }

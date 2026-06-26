@@ -100,20 +100,24 @@ export class ShareLinkService {
   }
 
   /**
-   * Revokes a share link by its ID.
+   * Revokes a share link by its non-secret `idHash8`.
+   *
+   * The raw token is never re-served (shown once at creation), so revocation is keyed on the
+   * `idHash8` (first 8 hex of SHA-256(token)) that both the create response and the list entries
+   * carry. This also keeps the secret token out of request URLs and reverse-proxy access logs.
    *
    * On success: completes.
    * On 404: the caller (ShareDialogComponent) shows "already expired" message.
    * Other errors: re-thrown to the caller.
    *
-   * @param shareLinkId - The opaque share link ID token.
+   * @param idHash8 - The link's idHash8 (non-secret revoke handle).
    */
-  revokeShareLink(shareLinkId: string): Observable<void> {
+  revokeShareLink(idHash8: string): Observable<void> {
     return this.fetchCsrfToken().pipe(
       switchMap((token) => {
         const headers = new HttpHeaders({ 'X-Share-CSRF': token });
         return this.http
-          .delete<void>(`/rest/share-links/${shareLinkId}`, { headers });
+          .delete<void>(`/rest/share-links/${idHash8}`, { headers });
       }),
     );
   }

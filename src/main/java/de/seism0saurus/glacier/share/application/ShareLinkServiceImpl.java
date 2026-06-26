@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 
 /**
  * Default implementation of {@link ShareLinkService}.
@@ -52,6 +53,13 @@ public class ShareLinkServiceImpl implements ShareLinkService {
     private static final Logger AUDIT = LoggerFactory.getLogger("AUDIT");
 
     /**
+     * Exactly 8 lowercase hex chars — the shape of {@link ShareLinkId#hash8()}. Caller-supplied
+     * idHash8 values that do not match are rejected as not-found (anti-enumeration, T-07) before
+     * any repository or registry lookup, so attacker-controlled junk never reaches a query.
+     */
+    private static final Pattern IDHASH8 = Pattern.compile("[0-9a-f]{8}");
+
+    /**
      * Per-sharer mutex map for the TOCTOU-sensitive check-then-act in {@link #create}.
      *
      * <p>R-2 (TOCTOU fix): the sequence {@code countActiveForSharer → save} is not atomic
@@ -71,6 +79,7 @@ public class ShareLinkServiceImpl implements ShareLinkService {
     private final ShareLinkLifetimePolicy lifetimePolicy;
     private final ShareLinkCapPolicy capPolicy;
     private final ApplicationEventPublisher eventPublisher;
+    private final ShareLinkActivityRegistry registry;
     private final Clock clock;
 
     /**
@@ -87,6 +96,11 @@ public class ShareLinkServiceImpl implements ShareLinkService {
      * @param lifetimePolicy TTL and sweep configuration
      * @param capPolicy      per-sharer and per-IP caps
      * @param eventPublisher Spring event bus for lifecycle events
+     * @param registry       in-memory activity registry; read (via {@code getActiveLinks}) by
+     *                       {@link #revokeByHash8} to recover the full token of a currently-active
+     *                       link so the standard {@link #revoke} machinery (and its live viewer
+     *                       control frame) can be reused. Read-only here — register/unregister
+     *                       remain confined to their ARCH-RELAY-02/02b call sites.
      * @param clock          injected clock for time operations (use {@link Clock#fixed} in tests)
      */
     public ShareLinkServiceImpl(
@@ -95,12 +109,14 @@ public class ShareLinkServiceImpl implements ShareLinkService {
             final ShareLinkLifetimePolicy lifetimePolicy,
             final ShareLinkCapPolicy capPolicy,
             final ApplicationEventPublisher eventPublisher,
+            final ShareLinkActivityRegistry registry,
             final Clock clock) {
         this.repository = repository;
         this.tokenGenerator = tokenGenerator;
         this.lifetimePolicy = lifetimePolicy;
         this.capPolicy = capPolicy;
         this.eventPublisher = eventPublisher;
+        this.registry = registry;
         this.clock = clock;
     }
 
@@ -208,6 +224,46 @@ public class ShareLinkServiceImpl implements ShareLinkService {
         // The direct shareViewStompRelay.pushRevocation() call has been removed to prevent
         // double STOMP control frame delivery (CONFLICT 5 resolution; ARCH-RELAY-06).
         eventPublisher.publishEvent(new ShareLinkRevokedEvent(link.sharerWallId(), id));
+    }
+
+    @Override
+    public void revokeByHash8(final String idHash8, final String callerWallId, final Instant now) {
+        // Format gate first: reject anything that is not exactly 8 lowercase hex chars as
+        // not-found (anti-enumeration), so caller-supplied junk never reaches a query/registry.
+        if (idHash8 == null || !IDHASH8.matcher(idHash8).matches()) {
+            LOGGER.debug("revokeByHash8: malformed idHash8 — rejected before lookup");
+            AUDIT.info("share.link.revoked wallId-hash8={} outcome=notfound mode=by-hash reason=malformed",
+                    LogScrubber.hash8(callerWallId));
+            throw new ShareLinkNotFoundOrNotAuthorisedException("not found");
+        }
+
+        // Preferred path: the link is currently active in the in-memory registry, which still
+        // holds the full token (registered at activation). Recovering it lets us reuse the
+        // standard revoke(token) machinery — DB mark + ShareLinkRevokedEvent → the relay's
+        // unregister() + live viewer control frame (the same outcome as the active-card revoke).
+        // getActiveLinks() is a read; register/unregister stay confined to the relay (ARCH-RELAY-02b).
+        Optional<ShareLinkId> registered = registry.getActiveLinks(callerWallId).stream()
+                .filter(id -> id.hash8().equals(idHash8))
+                .findFirst();
+        if (registered.isPresent()) {
+            revoke(registered.get(), callerWallId, now);
+            return;
+        }
+
+        // Fallback: the link is active in the repository but not in the in-memory registry
+        // (e.g. created before a restart). It is revoked authoritatively at the persistence
+        // layer, scoped to the sharer. No live control frame is possible — the raw token is
+        // unrecoverable (only SHA-256(token) is stored) and the relay was not delivering to it
+        // either, so no connected viewer is reachable; a reload resolves to /expired.
+        boolean revoked = repository.markRevokedByHash8(idHash8, callerWallId, now);
+        if (!revoked) {
+            // not-found, not-owned, and already-revoked are indistinguishable (anti-enumeration).
+            AUDIT.info("share.link.revoked shareId-hash8={} wallId-hash8={} outcome=notfound mode=by-hash",
+                    idHash8, LogScrubber.hash8(callerWallId));
+            throw new ShareLinkNotFoundOrNotAuthorisedException("not found");
+        }
+        AUDIT.info("share.link.revoked shareId-hash8={} wallId-hash8={} outcome=revoked mode=by-hash-db-only",
+                idHash8, LogScrubber.hash8(callerWallId));
     }
 
     @Override

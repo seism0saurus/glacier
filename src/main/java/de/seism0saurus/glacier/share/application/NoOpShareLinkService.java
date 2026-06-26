@@ -48,6 +48,11 @@ public class NoOpShareLinkService implements ShareLinkService {
     }
 
     @Override
+    public void revokeByHash8(String idHash8, String callerWallId, Instant now) {
+        log.warn("NoOpShareLinkService.revokeByHash8 called — peer-lane implementation not yet available");
+    }
+
+    @Override
     public List<ShareLinkSummary> listSummaryBySharer(String sharerWallId, Instant now) {
         log.debug("NoOpShareLinkService.listSummaryBySharer called — returning empty");
         return List.of();

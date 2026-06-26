@@ -176,7 +176,7 @@ class ShareLinkCsrfIT {
      */
     @Test
     void deleteShareLink_missingCsrfToken_returns403() throws Exception {
-        mockMvc.perform(delete("/rest/share-links/sv_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        mockMvc.perform(delete("/rest/share-links/abcd1234")
                         .cookie(new Cookie("wallId", "valid-wall-id-fixture-000000000000000"))
                         .header("Origin", "http://glacier.example.com"))
                 .andExpect(status().isForbidden());

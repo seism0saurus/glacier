@@ -128,11 +128,11 @@ test.describe('Social wall + shared wall — full round trip', () => {
       const shareUrl = await urlInput.inputValue();
       expect(shareUrl).toContain('/share/');
 
-      // Keep the share dialog open: the freshly-created link is shown as the active-link
-      // card (revoke-button), which carries the full shareLinkId needed to revoke. Reopening
-      // the dialog would instead show the link in the "Active links" list, whose row only
-      // exposes idHash8 (the full token is never re-served, by design) — so list revocation
-      // is a separate, pre-existing concern outside this MVP. We revoke via the active card.
+      // Keep the share dialog open and revoke via the active-link card (revoke-button) for
+      // spec simplicity. Both the active card and the reopened "Active links" list now revoke
+      // by the non-secret idHash8 (DELETE /rest/share-links/{idHash8}); the token is never
+      // re-served. List-row revocation (the row's revoke-row-button) is covered at the unit
+      // level in share-dialog.component.spec.ts.
 
       const viewerContext: BrowserContext = await browser.newContext();
       const viewerPage: Page = await viewerContext.newPage();

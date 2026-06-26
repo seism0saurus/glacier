@@ -123,15 +123,32 @@ export interface ShareCatalog {
 
 /** Response shape of POST /rest/share-links */
 export interface ShareLinkCreated {
+  /** Opaque URL-safe token; shown exactly once and never re-served. */
   shareLinkId: string;
+  /**
+   * First 8 hex chars of SHA-256(token) — the non-secret handle used to revoke this link
+   * (DELETE /rest/share-links/{idHash8}). Matches what {@link ShareLinkEntry} carries.
+   */
+  idHash8: string;
   /** ISO-8601 expiry timestamp. */
   expiresAt: string;
   readonlyUrl: string;
 }
 
-/** Entry in the list returned by GET /rest/share-links */
+/**
+ * Entry in the list returned by GET /rest/share-links.
+ *
+ * Mirrors the backend `ShareLinkListEntry`: the raw token / readonly URL are deliberately
+ * NOT returned (the token is shown exactly once at creation). The non-secret {@link #idHash8}
+ * is the stable identifier used both for display and to revoke the link.
+ */
 export interface ShareLinkEntry {
-  shareLinkId: string;
+  /** First 8 hex chars of SHA-256(token); the revoke handle. */
+  idHash8: string;
+  /** ISO-8601 creation timestamp. */
+  createdAt: string;
+  /** ISO-8601 expiry timestamp. */
   expiresAt: string;
-  readonlyUrl: string;
+  /** Lifecycle status: ACTIVE | EXPIRED | REVOKED. */
+  status: string;
 }

@@ -142,7 +142,7 @@ import {
             mat-stroked-button
             type="button"
             color="warn"
-            (click)="confirmRevoke(activeLink()!.shareLinkId)"
+            (click)="confirmRevoke(activeLink()!.idHash8)"
             data-testid="revoke-button"
             i18n="@@share.dialog.revoke"
           >Zugriff entziehen</button>
@@ -157,7 +157,7 @@ import {
             class="section-heading"
             i18n="@@share.dialog.active-links.heading"
           >Aktive Links</h2>
-          @for (link of existingLinks(); track link.shareLinkId; let i = $index) {
+          @for (link of existingLinks(); track link.idHash8; let i = $index) {
             <div class="link-row" data-testid="link-row">
               <span class="link-expiry">{{ formatExpiry(link.expiresAt) }}</span>
               <!--
@@ -170,7 +170,7 @@ import {
                 mat-stroked-button
                 type="button"
                 color="warn"
-                (click)="confirmRevoke(link.shareLinkId)"
+                (click)="confirmRevoke(link.idHash8)"
                 [attr.aria-label]="revokeButtonLabel(i, link.expiresAt)"
                 data-testid="revoke-row-button"
               >
@@ -352,16 +352,16 @@ export class ShareDialogComponent implements OnInit {
     }
   }
 
-  confirmRevoke(shareLinkId: string): void {
+  confirmRevoke(idHash8: string): void {
     const ref = this.dialog.open(ShareRevokeConfirmDialogComponent);
     ref.afterClosed().subscribe((confirmed: boolean) => {
       if (confirmed) {
-        this.executeRevoke(shareLinkId);
+        this.executeRevoke(idHash8);
       }
     });
   }
 
-  private executeRevoke(shareLinkId: string): void {
+  private executeRevoke(idHash8: string): void {
     // TOOT-11: announce in-progress state before the HTTP call completes so AT
     // users know the action is underway (WCAG 4.1.3 / Nielsen #1).
     this.liveAnnouncer.announce(
@@ -369,13 +369,13 @@ export class ShareDialogComponent implements OnInit {
       'polite',
     );
 
-    this.shareLinkService.revokeShareLink(shareLinkId).subscribe({
+    this.shareLinkService.revokeShareLink(idHash8).subscribe({
       complete: () => {
         // Remove from local lists
         this.existingLinks.update((list) =>
-          list.filter((l) => l.shareLinkId !== shareLinkId)
+          list.filter((l) => l.idHash8 !== idHash8)
         );
-        if (this.activeLink()?.shareLinkId === shareLinkId) {
+        if (this.activeLink()?.idHash8 === idHash8) {
           this.activeLink.set(null);
         }
         this.liveAnnouncer.announce(
@@ -391,7 +391,7 @@ export class ShareDialogComponent implements OnInit {
           );
           // 404: link is already gone — clean up from list
           this.existingLinks.update((list) =>
-            list.filter((l) => l.shareLinkId !== shareLinkId)
+            list.filter((l) => l.idHash8 !== idHash8)
           );
         } else {
           // TOOT-11: non-404 failure (500 / network error).

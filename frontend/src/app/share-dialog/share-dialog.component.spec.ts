@@ -25,12 +25,13 @@ describe('ShareDialogComponent', () => {
 
   const mockCreated: ShareLinkCreated = {
     shareLinkId: 'abc123',
+    idHash8: 'abc12345',
     expiresAt: '2026-04-29T12:00:00Z',
     readonlyUrl: 'https://share.glacier.events/share/abc123',
   };
 
   const mockExistingLinks: ShareLinkEntry[] = [
-    { shareLinkId: 'existing1', expiresAt: '2026-04-28T12:00:00Z', readonlyUrl: 'https://share.glacier.events/share/existing1' },
+    { idHash8: 'existing1', createdAt: '2026-04-21T12:00:00Z', expiresAt: '2026-04-28T12:00:00Z', status: 'ACTIVE' },
   ];
 
   beforeEach(async () => {
@@ -217,6 +218,32 @@ describe('ShareDialogComponent', () => {
       expect(shareLinkServiceSpy.revokeShareLink).toHaveBeenCalledWith('abc123');
     }));
 
+    it('revokes a LISTED link by its idHash8 when its row button is clicked (regression: list-revoke undefined-id)', fakeAsync(() => {
+      const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
+      confirmRef.afterClosed.and.returnValue(of(true));
+      dialogSpy.open.and.returnValue(confirmRef);
+
+      // The "Active links" list row only carries idHash8 (the backend never re-serves the
+      // token). Render the row and click its real revoke button.
+      component.existingLinks.set(mockExistingLinks);
+      fixture.detectChanges();
+
+      const rowButton: HTMLButtonElement | null =
+        fixture.nativeElement.querySelector('[data-testid="revoke-row-button"]');
+      expect(rowButton)
+        .withContext('the active-links list must render a revoke button per row')
+        .not.toBeNull();
+
+      rowButton!.click();
+      tick();
+
+      // Before the fix the template bound link.shareLinkId — undefined on a list entry —
+      // so the call was revokeShareLink(undefined) → DELETE /rest/share-links/undefined → 404.
+      expect(shareLinkServiceSpy.revokeShareLink).toHaveBeenCalledWith('existing1');
+      expect(shareLinkServiceSpy.revokeShareLink)
+        .not.toHaveBeenCalledWith(undefined as unknown as string);
+    }));
+
     it('announces "Link widerrufen" after successful revocation', fakeAsync(() => {
       const confirmRef = jasmine.createSpyObj('MatDialogRef', ['afterClosed']);
       confirmRef.afterClosed.and.returnValue(of(true));
@@ -326,7 +353,7 @@ describe('ShareDialogComponent', () => {
       confirmRef.afterClosed.and.returnValue(of(true));
       dialogSpy.open.and.returnValue(confirmRef);
 
-      component.confirmRevoke(mockCreated.shareLinkId);
+      component.confirmRevoke(mockCreated.idHash8);
       tick();
       fixture.detectChanges();
 
@@ -518,7 +545,7 @@ describe('ShareDialogComponent', () => {
       fixture.detectChanges();
 
       // Link must remain in existingLinks — not removed on 500
-      expect(component.existingLinks().some(l => l.shareLinkId === 'existing1')).toBeTrue();
+      expect(component.existingLinks().some(l => l.idHash8 === 'existing1')).toBeTrue();
     }));
 
     it('TOOT-11: executeRevoke still removes the 404 link from the list (existing behavior preserved)', fakeAsync(() => {
@@ -533,7 +560,7 @@ describe('ShareDialogComponent', () => {
       tick();
       fixture.detectChanges();
 
-      expect(component.existingLinks().some(l => l.shareLinkId === 'existing1')).toBeFalse();
+      expect(component.existingLinks().some(l => l.idHash8 === 'existing1')).toBeFalse();
     }));
   });
 
@@ -542,8 +569,8 @@ describe('ShareDialogComponent', () => {
   describe('TOOT-14 — unique accessible names for revoke buttons', () => {
     beforeEach(() => {
       shareLinkServiceSpy.listShareLinks.and.returnValue(of([
-        { shareLinkId: 'link1', expiresAt: '2026-05-01T00:00:00Z', readonlyUrl: 'https://example.com/share/link1' },
-        { shareLinkId: 'link2', expiresAt: '2026-06-15T00:00:00Z', readonlyUrl: 'https://example.com/share/link2' },
+        { idHash8: 'aaaa1111', createdAt: '2026-04-24T00:00:00Z', expiresAt: '2026-05-01T00:00:00Z', status: 'ACTIVE' },
+        { idHash8: 'bbbb2222', createdAt: '2026-06-08T00:00:00Z', expiresAt: '2026-06-15T00:00:00Z', status: 'ACTIVE' },
       ]));
       component.ngOnInit();
       fixture.detectChanges();

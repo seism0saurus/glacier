@@ -25,15 +25,17 @@ describe('ShareLinkService', () => {
 
   const mockCreated: ShareLinkCreated = {
     shareLinkId: 'abc123xyz',
+    idHash8: 'abc123de',
     expiresAt: '2026-04-29T12:00:00Z',
     readonlyUrl: 'https://share.glacier.events/share/abc123xyz',
   };
 
   const mockEntries: ShareLinkEntry[] = [
     {
-      shareLinkId: 'abc123xyz',
+      idHash8: 'abc123de',
+      createdAt: '2026-04-22T12:00:00Z',
       expiresAt: '2026-04-29T12:00:00Z',
-      readonlyUrl: 'https://share.glacier.events/share/abc123xyz',
+      status: 'ACTIVE',
     },
   ];
 

@@ -74,7 +74,8 @@ class ShareLinkServiceImplTest {
         capPolicy = new ShareLinkCapPolicy();
         tokenGenerator = new SecureRandomTokenGenerator();
         service = new ShareLinkServiceImpl(
-                repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher, fixedClock);
+                repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher,
+                new ShareLinkActivityRegistry(), fixedClock);
     }
 
     // -----------------------------------------------------------------------

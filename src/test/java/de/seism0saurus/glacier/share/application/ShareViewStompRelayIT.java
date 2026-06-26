@@ -60,7 +60,7 @@ class ShareViewStompRelayIT {
 
         service = new ShareLinkServiceImpl(
                 repository, tokenGenerator, lifetimePolicy, capPolicy,
-                eventPublisher, fixedClock);
+                eventPublisher, new ShareLinkActivityRegistry(), fixedClock);
     }
 
     /**

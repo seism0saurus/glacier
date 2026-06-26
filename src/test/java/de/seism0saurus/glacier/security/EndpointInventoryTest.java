@@ -71,7 +71,7 @@ class EndpointInventoryTest {
 
             // ShareLinkController (sharer-side share link CRUD)
             "POST:/rest/share-links",
-            "DELETE:/rest/share-links/{id}",
+            "DELETE:/rest/share-links/{idHash8}",
             "GET:/rest/share-links",
 
             // ShareViewController (viewer-side share endpoints)

@@ -53,6 +53,27 @@ public interface ShareLinkRepository {
     void markRevoked(ShareLinkId id, Instant when);
 
     /**
+     * Marks the link whose {@code idHash8} matches (first 8 hex chars of SHA-256(token))
+     * AND that belongs to {@code sharerWallId} as revoked at {@code when}, scoped to the
+     * authenticated sharer.
+     *
+     * <p>This is the revoke path for the sharer's self-management list, which only ever sees
+     * the non-secret {@code idHash8} — the raw token is shown exactly once at creation and is
+     * never re-served (ADR-SQLITE-05). The {@code sharerWallId} scope is the authorization
+     * boundary: a sharer can only revoke their own links. Anti-enumeration (T-07) is preserved
+     * by returning {@code false} (rather than throwing) for not-found, not-owned, and
+     * already-revoked alike, so the caller maps all three to the same outcome.
+     *
+     * @param idHash8      the first 8 lowercase hex chars of SHA-256(token); the caller is
+     *                     responsible for format validation
+     * @param sharerWallId the authenticated sharer's wallId; the authorization scope
+     * @param when         the revocation instant
+     * @return {@code true} if exactly one active link was transitioned to revoked;
+     *         {@code false} for not-found, not-owned, or already-revoked
+     */
+    boolean markRevokedByHash8(String idHash8, String sharerWallId, Instant when);
+
+    /**
      * Removes all links whose {@code expiresAt} is not after {@code now} and that are not
      * already revoked (revoked links survive the sweep until they are explicitly fetched
      * and found to be both revoked and expired — the sweep only removes time-expired links).

@@ -27,6 +27,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -106,6 +107,10 @@ class ShareLinkControllerIT {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.shareLinkId").value("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
+                // idHash8 is the non-secret revoke handle (first 8 hex of SHA-256(token)) — the
+                // client uses it for DELETE /rest/share-links/{idHash8}, matching the list entry.
+                .andExpect(jsonPath("$.idHash8")
+                        .value(LogScrubber.hash8("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")))
                 .andExpect(jsonPath("$.expiresAt").isNotEmpty())
                 .andExpect(jsonPath("$.readonlyUrl").isNotEmpty())
                 // The readonly URL MUST target the share host (glacier.share.host) — viewers
@@ -179,43 +184,46 @@ class ShareLinkControllerIT {
     void deleteShareLink_happyPath_returns204() throws Exception {
         authenticateAs(WALL_ID);
         allowCsrf();
-        String linkId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        // The path variable is the non-secret idHash8, NOT the raw token.
+        String idHash8 = "abcd1234";
 
-        mockMvc.perform(delete("/rest/share-links/{id}", linkId)
+        mockMvc.perform(delete("/rest/share-links/{idHash8}", idHash8)
                         .cookie(new Cookie("wallId", WALL_ID)))
                 .andExpect(status().isNoContent());
+
+        verify(shareLinkService).revokeByHash8(eq(idHash8), eq(WALL_ID), any(Instant.class));
     }
 
     // ---------------------------------------------------------------------------
-    // DELETE /rest/share-links/{id} — not found → 404
+    // DELETE /rest/share-links/{idHash8} — not found → 404
     // ---------------------------------------------------------------------------
 
     @Test
     void deleteShareLink_notFound_returns404() throws Exception {
         authenticateAs(WALL_ID);
         allowCsrf();
-        String linkId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        String idHash8 = "abcd1234";
         doThrow(new ShareLinkNotFoundOrNotAuthorisedException("not found"))
-                .when(shareLinkService).revoke(any(ShareLinkId.class), eq(WALL_ID), any(Instant.class));
+                .when(shareLinkService).revokeByHash8(eq(idHash8), eq(WALL_ID), any(Instant.class));
 
-        mockMvc.perform(delete("/rest/share-links/{id}", linkId)
+        mockMvc.perform(delete("/rest/share-links/{idHash8}", idHash8)
                         .cookie(new Cookie("wallId", WALL_ID)))
                 .andExpect(status().isNotFound());
     }
 
     // ---------------------------------------------------------------------------
-    // DELETE /rest/share-links/{id} — wrong wallId → SAME 404 (anti-enumeration)
+    // DELETE /rest/share-links/{idHash8} — wrong wallId → SAME 404 (anti-enumeration)
     // ---------------------------------------------------------------------------
 
     @Test
     void deleteShareLink_wrongWallId_returns404SameAsNotFound() throws Exception {
         authenticateAs(WALL_ID);
         allowCsrf();
-        String linkId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        String idHash8 = "abcd1234";
         doThrow(new ShareLinkNotFoundOrNotAuthorisedException("not authorised"))
-                .when(shareLinkService).revoke(any(ShareLinkId.class), eq(WALL_ID), any(Instant.class));
+                .when(shareLinkService).revokeByHash8(eq(idHash8), eq(WALL_ID), any(Instant.class));
 
-        mockMvc.perform(delete("/rest/share-links/{id}", linkId)
+        mockMvc.perform(delete("/rest/share-links/{idHash8}", idHash8)
                         .cookie(new Cookie("wallId", WALL_ID)))
                 .andExpect(status().isNotFound());
     }

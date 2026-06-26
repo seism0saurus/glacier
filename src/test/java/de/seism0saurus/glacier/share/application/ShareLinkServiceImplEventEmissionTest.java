@@ -65,7 +65,8 @@ class ShareLinkServiceImplEventEmissionTest {
 
         // Service is constructed WITHOUT ShareViewStompRelay — ARCH-RELAY-06
         service = new ShareLinkServiceImpl(
-                repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher, fixedClock);
+                repository, tokenGenerator, lifetimePolicy, capPolicy, eventPublisher,
+                new ShareLinkActivityRegistry(), fixedClock);
     }
 
     // -----------------------------------------------------------------------
