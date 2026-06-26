@@ -227,4 +227,60 @@ class ClientIpResolverTest {
         // brackets stripped: "2001:db8::1"
         assertThat(resolver.resolve(req)).isEqualTo("2001:db8::1");
     }
+
+    // -----------------------------------------------------------------------
+    // XFF parsing edge cases (spoofing-defence branches not otherwise covered)
+    // -----------------------------------------------------------------------
+
+    @Test
+    void resolve_xffWithEmptyEntries_skipsThem() {
+        // Empty hops (double comma) must be dropped before the trusted-hop index is computed —
+        // otherwise an attacker could pad the header to shift the index.
+        ClientIpResolver resolver = new ClientIpResolver(1);
+        HttpServletRequest req = requestWithXff("10.0.0.1", "1.2.3.4,,5.6.7.8");
+        // hops after empty-skip: [1.2.3.4, 5.6.7.8]; clientIndex = 2-1 = 1 → 5.6.7.8
+        assertThat(resolver.resolve(req)).isEqualTo("5.6.7.8");
+    }
+
+    @Test
+    void resolve_xffAllEmptyEntries_fallsBackToRemoteAddr() {
+        // A header that is not blank as a whole but yields only empty hops (",,") → remoteAddr.
+        ClientIpResolver resolver = new ClientIpResolver(1);
+        HttpServletRequest req = requestWithXff("10.0.0.9", ",,");
+        assertThat(resolver.resolve(req)).isEqualTo("10.0.0.9");
+    }
+
+    @Test
+    void resolve_fewerHopsThanTrustedHops_clampsToLeftmostEntry() {
+        // trustedHops exceeds the number of hops → clientIndex goes negative and must clamp to 0,
+        // returning the only entry rather than throwing IndexOutOfBounds.
+        ClientIpResolver resolver = new ClientIpResolver(3);
+        HttpServletRequest req = requestWithXff("10.0.0.1", "1.2.3.4");
+        // clientIndex = 1 - 3 = -2 → clamped to 0
+        assertThat(resolver.resolve(req)).isEqualTo("1.2.3.4");
+    }
+
+    @Test
+    void resolve_bracketOpenWithoutClose_isNotStripped() {
+        // The bracket-strip requires BOTH a leading '[' and trailing ']'; a malformed value with
+        // only the opening bracket must be returned unchanged (the && short-circuit false side).
+        ClientIpResolver resolver = new ClientIpResolver(1);
+        HttpServletRequest req = requestWithXff("10.0.0.1", "[2001:db8::1");
+        assertThat(resolver.resolve(req)).isEqualTo("[2001:db8::1");
+    }
+
+    @Test
+    void resolve_nullRemoteAddr_returnsUnknown() {
+        // No XFF + null remoteAddr → the "unknown" fallback (never null, for rate-limit keying).
+        ClientIpResolver resolver = new ClientIpResolver(1);
+        HttpServletRequest req = requestWithRemoteAddr(null);
+        assertThat(resolver.resolve(req)).isEqualTo("unknown");
+    }
+
+    @Test
+    void resolve_blankRemoteAddr_returnsUnknown() {
+        ClientIpResolver resolver = new ClientIpResolver(1);
+        HttpServletRequest req = requestWithRemoteAddr("   ");
+        assertThat(resolver.resolve(req)).isEqualTo("unknown");
+    }
 }

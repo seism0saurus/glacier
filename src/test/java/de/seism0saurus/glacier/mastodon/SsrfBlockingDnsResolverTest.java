@@ -94,4 +94,14 @@ class SsrfBlockingDnsResolverTest {
         assertThatThrownBy(() -> resolver.resolve("proxy"))
                 .isInstanceOf(UnknownHostException.class);
     }
+
+    @Test
+    void nullMastodonInstance_inDevMode_normalisesToEmpty_andNeverExempts() {
+        // A null mastodon.instance must normalise to "" in the constructor, so the dev exemption
+        // can never fire (empty configured host) — private addresses stay blocked even in dev mode.
+        final SsrfBlockingDnsResolver resolver =
+                new SsrfBlockingDnsResolver(fixedDelegate("10.0.0.5"), true, null);
+        assertThatThrownBy(() -> resolver.resolve("anything"))
+                .isInstanceOf(UnknownHostException.class);
+    }
 }

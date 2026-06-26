@@ -314,4 +314,69 @@ class SubscribeRateLimitInterceptorTest {
             auditLogger.detachAppender(listAppender);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Bucket-keying fallbacks + token-bucket refill (DoS-defence branches)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void missingRemoteAddr_fallsBackToPerPrincipalBucket_stillAllowsBelowLimit() {
+        // No REMOTE_ADDR session attribute (regression in the handshake handler) → the interceptor
+        // keys the bucket on "unknown:<principal>" instead of NPEing or failing open silently.
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(30, Clock.systemUTC());
+
+        Message<?> msg = buildSubscribeMessage(TEST_PRINCIPAL, null);
+        Message<?> result = interceptor.preSend(msg, mockChannel);
+
+        assertThat(result).as("below limit, must pass through even without a REMOTE_ADDR").isNotNull();
+    }
+
+    @Test
+    void missingRemoteAddr_stillEnforcesLimitOnUnknownBucket() {
+        // The "unknown:<principal>" fallback bucket must still rate-limit (not be a bypass).
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(1, Clock.systemUTC());
+        Message<?> msg = buildSubscribeMessage(TEST_PRINCIPAL, null);
+
+        assertThat(interceptor.preSend(msg, mockChannel)).isNotNull(); // 1st: allowed
+        assertThat(interceptor.preSend(msg, mockChannel)).isNull();     // 2nd: dropped
+    }
+
+    @Test
+    void anonymousPrincipal_whenNoUser_isBucketedAndLimited() {
+        // No Principal on the message → keyed under "anonymous" rather than throwing.
+        SubscribeRateLimitInterceptor interceptor =
+                new SubscribeRateLimitInterceptor(1, Clock.systemUTC());
+        Message<?> msg = buildSubscribeMessage(null, TEST_IP);
+
+        assertThat(interceptor.preSend(msg, mockChannel)).isNotNull(); // 1st: allowed
+        assertThat(interceptor.preSend(msg, mockChannel)).isNull();     // 2nd: dropped
+    }
+
+    @Test
+    void tokenBucket_refillsAfterWindowElapses() {
+        // After the 60s window passes, the bucket refills — a previously rate-limited client is
+        // allowed again (the limiter is not a permanent lock-out).
+        MutableClock clock = new MutableClock(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        SubscribeRateLimitInterceptor interceptor = new SubscribeRateLimitInterceptor(1, clock);
+        Message<?> msg = buildSubscribeMessage(TEST_PRINCIPAL, TEST_IP);
+
+        assertThat(interceptor.preSend(msg, mockChannel)).isNotNull(); // token consumed
+        assertThat(interceptor.preSend(msg, mockChannel)).isNull();     // dropped — window not elapsed
+        clock.advance(java.time.Duration.ofSeconds(61));
+        assertThat(interceptor.preSend(msg, mockChannel))
+                .as("after the window elapses the bucket refills")
+                .isNotNull();
+    }
+
+    /** Minimal advanceable clock for exercising the token-bucket refill window. */
+    private static final class MutableClock extends Clock {
+        private java.time.Instant now;
+        private MutableClock(java.time.Instant start) { this.now = start; }
+        void advance(java.time.Duration d) { now = now.plus(d); }
+        @Override public java.time.Instant instant() { return now; }
+        @Override public java.time.ZoneId getZone() { return java.time.ZoneOffset.UTC; }
+        @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+    }
 }
