@@ -5,6 +5,8 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -157,5 +159,40 @@ class ShareCsrfGuardTest {
         when(request.getHeader("X-Share-CSRF")).thenReturn("short-token");
         setupCookieToken(TOKEN);
         assertThat(guard.verify(request)).isFalse();
+    }
+
+    // -----------------------------------------------------------------------
+    // Origin-confusion bypasses (SR-SHARE-08): the guard must use an EXACT
+    // scheme+host+port match, not a substring/prefix/suffix test. Each payload
+    // shares the expected origin string "https://glacier.example.com" as a
+    // prefix, suffix, or substring, so a naive relaxed check would wrongly
+    // accept it — but the real host is attacker-controlled. These lock the
+    // exact-match invariant against the classic wrong implementations.
+    // -----------------------------------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            // Attacker registers a subdomain of the real domain. Kills endsWith(host).
+            "https://evil.glacier.example.com",
+            // Suffix confusion: real host is evil.com. Kills startsWith(expectedOrigin).
+            "https://glacier.example.com.evil.com",
+            // Userinfo confusion: everything before '@' is credentials; host is evil.com.
+            // Kills startsWith(expectedOrigin) and contains(expectedOrigin).
+            "https://glacier.example.com@evil.com",
+            // Trailing path/slash — Origin has no path per spec; kills startsWith(expectedOrigin).
+            "https://glacier.example.com/",
+            // Prefix-substring host. Kills contains(domain) where domain="glacier.example.com".
+            "https://notglacier.example.com",
+            // Wrong scheme with an otherwise-matching host. Kills a host-only compare.
+            "http://glacier.example.com.evil.com",
+    })
+    void rejectsOriginConfusionBypass(String maliciousOrigin) {
+        when(request.getHeader("Origin")).thenReturn(maliciousOrigin);
+        when(request.getHeader("X-Share-CSRF")).thenReturn(TOKEN);
+        setupCookieToken(TOKEN);
+
+        assertThat(guard.verify(request))
+                .as("malicious origin must be rejected: %s", maliciousOrigin)
+                .isFalse();
     }
 }
