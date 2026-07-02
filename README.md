@@ -5,7 +5,7 @@
 
 With **Glacier** you can follow hashtags and see the interaction of event participants in realtime.
 
-Glacier is still **BETA**. Feel free to [open an issue](https://github.com/seism0saurus/glacier/issues) to report any problems.
+Feel free to [open an issue](https://github.com/seism0saurus/glacier/issues) to report any problems.
 
 ## Contents
 
