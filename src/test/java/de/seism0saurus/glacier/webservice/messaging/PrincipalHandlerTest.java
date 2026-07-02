@@ -180,6 +180,49 @@ class PrincipalHandlerTest {
     }
 
     /**
+     * ADR-SHARE-05 (revised), cross-namespace collision prevention: a client-supplied
+     * {@code wallId} cookie whose value mimics a share-viewer id ({@code sv_}-prefixed,
+     * 46 chars) must still yield a {@link WallPrincipal} — never a {@link ShareViewerPrincipal}.
+     *
+     * <p>This is the entry point where the prefix is client-controlled. Authorization is by
+     * TYPE, not the {@code sv_} prefix: the wall handshake never mints a viewer identity, so
+     * the forged name cannot cross into the viewer topic/cache/rate-limit namespace. Downstream
+     * type separation is covered by GlacierPrincipalTest / PrincipalKeyCrossNamespaceTest /
+     * MessageCacheKeyCollisionTest; this pins the handshake that feeds them.
+     */
+    @Test
+    void testDetermineUserWithSvPrefixedWallIdCookie_returnsWallPrincipalNotViewer() {
+        // Arrange
+        PrincipalHandler principalHandler = new PrincipalHandler();
+        HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+        HttpSession httpSession = mock(HttpSession.class);
+        ServletServerHttpRequest serverRequest = mock(ServletServerHttpRequest.class);
+        WebSocketHandler wsHandler = mock(WebSocketHandler.class);
+
+        // A value shaped exactly like a real viewer id: "sv_" + 43 base64url chars (46 total,
+        // well over MIN_WALL_ID_LENGTH) so it passes the length gate and looks like a viewer.
+        String forgedViewerLikeWallId = "sv_" + "A".repeat(43);
+        Cookie[] cookies = {new Cookie("wallId", forgedViewerLikeWallId)};
+        Map<String, Object> attributes = new HashMap<>();
+
+        when(serverRequest.getServletRequest()).thenReturn(httpServletRequest);
+        when(httpServletRequest.getSession()).thenReturn(httpSession);
+        when(httpSession.getId()).thenReturn("testSessionId");
+        when(httpServletRequest.getCookies()).thenReturn(cookies);
+
+        // Act
+        Principal result = principalHandler.determineUser(serverRequest, wsHandler, attributes);
+
+        // Assert — typed as a sharer, not a viewer, regardless of the sv_ prefix.
+        assertThat(result)
+                .isInstanceOf(WallPrincipal.class)
+                .isNotInstanceOf(ShareViewerPrincipal.class);
+        assertThat(result.getName()).isEqualTo(forgedViewerLikeWallId);
+        // The cache / rate-limit namespace key must be the WALL kind — no viewer-bucket collision.
+        assertThat(PrincipalKey.of((WallPrincipal) result).kind()).isEqualTo(PrincipalKind.WALL);
+    }
+
+    /**
      * A valid wallId (exactly at MIN_WALL_ID_LENGTH = 32 chars) passes through unchanged.
      */
     @Test
