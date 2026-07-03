@@ -36,21 +36,25 @@ jobs:
         working-directory: frontend
         run: npm run i18n:check
       - name: Verify sqlite-jdbc SHA-256 checksum
+        # sha256sum -c resolves the filename in the .sha256 file relative to the CWD,
+        # so the check must run from inside dependency-checksums/.
+        working-directory: dependency-checksums
         run: |
-          curl -fsSL -o dependency-checksums/sqlite-jdbc-3.49.1.0.jar \
+          curl -fsSL -o sqlite-jdbc-3.49.1.0.jar \
             https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.49.1.0/sqlite-jdbc-3.49.1.0.jar
-          sha256sum -c dependency-checksums/sqlite-jdbc-3.49.1.0.sha256
-          rm dependency-checksums/sqlite-jdbc-3.49.1.0.jar
+          sha256sum -c sqlite-jdbc-3.49.1.0.sha256
+          rm sqlite-jdbc-3.49.1.0.jar
       # ADR-SEC-02 supply-chain pin: bigbone 2.0.0 is a stable Maven Central release
       # (io.github.pattafeufeu, since 2026-06-15; the historical SNAPSHOT tripwire is retired).
       # Download the exact jar the build will use and compare its SHA-256 against the recorded
       # known-good value, same pattern as sqlite-jdbc above. A mismatch fails the job loudly.
       - name: Verify bigbone SHA-256 checksum
+        working-directory: dependency-checksums
         run: |
-          curl -fsSL -o dependency-checksums/bigbone-2.0.0.jar \
+          curl -fsSL -o bigbone-2.0.0.jar \
             https://repo1.maven.org/maven2/io/github/pattafeufeu/bigbone/2.0.0/bigbone-2.0.0.jar
-          sha256sum -c dependency-checksums/bigbone-2.0.0.sha256
-          rm dependency-checksums/bigbone-2.0.0.jar
+          sha256sum -c bigbone-2.0.0.sha256
+          rm bigbone-2.0.0.jar
       - name: Verify the webapp
         run: ./mvnw --batch-mode verify --file pom.xml
       - name: Upload Surefire results

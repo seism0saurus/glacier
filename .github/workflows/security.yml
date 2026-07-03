@@ -295,6 +295,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # gitleaks-action scans the pushed commit range (base^..head), so the full
+          # history must be present — a shallow clone fails on multi-commit pushes.
+          fetch-depth: 0
       - name: gitleaks
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
