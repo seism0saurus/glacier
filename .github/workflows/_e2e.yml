@@ -39,6 +39,55 @@ permissions:
   contents: read
 
 jobs:
+  # ── Leg selection ─────────────────────────────────────────────────────────
+  #
+  # GitHub does not allow a job-level `if:` to reference the `matrix` context (only "github",
+  # "inputs", "needs", "vars" are available there -- matrix is only expanded into
+  # jobs.<id>.strategy/env/steps/container/services, never jobs.<id>.if). The previous shape
+  # (`if: contains(inputs.legs, matrix.variant)` on the "e2e" job below) parsed as valid YAML,
+  # so the SnakeYAML-based structural CI gates never caught it, but GitHub rejects the whole
+  # file at push time ("workflow file issue", instant 0s failure on every run) because it never
+  # evaluates the expression at all.
+  #
+  # Fix: compute the already-filtered `matrix.include` list here, from inputs.legs, and hand it
+  # to the "e2e" job as a job output consumed via fromJSON -- no job-level `if:` referencing
+  # `matrix` anywhere, and only the requested legs ever spin up a runner (rather than spinning
+  # up all five and skipping four at the job-if stage, which is what the forbidden shape would
+  # have done even if GitHub allowed it).
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix-include: ${{ steps.set.outputs.matrix_include }}
+    steps:
+      - name: Compute e2e leg matrix from inputs.legs
+        id: set
+        env:
+          LEGS: ${{ inputs.legs }}
+        run: |
+          # Canonical leg definitions -- the single source of truth for which legs exist.
+          # glacier-fallback-mode-discipline requires all five to remain selectable; keep this
+          # table in sync with the "e2e" job's doc comment below when adding/renaming a leg.
+          all_legs='[
+            {"variant":"standard","compose_overrides":"","artifact_suffix":""},
+            {"variant":"killswitch","compose_overrides":"-f docker-compose.override.killswitch.yaml","artifact_suffix":"-killswitch"},
+            {"variant":"a11y","compose_overrides":"-f docker-compose.override.a11y.yaml","artifact_suffix":"-a11y"},
+            {"variant":"insecure","compose_overrides":"-f docker-compose.override.insecure.yaml","artifact_suffix":"-insecure"},
+            {"variant":"share-https","compose_overrides":"-f docker-compose.override.sharehttps.yaml","artifact_suffix":"-share-https"}
+          ]'
+          requested=$(printf '%s' "$LEGS" \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | grep -v '^$' \
+            | jq -R . \
+            | jq -sc .)
+          matrix_include=$(jq -c --argjson requested "$requested" \
+            '[ .[] | select(.variant as $v | $requested | index($v)) ]' <<<"$all_legs")
+          if [[ "$(jq 'length' <<<"$matrix_include")" -eq 0 ]]; then
+            echo "::error::inputs.legs ('$LEGS') matched no known e2e leg -- check spelling against standard,killswitch,a11y,insecure,share-https"
+            exit 1
+          fi
+          echo "matrix_include=$matrix_include" >> "$GITHUB_OUTPUT"
+
   # ── Playwright e2e matrix ─────────────────────────────────────────────────
   #
   #   standard   -- default stack (docker-compose.yaml only)
@@ -59,30 +108,15 @@ jobs:
   # default state. See glacier-fallback-mode-discipline skill and
   # infrastructure/docker-compose.override.*.yaml for details.
   e2e:
+    needs: prepare
     runs-on: ubuntu-latest
-    if: contains(inputs.legs, matrix.variant)
     env:
       GLACIER_IMAGE_TAG: "${{ inputs.image-tag }}"
       REPOSITORY: "/home/runner/work/glacier/glacier/"
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - variant: standard
-            compose_overrides: ""
-            artifact_suffix: ""
-          - variant: killswitch
-            compose_overrides: "-f docker-compose.override.killswitch.yaml"
-            artifact_suffix: "-killswitch"
-          - variant: a11y
-            compose_overrides: "-f docker-compose.override.a11y.yaml"
-            artifact_suffix: "-a11y"
-          - variant: insecure
-            compose_overrides: "-f docker-compose.override.insecure.yaml"
-            artifact_suffix: "-insecure"
-          - variant: share-https
-            compose_overrides: "-f docker-compose.override.sharehttps.yaml"
-            artifact_suffix: "-share-https"
+        include: ${{ fromJSON(needs.prepare.outputs.matrix-include) }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -112,7 +146,7 @@ jobs:
         working-directory: infrastructure
         run: |
           docker compose -f docker-compose.yaml build
-          docker save ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} -o glacier-image.tar
+          docker save "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}" -o glacier-image.tar
       - name: Upload image as artifact (standard leg only)
         if: matrix.variant == 'standard' && inputs.build-image == true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -123,7 +157,7 @@ jobs:
         if: matrix.variant == 'standard' && inputs.build-image == true
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          syft ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} \
+          syft "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}" \
             -o cyclonedx-json=sbom-image.json
       - name: Upload image SBOM (standard leg only)
         if: matrix.variant == 'standard' && inputs.build-image == true

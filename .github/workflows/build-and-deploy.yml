@@ -183,7 +183,7 @@ jobs:
         working-directory: infrastructure
         run: |
           docker compose -f docker-compose.yaml build
-          docker save ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} -o glacier-image.tar
+          docker save "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}" -o glacier-image.tar
       - name: Upload image as artifact (standard leg only)
         if: matrix.build_image == true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -195,7 +195,7 @@ jobs:
         if: matrix.build_image == true
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          syft ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} \
+          syft "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}" \
             -o cyclonedx-json=sbom-image.json
       - name: Upload image SBOM (standard leg only)
         if: matrix.build_image == true
@@ -351,7 +351,7 @@ jobs:
             -f docker-compose.yaml \
             -f docker-compose.override.security.yaml \
             up --build -d glacier proxy
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
               echo "glacier ready"; break
             fi
@@ -518,4 +518,4 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ vars.SSH_HOST }}
-        run: ssh -i ssh.key -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} -C "sudo /usr/local/bin/upgrade-glacier.sh"
+        run: ssh -i ssh.key -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" -C "sudo /usr/local/bin/upgrade-glacier.sh"

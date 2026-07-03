@@ -29,6 +29,49 @@ permissions:
   contents: read
 
 jobs:
+  # actionlint -- GitHub Actions workflow schema/expression linter. Closes a real gap: the
+  # SnakeYAML-based structural CI gates (WorkflowInventory family under
+  # src/test/java/.../ci/*Test.java) parse workflow YAML shape but never evaluate `${{ }}`
+  # expressions, so a job-level `if:` referencing a context that isn't actually available there
+  # (e.g. `matrix` in a job-level `if:` -- only "github", "inputs", "needs", "vars" are legal)
+  # parses as valid YAML and sails through every existing gate, while GitHub rejects the whole
+  # file at push time ("workflow file issue", instant 0s failure on every run). A real push of
+  # this branch surfaced exactly that defect in _e2e.yml; actionlint (GitHub's own de-facto
+  # standard static analyzer for workflow files) catches this class of error locally/in CI
+  # before it ever reaches GitHub's push-time validation. Running it here (the secret-free
+  # _build core) gives every caller -- quality.yml (every push), pull-request.yml (every PR,
+  # incl. forks), full-suite.yml (manual dispatch), security.yml (weekly schedule) -- the same
+  # coverage uniformly, same rationale as frontend-audit/secret-scan living here.
+  #
+  # Installed as a checksum-verified pinned binary download rather than a third-party wrapper
+  # Action (e.g. reviewdog/action-actionlint), to avoid adding another maintainer's Action as a
+  # trust boundary for a check that only needs a single static Go binary -- same supply-chain
+  # pattern already used for sqlite-jdbc/bigbone below (dependency-checksums/). Vetting
+  # (dependency-vetting skill): rhysd/actionlint v1.7.12, released 2026-03-30 (>72h cooldown),
+  # MIT license, ~4k GitHub stars, actively maintained (last push 2026-06-25), not archived --
+  # passes all criteria. ubuntu-latest runner images ship ShellCheck preinstalled, which
+  # actionlint shells out to for embedded `run:` script analysis (the SC-prefixed findings) --
+  # no separate ShellCheck install step is needed.
+  actionlint:
+    name: Lint GitHub Actions workflows (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install actionlint (pinned version, checksum-verified download)
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$asset" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${asset}"
+          echo "${ACTIONLINT_SHA256}  ${asset}" | sha256sum -c -
+          tar -xzf "$asset" actionlint
+          sudo install -m 0755 actionlint /usr/local/bin/actionlint
+          rm -f "$asset" actionlint
+      - name: Run actionlint
+        run: actionlint .github/workflows/*.yml
+
   compile:
     runs-on: ubuntu-latest
     steps:

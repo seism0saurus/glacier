@@ -323,4 +323,84 @@ class WorkflowYamlInventoryTest {
                         + "relocation to _build.yml must be a move, not a copy")
                 .doesNotContainKey("secret-scan");
     }
+
+    /**
+     * Gate 5.8 addendum (devops fix, 2026-07-03): {@code actionlint} (GitHub's own de-facto
+     * standard static analyzer for Actions workflow YAML) closes a real gap that none of the
+     * SnakeYAML-based structural gates in this {@code ci} package can close on their own --
+     * they parse workflow <em>shape</em> but never evaluate {@code ${{ }}} expressions, so a
+     * job-level {@code if:} referencing a context that is not legal there (e.g. {@code matrix}
+     * -- only valid inside a job that declares a {@code strategy.matrix}) parses as perfectly
+     * valid YAML and sails through every existing gate, while GitHub rejects the whole
+     * workflow file at push time ("workflow file issue", instant 0s failure on every run). A
+     * real push of this branch surfaced exactly that defect in {@code _e2e.yml}.
+     *
+     * <p>This test locks the fix -- a pinned, checksum-verified {@code actionlint} job added to
+     * the secret-free {@code _build.yml} core -- against silent removal, renaming, or
+     * degradation into an unpinned/unverified download, the same "a gate must not silently
+     * vanish" concern documented on
+     * {@link #frontendAuditMovesToBuildCoreAndNoLongerDuplicatesInSecurityYml()}.
+     *
+     * <p>Anti-vacuity: asserts against the job's actual id ({@code "actionlint"}) and its
+     * actual human-readable {@code name:}, plus the concrete two-step structure {@code
+     * _build.yml} currently implements (a pinned + checksum-verified install step, then a
+     * separate step that actually invokes the {@code actionlint} binary against the workflow
+     * directory) -- renaming/removing the job, dropping the checksum verification, or removing
+     * the invocation step (installed but never run) each independently turns this test red.
+     */
+    @Test
+    void actionlintJobLintsWorkflowsWithPinnedChecksumVerifiedInstall() {
+        WorkflowFile buildCore = WorkflowInventory.loadWorkflow(BUILD_CORE);
+
+        assertThat(buildCore.jobs())
+                .as("_build.yml must define an 'actionlint' job -- GitHub Actions workflow "
+                        + "schema/expression linter closing the gap SnakeYAML-based structural "
+                        + "gates cannot close (they never evaluate ${{ }} expressions)")
+                .containsKey("actionlint");
+
+        WorkflowJob actionlint = buildCore.job("actionlint").orElseThrow();
+
+        assertThat(actionlint.raw().get("name"))
+                .as("actionlint job must keep its human-readable name identifying it as the "
+                        + "actionlint lint job -- a rename here without updating this gate "
+                        + "would be an unnoticed drift")
+                .isEqualTo("Lint GitHub Actions workflows (actionlint)");
+
+        List<WorkflowStep> steps = actionlint.steps();
+        assertThat(steps)
+                .as("actionlint job in _build.yml must have at least one step")
+                .isNotEmpty();
+
+        WorkflowStep installStep = steps.stream()
+                .filter(s -> s.hasRun() && s.runContains("curl") && s.runContains("actionlint"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "no actionlint install step (curl download) found in _build.yml actionlint job"));
+
+        assertThat(installStep.run())
+                .as("actionlint install step must verify the downloaded binary's checksum "
+                        + "(sha256sum -c) -- an unverified supply-chain download is exactly the "
+                        + "trust-boundary risk this job's own vetting rationale argues against")
+                .contains("sha256sum -c");
+
+        assertThat(installStep.env())
+                .as("actionlint version must be pinned via an explicit env var, not a floating "
+                        + "'latest' download -- reproducible, auditable builds require a fixed version")
+                .containsKey("ACTIONLINT_VERSION");
+        assertThat(installStep.env())
+                .as("the expected checksum must be pinned via an explicit env var alongside the "
+                        + "version, so the sha256sum -c verification has a fixed known-good "
+                        + "value to compare the download against")
+                .containsKey("ACTIONLINT_SHA256");
+
+        boolean invokesActionlintAgainstWorkflows = steps.stream()
+                .anyMatch(s -> s.hasRun()
+                        && s.run().trim().startsWith("actionlint")
+                        && s.runContains(".github/workflows"));
+        assertThat(invokesActionlintAgainstWorkflows)
+                .as("actionlint job in _build.yml must have a step that actually invokes the "
+                        + "'actionlint' binary against .github/workflows/*.yml -- installing it "
+                        + "without ever running it would be a vacuous gate")
+                .isTrue();
+    }
 }
