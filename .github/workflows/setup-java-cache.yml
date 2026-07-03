@@ -29,6 +29,13 @@ on:
         required: true
         type: string
 
+# ADR-CI-03: explicit least-privilege baseline (gate 5.2). This file is unused dead code
+# (superseded by the .github/actions/setup-java-cache composite action; nothing calls it --
+# see WorkflowYamlInventoryTest's field javadoc) but it is still parsed by the CI structural
+# gates, so it still needs an explicit top-level permissions: block like every other file.
+permissions:
+  contents: read
+
 jobs:
   setup:
     runs-on: ubuntu-latest

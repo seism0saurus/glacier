@@ -1,0 +1,187 @@
+name: "_build"
+
+# Secret-free reusable core (ADR-CI-01/02/06). Called by quality.yml (every branch push),
+# pull-request.yml (every PR, including forks), full-suite.yml (manual dispatch), and
+# security.yml (weekly schedule) -- so every one of those callers gets the same compile ->
+# test -> package pipeline plus the frontend dependency audit (SR-NA-01..09) and the
+# gitleaks secret scan (D-13/SR-8), without duplicating the job definitions in each caller.
+#
+# Never declares `secrets: inherit` on any downstream call and never references a
+# repository secret other than the ambient GITHUB_TOKEN (used only by gitleaks-action for
+# its own API rate-limit avoidance) -- ADR-CI-02, so callers stay secret-free even when
+# reachable by a fork PR diff.
+
+on:
+  workflow_call:
+    inputs:
+      cache-prefix:
+        description: >
+          Cache key family prefix distinguishing this caller's Maven/npm cache namespace
+          from every other caller's (e.g. "main" for quality.yml, "pull" for
+          pull-request.yml, "dispatch" for full-suite.yml, "security" for security.yml).
+          Callers reachable from a fork PR MUST pass a pull/pr-prefixed value so their
+          cache entries can never be read back by a main-branch build (ADR-CI-09).
+        required: false
+        type: string
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up JDK 23 and cache (save)
+        uses: ./.github/actions/setup-java-cache
+        with:
+          cache-prefix: ${{ inputs.cache-prefix }}
+          cache-mode: save
+      - name: Compile the webapp
+        run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
+
+  test:
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up JDK 23 and cache (restore)
+        uses: ./.github/actions/setup-java-cache
+        with:
+          cache-prefix: ${{ inputs.cache-prefix }}
+      - name: Lint the frontend
+        working-directory: frontend
+        run: npm run lint
+      - name: Verify frontend architecture (Sheriff -- DDD bounded contexts + layer rules)
+        working-directory: frontend
+        run: npm run arch
+      - name: Check i18n parity (template @@ids vs messages.en.json)
+        working-directory: frontend
+        run: npm run i18n:check
+      - name: Verify sqlite-jdbc SHA-256 checksum
+        # sha256sum -c resolves the filename in the .sha256 file relative to the CWD,
+        # so the check must run from inside dependency-checksums/.
+        working-directory: dependency-checksums
+        run: |
+          curl -fsSL -o sqlite-jdbc-3.49.1.0.jar \
+            https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.49.1.0/sqlite-jdbc-3.49.1.0.jar
+          sha256sum -c sqlite-jdbc-3.49.1.0.sha256
+          rm sqlite-jdbc-3.49.1.0.jar
+      # ADR-SEC-02 supply-chain pin: bigbone 2.0.0 is a stable Maven Central release
+      # (io.github.pattafeufeu, since 2026-06-15; the historical SNAPSHOT tripwire is
+      # retired). Download the exact jar the build will use and compare its SHA-256
+      # against the recorded known-good value, same pattern as sqlite-jdbc above.
+      - name: Verify bigbone SHA-256 checksum
+        working-directory: dependency-checksums
+        run: |
+          curl -fsSL -o bigbone-2.0.0.jar \
+            https://repo1.maven.org/maven2/io/github/pattafeufeu/bigbone/2.0.0/bigbone-2.0.0.jar
+          sha256sum -c bigbone-2.0.0.sha256
+          rm bigbone-2.0.0.jar
+      - name: Verify the webapp
+        run: ./mvnw --batch-mode verify --file pom.xml
+      - name: Upload Surefire results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: surefire-results
+          path: target/surefire-reports
+      - name: Upload Jacoco reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jacoco-reports
+          path: target/site/jacoco
+      - name: Upload Jasmin reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: jasmin-reports
+          path: frontend/coverage/glacier-frontend
+
+  package:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up JDK 23 and cache (restore)
+        uses: ./.github/actions/setup-java-cache
+        with:
+          cache-prefix: ${{ inputs.cache-prefix }}
+      - name: Package the webapp
+        run: ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
+      - name: Check if frontend is bundled into jar
+        run: |
+          if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
+            echo "angular packaged to jar"
+          else
+            echo "angular not correctly packaged!"
+            ls -lah /home/runner/work/glacier/glacier/target/classes
+            exit 1
+          fi
+      - name: Copy jar
+        run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
+      - name: Archive glacier jar
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: glacier
+          path: glacier.jar
+          retention-days: 1
+      - name: Upload CycloneDX SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: |
+            target/bom.json
+            target/bom.xml
+          retention-days: 90
+      # NOTE: the Maven dependency-graph submission step (advanced-security/maven-
+      # dependency-submission-action) is deliberately NOT here -- it needs contents:write,
+      # and _build.yml is called from untrusted-tier contexts (quality.yml on every branch
+      # push, pull-request.yml on every fork PR). Granting contents:write here would leak
+      # a write scope into those untrusted paths. It lives instead as its own
+      # `dependency-submission` job in build-and-deploy.yml, the single privileged
+      # workflow, gated by the tag-push release trigger (SR-CI-02/06, ADR-CI-01).
+
+  # frontend-audit -- npm audit gate for the Angular SPA bundle (SR-FUZZ-07, SR-NA-01..09).
+  # Relocated from security.yml so every caller (push, PR, manual dispatch, weekly
+  # schedule) gets incremental supply-chain coverage uniformly (SR-NA-03).
+  frontend-audit:
+    name: Frontend dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.14.0'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Audit frontend dependencies (high+ threshold)
+        working-directory: frontend
+        run: npm audit --audit-level=high --omit=dev
+        # SR-NA-01/SR-NA-04: gates on high/critical advisories; no continue-on-error.
+        # --omit=dev: scopes audit to production runtime deps only; dev-toolchain
+        # advisories (e.g. @angular/cli, webpack loaders) never ship in the deployed SPA.
+
+  # secret-scan -- gitleaks gate (D-13/SR-8 at the VCS layer): no committed secrets
+  # (wallId / token / cookie / API key). Relocated from security.yml alongside
+  # frontend-audit for the same reason -- uniform coverage across every caller.
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # gitleaks-action scans the pushed/PR commit range (base^..head), so the full
+          # history must be present -- a shallow clone fails on multi-commit pushes.
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

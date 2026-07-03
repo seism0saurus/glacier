@@ -1,0 +1,20 @@
+name: "Quality"
+
+# Gives every commit on every branch a fast, secret-free quality signal (feature request:
+# "Every commit on a branch should trigger quality checks") by calling the shared _build
+# reusable core. Deliberately does NOT filter on tags: -- release tag pushes are the
+# separate build-and-deploy.yml path (ADR-CI-18); this file must not race or double-run
+# on a release.
+
+on:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_build.yml
+    with:
+      cache-prefix: main

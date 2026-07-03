@@ -1,0 +1,245 @@
+name: "_security-dast"
+
+# Self-contained dynamic-scan reusable core (ADR-CI-06). Never assumes a GHCR image
+# already exists -- it packages the jar and builds the Docker image it scans within its
+# own run, so it runs identically from quality.yml/pull-request.yml (fork PRs included),
+# full-suite.yml, and the scheduled security.yml, without any of them needing to have
+# already pushed an image to the registry first.
+#
+# Rules of engagement: all scanners target ONLY http://localhost:8080 (the local
+# container started from the jar this run just built). The upstream Mastodon container is
+# NEVER actively scanned. No real fediverse instance is ever contacted from this workflow.
+
+on:
+  workflow_call:
+    inputs:
+      image-tag:
+        description: "Tag applied to the locally-built glacier Docker image."
+        required: false
+        type: string
+        default: "dast-local"
+      run-full-scan:
+        description: "Also run the ZAP full active scan job (~30 min) after the baseline."
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Baseline dynamic scan: ZAP baseline + security headers + WS BOLA + Trivy ──────────
+  # Job id carries the "-sarif" suffix so it is on the elevated-scope allowlist (gate 5.2 /
+  # WorkflowPermissionsMinimizationTest) for the security-events: write grant its
+  # upload-sarif steps need.
+  dast-baseline-sarif:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GLACIER_IMAGE_TAG: ${{ inputs.image-tag }}
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up JDK 23 and cache (restore)
+        uses: ./.github/actions/setup-java-cache
+        with:
+          cache-prefix: dast
+      - name: Package the webapp
+        run: ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
+      - name: Copy jar into build context
+        run: |
+          mkdir -p infrastructure/glacier
+          cp target/glacier-*.jar infrastructure/glacier/glacier.jar
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start security stack (builds the Docker image in-run)
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            up --build -d glacier proxy
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
+              echo "glacier ready"; break
+            fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/ > /dev/null
+      - name: ZAP baseline scan
+        working-directory: infrastructure
+        run: |
+          docker run --rm \
+            --network=infrastructure_mastodon \
+            -v "$(pwd)/security:/zap/wrk" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -cmd -autorun /zap/wrk/zap/baseline.yaml \
+            || true
+      - name: Diff ZAP baseline against committed allowlist
+        working-directory: infrastructure
+        run: |
+          python3 security/scripts/diff-zap-baseline.py \
+            security/zap-baseline.json \
+            security/baselines/zap-baseline.json \
+            --threshold Medium
+      - name: Header audit
+        working-directory: infrastructure
+        env:
+          BASE_URL: "http://localhost:8080"
+          SHARE_BASE_URL: "http://localhost:8080"
+          EXPECT_SECURE_COOKIE: "false"
+        run: bash security/scripts/header-audit.sh
+      - name: WebSocket BOLA probe
+        working-directory: infrastructure
+        env:
+          BASE_URL: "http://localhost:8080"
+        run: |
+          pip install --quiet websocket-client==1.8.0
+          python3 security/scripts/ws-bola-probe.py
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/seism0saurus/glacier:${{ inputs.image-tag }}
+          format: "sarif"
+          output: "trivy-report.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+          ignore-unfixed: true
+          ignorefile: "infrastructure/security/.trivyignore"
+      - name: Upload Trivy image SARIF
+        if: always()
+        continue-on-error: true # RR-1/ADR-CI-15: fork PRs cannot write the Security tab; the finding gate stays on the scanner exit-code above.
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: "trivy-report.sarif"
+          category: trivy-image
+      - name: Trivy filesystem scan (jar dependencies)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: infrastructure/glacier/
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+          trivyignores: infrastructure/security/.trivyignore-fs
+          format: sarif
+          output: trivy-fs-report.sarif
+      - name: Upload Trivy filesystem SARIF
+        if: always()
+        continue-on-error: true # RR-1/ADR-CI-15: fork-tolerant upload; scanner exit-code above still gates the run.
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: trivy-fs-report.sarif
+          category: trivy-fs
+      - name: Upload security artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: security-reports-${{ inputs.image-tag }}
+          path: |
+            infrastructure/security/zap-baseline.html
+            infrastructure/security/zap-baseline.json
+            trivy-report.sarif
+            trivy-fs-report.sarif
+      - name: Compose logs on failure
+        if: failure()
+        working-directory: infrastructure
+        run: |
+          docker ps -a
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            logs --tail=200
+      - name: Tear down
+        if: always()
+        working-directory: infrastructure
+        run: |
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            down -v --remove-orphans
+
+  # ── Optional heavier active scan (manual full-scan escape hatch) ──────────────────────
+  dast-full-scan-sarif:
+    if: inputs.run-full-scan == true
+    needs: dast-baseline-sarif
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      GLACIER_IMAGE_TAG: ${{ inputs.image-tag }}
+      REPOSITORY: "/home/runner/work/glacier/glacier/"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up JDK 23 and cache (restore)
+        uses: ./.github/actions/setup-java-cache
+        with:
+          cache-prefix: dast
+      - name: Package the webapp
+        run: ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
+      - name: Copy jar into build context
+        run: |
+          mkdir -p infrastructure/glacier
+          cp target/glacier-*.jar infrastructure/glacier/glacier.jar
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Start stack (builds the Docker image in-run)
+        working-directory: infrastructure
+        run: |
+          tar -xf infrastructure-content.tar.gz -C ./
+          chmod -R a+rwx mastodon
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            up --build -d glacier proxy
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: ZAP full active scan
+        working-directory: infrastructure
+        run: |
+          docker run --rm \
+            --network=infrastructure_mastodon \
+            -v "$(pwd)/security:/zap/wrk" \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -cmd -autorun /zap/wrk/zap/full-scan.yaml || true
+      - name: Diff full-scan against baseline
+        working-directory: infrastructure
+        run: |
+          python3 security/scripts/diff-zap-baseline.py \
+            security/zap-full-scan.json \
+            security/baselines/zap-baseline.json \
+            --threshold High
+      - name: Upload full-scan reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zap-full-scan-reports-${{ inputs.image-tag }}
+          path: |
+            infrastructure/security/zap-full-scan.html
+            infrastructure/security/zap-full-scan.json
+            infrastructure/security/zap-full-scan-sarif.sarif
+      - name: Upload full-scan SARIF
+        if: always()
+        continue-on-error: true # RR-1/ADR-CI-15: fork-tolerant upload.
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: "infrastructure/security/zap-full-scan-sarif.sarif"
+      - name: Tear down
+        if: always()
+        working-directory: infrastructure
+        run: |
+          docker compose \
+            -f docker-compose.yaml \
+            -f docker-compose.override.security.yaml \
+            down -v --remove-orphans

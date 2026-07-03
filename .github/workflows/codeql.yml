@@ -9,6 +9,13 @@ on:
   schedule:
     - cron: '15 8 * * 2'
 
+# ADR-CI-03: explicit least-privilege top-level baseline. The `analyze` job below declares
+# its own broader job-level permissions block (actions:read/contents:read/security-events:
+# write), which fully overrides this top-level default for that job -- see GitHub Actions
+# docs on job-level permissions.
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze
@@ -58,27 +65,31 @@ jobs:
       with:
         java-version: '23'
         distribution: 'temurin'
+    # Cache-family isolation (ADR-CI-09): codeql.yml runs on both push (main) and
+    # pull_request (incl. forks). The literal ternary embeds a "pull"-tagged prefix for PR
+    # runs and a "main"-tagged prefix for push runs, so a fork PR run can never read back
+    # (or poison) the main-branch cache family, while still caching within either family.
     - name: Use cache for local Maven repository
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ~/.m2/repository
-        key: ${{ runner.os }}-m2-ql-${{ hashFiles('~/.m2/repository') }}
+        key: ${{ runner.os }}-m2-ql-${{ github.event_name == 'pull_request' && 'pull' || 'main' }}-${{ hashFiles('~/.m2/repository') }}
         restore-keys: |
-          ${{ runner.os }}-m2-ql-
+          ${{ runner.os }}-m2-ql-${{ github.event_name == 'pull_request' && 'pull' || 'main' }}-
     - name: Use cache for node
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: frontend/node
-        key: ${{ runner.os }}-node-ql-${{ hashFiles('~/.m2/frontend/node') }}
+        key: ${{ runner.os }}-node-ql-${{ github.event_name == 'pull_request' && 'pull' || 'main' }}-${{ hashFiles('~/.m2/frontend/node') }}
         restore-keys: |
-          ${{ runner.os }}-node-ql-
+          ${{ runner.os }}-node-ql-${{ github.event_name == 'pull_request' && 'pull' || 'main' }}-
     - name: Use cache for node_modules
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: frontend/node_modules
-        key: ${{ runner.os }}-node_modules-ql-${{ hashFiles('~/.m2/frontend/node_modules') }}
+        key: ${{ runner.os }}-node_modules-ql-${{ github.event_name == 'pull_request' && 'pull' || 'main' }}-${{ hashFiles('~/.m2/frontend/node_modules') }}
         restore-keys: |
-          ${{ runner.os }}-node_modules-ql-
+          ${{ runner.os }}-node_modules-ql-${{ github.event_name == 'pull_request' && 'pull' || 'main' }}-
     - name: Compile the webapp
       run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
 

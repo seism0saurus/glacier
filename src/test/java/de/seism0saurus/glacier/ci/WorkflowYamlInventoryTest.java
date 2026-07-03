@@ -1,225 +1,326 @@
 package de.seism0saurus.glacier.ci;
 
-import org.junit.jupiter.api.BeforeAll;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.Test;
-import org.yaml.snakeyaml.Yaml;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * SR-NA-07: Structural gate for {@code .github/workflows/security.yml}.
+ * Gate 5.8 (WorkflowYamlInventory): bijective completeness of the {@code .github/workflows/}
+ * inventory against the trust-tier topology, plus the relocated SR-NA-01..09 npm-audit
+ * invariants (ADR-CI-07, {@code docs/decisions/2026-07-03-planning-secure-ci-pipeline.md}).
  *
- * <p>Guards against silent regression of the npm audit CI job. Three invariants are enforced:
- * <ol>
- *   <li>All three required triggers ({@code push}, {@code pull_request}, {@code schedule})
- *       are present in the {@code on:} block — protecting push, PR merge, and weekly CVE
- *       detection scenarios respectively (SR-NA-01..03).</li>
- *   <li>A step running {@code npm ci} and a step running {@code npm audit} both exist
- *       under the {@code frontend-audit} job, and the working directory is {@code frontend}
- *       (SR-NA-05, SR-NA-09).</li>
- *   <li>The audit step specifies {@code --audit-level=high} or {@code --audit-level=critical},
- *       and {@code continue-on-error} is absent or {@code false} on that step (SR-NA-01,
- *       SR-NA-04).</li>
- * </ol>
+ * <h2>Why this class changed shape</h2>
+ * Before the trust-tier rebuild, {@code security.yml} carried {@code push}/{@code pull_request}
+ * triggers of its own and ran the {@code frontend-audit} (npm audit) and {@code secret-scan}
+ * (gitleaks) jobs directly, gated by those triggers. This class asserted exactly that: three
+ * triggers present, {@code frontend-audit} job present with specific steps.
  *
- * <p>Parsing strategy: SnakeYAML traverses the YAML object tree — no string grep so that
- * YAML structure changes (reordering steps, changing step names) do not silently pass the
- * gate through textual coincidence.
+ * <p>Under the new topology, {@code security.yml} is repaired into a pure
+ * <b>schedule + workflow_dispatch</b> wrapper around the secret-free reusable core
+ * ({@code _build} + {@code _security-dast}) — weekly CVE re-detection and manual full scans,
+ * nothing event-driven. The push/PR-triggered supply-chain checks that used to live in
+ * {@code security.yml} (frontend dependency audit, secret scanning) move into
+ * {@code _build.yml}, the secret-free reusable core called by {@code quality.yml} (every
+ * branch push), {@code pull-request.yml} (every PR, including forks), {@code full-suite.yml}
+ * (manual dispatch), <em>and</em> {@code security.yml} itself (weekly schedule) — so weekly CVE
+ * detection (SR-NA-03) is preserved as a side effect of {@code security.yml} calling
+ * {@code _build}, without {@code security.yml} needing its own copy of the audit job.
  *
- * <p>The workflow file is resolved relative to the project root using the same convention
- * as {@link de.seism0saurus.glacier.security.TrivyignoreExpiryTest} so the test works both
- * locally and in CI.
+ * <p><b>This is the exact failure mode gate 5.8 exists to prevent</b>: if this test kept
+ * asserting against {@code security.yml} after the jobs moved out, it would report green
+ * forever — vacuously, because it would simply find nothing to check in a workflow that
+ * legitimately no longer contains the assertions' subject matter. Every assertion below that
+ * used to target {@code security.yml} now targets the new home ({@code _build.yml}) instead,
+ * <em>and</em> additionally asserts the old home no longer duplicates the job (drift guard: a
+ * relocation must be a move, not a copy).
+ *
+ * <h2>Deliberate RED state (as of Lane A / tdd-ddd-implementer, before Lane C)</h2>
+ * The reusable core files ({@code _build.yml}, {@code _e2e.yml}, {@code _security-dast.yml})
+ * and the new top-level workflows ({@code quality.yml}, {@code pr-comment.yml},
+ * {@code full-suite.yml}) do not exist yet — Lane C (devops-infra-engineer) creates them.
+ * {@code security.yml} still carries its old {@code push}/{@code pull_request} triggers and
+ * its own {@code frontend-audit}/{@code secret-scan} jobs, and {@code verify.yml} (the
+ * branch-marker release workflow retired by ADR-CI-18) still exists. Every test method below
+ * is therefore RED until Lane C's rebuild lands; see the class-level {@code ./mvnw} evidence
+ * recorded in the implementation decision log. Gate 5.5 ({@code quality.yml}'s own trigger
+ * correctness) belongs to the {@code secure-tdd-implementer} lane (SR-CI-13) and is
+ * intentionally NOT duplicated here — this class only asserts file-inventory completeness and
+ * the SR-NA relocation, not {@code quality.yml}'s internal trigger semantics.
+ *
+ * <p>Parsing strategy: all assertions traverse the {@link WorkflowInventory} object model —
+ * no string grep — so YAML reordering/reformatting cannot produce a false positive or
+ * false negative.
  *
  * <p><b>Mode applicability</b>: mode-agnostic — CI workflow correctness is independent of
  * Glacier's operational mode (live / fallback / killswitch / insecure).
  *
- * <p>OWASP: A06:2021 — Vulnerable and Outdated Components (frontend supply-chain gate).
- * Security requirements: SR-NA-01, SR-NA-02, SR-NA-03, SR-NA-04, SR-NA-05, SR-NA-07, SR-NA-09.
+ * <p>OWASP: A06:2021 — Vulnerable and Outdated Components (frontend supply-chain gate);
+ * A05:2021 — Security Misconfiguration (workflow-inventory drift).
+ * Security requirements: SR-NA-01, SR-NA-03, SR-NA-04, SR-NA-05, SR-NA-07, SR-NA-09; ADR-CI-01,
+ * ADR-CI-06, ADR-CI-07, ADR-CI-18.
  *
  * @see <a href="https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/">OWASP A06:2021</a>
  */
-// frontend-audit — npm audit gate for the Angular SPA bundle (SR-FUZZ-07, SR-NA-01..09)
 class WorkflowYamlInventoryTest {
 
-    private static final String WORKFLOW_PATH = ".github/workflows/security.yml";
+    /**
+     * The complete, ADR-governed target set of workflow files under {@code .github/workflows/}
+     * (topology table in {@code docs/decisions/2026-07-03-planning-secure-ci-pipeline.md}).
+     * Deliberately does <b>not</b> include {@code setup-java-cache.yml}: that file is
+     * pre-existing dead code (superseded by the {@code .github/actions/setup-java-cache}
+     * composite action; nothing calls it — verified via
+     * {@code grep -rn "setup-java-cache.yml" .github/workflows/*.yml}) that predates and is
+     * out of scope for this ADR set. Its removal is a separate, not-yet-made decision and is
+     * intentionally left unconstrained here rather than silently forced through this gate.
+     */
+    private static final Set<String> ADR_GOVERNED_WORKFLOW_FILES = Set.of(
+            "quality.yml",
+            "pull-request.yml",
+            "pr-comment.yml",
+            "full-suite.yml",
+            "build-and-deploy.yml",
+            "security.yml",
+            "codeql.yml",
+            "mutation.yml",
+            "_build.yml",
+            "_e2e.yml",
+            "_security-dast.yml"
+    );
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> loadWorkflow() throws IOException {
-        Path workflowFile = Paths.get(WORKFLOW_PATH);
-        try (InputStream in = Files.newInputStream(workflowFile)) {
-            Yaml yaml = new Yaml();
-            return (Map<String, Object>) yaml.load(in);
+    /**
+     * Files that ADR-CI-18 explicitly retires: {@code verify.yml}'s
+     * {@code push: branches: ["*.*.*"]} trigger was the branch-based release marker that git-tag
+     * releases (ADR-CI-18) replace. {@code quality.yml} (push on every branch, calling
+     * {@code _build}) supersedes its "push triggers quality checks" role.
+     */
+    private static final Set<String> RETIRED_WORKFLOW_FILES = Set.of("verify.yml");
+
+    private static final String BUILD_CORE = "_build.yml";
+    private static final String SECURITY_YML = "security.yml";
+
+    /**
+     * Bijective completeness check (gate 5.8's core purpose): the discovered
+     * {@code .github/workflows/} file set, minus the one documented out-of-scope exception,
+     * must equal exactly the ADR-governed target set — no ADR-mandated file missing, no
+     * unexplained extra file, and the ADR-CI-18-retired {@code verify.yml} gone.
+     *
+     * <p>This exists so that if Lane C forgets to create a reusable-core file (or forgets to
+     * remove {@code verify.yml}), the gap is caught here directly — independently of whether
+     * any individual security gate happens to reference that specific file by name. A gate
+     * that only asserts properties of files it already expects to exist can never notice a
+     * file that should exist but doesn't.
+     */
+    @Test
+    void everyAdrGovernedWorkflowFileExistsAndParses() {
+        List<WorkflowFile> discovered = WorkflowInventory.loadAllWorkflows();
+        Set<String> discoveredNames = new LinkedHashSet<>();
+        for (WorkflowFile file : discovered) {
+            discoveredNames.add(file.fileName());
         }
+
+        SoftAssertions softly = new SoftAssertions();
+
+        for (String expected : ADR_GOVERNED_WORKFLOW_FILES) {
+            softly.assertThat(discoveredNames)
+                    .as("ADR-governed workflow file '%s' must exist under .github/workflows/ "
+                            + "(topology table, 2026-07-03-planning-secure-ci-pipeline.md) "
+                            + "-- expected to be RED until Lane C (devops-infra-engineer) builds it",
+                            expected)
+                    .contains(expected);
+        }
+
+        for (String retired : RETIRED_WORKFLOW_FILES) {
+            softly.assertThat(discoveredNames)
+                    .as("'%s' must be removed -- ADR-CI-18 retires the branch-based release "
+                            + "marker it implemented; quality.yml supersedes its push-trigger role",
+                            retired)
+                    .doesNotContain(retired);
+        }
+
+        Set<String> unexplained = new LinkedHashSet<>(discoveredNames);
+        unexplained.removeAll(ADR_GOVERNED_WORKFLOW_FILES);
+        unexplained.removeAll(RETIRED_WORKFLOW_FILES);
+        unexplained.remove("setup-java-cache.yml"); // documented out-of-scope exception, see field javadoc
+
+        softly.assertThat(unexplained)
+                .as("every .github/workflows/*.yml file must be accounted for in either "
+                        + "ADR_GOVERNED_WORKFLOW_FILES or the documented out-of-scope exception "
+                        + "-- an unexplained file here means the completeness gate has a blind spot")
+                .isEmpty();
+
+        for (WorkflowFile file : discovered) {
+            softly.assertThat(file.raw())
+                    .as("%s must parse to a non-empty YAML mapping", file.relativePath())
+                    .isNotEmpty();
+        }
+
+        softly.assertAll();
     }
 
     /**
-     * SR-NA-02, SR-NA-03: Asserts that the {@code on:} block of {@code security.yml} contains
-     * all three required triggers: {@code push}, {@code pull_request}, and {@code schedule}.
+     * SR-NA-03: {@code security.yml}'s new role is schedule-driven CVE re-detection plus a
+     * manual full-scan escape hatch -- nothing else. It must no longer carry {@code push} or
+     * {@code pull_request} triggers of its own; those responsibilities move to
+     * {@code quality.yml} / {@code pull-request.yml} calling the shared {@code _build} core
+     * (gate 5.5, owned by secure-tdd-implementer -- not duplicated here).
      *
-     * <p>This traverses the YAML tree — it does not grep the raw text — so YAML aliasing,
-     * reordering, or reformatting cannot produce a false positive.
-     *
-     * <p>Note: SnakeYAML 2.x (YAML 1.1 spec) parses the unquoted key {@code on} as the
-     * boolean {@code true}, not as the string {@code "on"}. The lookup must use
-     * {@code Boolean.TRUE} as the map key.
+     * <p>Replaces the pre-rebuild {@code triggersIncludePushPullRequestAndSchedule} assertion,
+     * which required {@code push}+{@code pull_request}+{@code schedule}. That assertion is the
+     * exact "gate keeps checking the old shape" trap this class's javadoc describes: after the
+     * rebuild, requiring {@code push}/{@code pull_request} on {@code security.yml} would fail
+     * for the *right* reason once Lane C repairs it, so the requirement is inverted here.
      */
     @Test
-    void triggersIncludePushPullRequestAndSchedule() throws IOException {
-        Map<String, Object> workflow = loadWorkflow();
-
-        // SnakeYAML 2.x (YAML 1.1): unquoted 'on' is parsed as Boolean.TRUE, not String "on"
-        Object onBlock = workflow.get(Boolean.TRUE);
-        assertThat(onBlock)
-                .as("The 'on:' block of security.yml must be a map with trigger keys (SnakeYAML 2.x parses 'on' as Boolean.TRUE)")
-                .isInstanceOf(Map.class);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> triggers = (Map<String, Object>) onBlock;
+    void securityYmlTriggersAreScheduleAndWorkflowDispatchOnly() {
+        WorkflowFile securityYml = WorkflowInventory.loadWorkflow(SECURITY_YML);
+        Map<String, Object> triggers = WorkflowInventory.triggersOf(securityYml);
 
         assertThat(triggers)
-                .as("security.yml must have a 'push' trigger (SR-NA-02)")
-                .containsKey("push");
-
-        assertThat(triggers)
-                .as("security.yml must have a 'pull_request' trigger (SR-NA-02: gates PR merges against vulnerable deps)")
-                .containsKey("pull_request");
-
-        assertThat(triggers)
-                .as("security.yml must have a 'schedule' trigger (SR-NA-03: weekly CVE detection after last commit)")
+                .as("security.yml must keep its 'schedule' trigger (SR-NA-03: weekly CVE detection)")
                 .containsKey("schedule");
+        assertThat(triggers)
+                .as("security.yml must keep a 'workflow_dispatch' trigger (manual full-scan escape hatch)")
+                .containsKey("workflow_dispatch");
+        assertThat(triggers)
+                .as("security.yml must NOT have a 'push' trigger anymore -- that responsibility "
+                        + "moves to quality.yml calling the shared _build core (ADR-CI-01)")
+                .doesNotContainKey("push");
+        assertThat(triggers)
+                .as("security.yml must NOT have a 'pull_request' trigger anymore -- that "
+                        + "responsibility moves to pull-request.yml calling the shared _build "
+                        + "core, uniformly for same-repo AND fork PRs (ADR-CI-01)")
+                .doesNotContainKey("pull_request");
     }
 
     /**
-     * SR-NA-05, SR-NA-09: Asserts that the {@code frontend-audit} job contains a step whose
-     * {@code run} script includes {@code npm ci} and a step whose {@code run} script includes
-     * {@code npm audit}, and that the working directory is {@code frontend} for each.
-     *
-     * <p>Both {@code npm ci} and {@code npm audit} may appear in the same step or in separate
-     * steps; the assertion covers both cases. {@code npm ci} ensures the exact lockfile is
-     * installed (no drift); {@code npm audit} performs the actual vulnerability scan.
+     * SR-NA-01, SR-NA-04, SR-NA-05, SR-NA-07, SR-NA-09: the {@code frontend-audit} job (npm
+     * dependency audit) must live in the secret-free reusable core ({@code _build.yml}) with
+     * its invariants intact, and must no longer also exist in {@code security.yml} (a
+     * relocation must be a move, not a copy -- leaving a stale duplicate behind would let the
+     * two copies drift apart silently).
      */
     @Test
-    void auditStepUsesNpmCiAndNpmAudit() throws IOException {
-        Map<String, Object> workflow = loadWorkflow();
+    void frontendAuditMovesToBuildCoreAndNoLongerDuplicatesInSecurityYml() {
+        assertThat(Files.exists(WorkflowInventory.WORKFLOWS_DIR.resolve(BUILD_CORE)))
+                .as("_build.yml must exist before the frontend-audit relocation can be verified "
+                        + "-- expected to be RED until Lane C creates the reusable core")
+                .isTrue();
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> jobs = (Map<String, Object>) workflow.get("jobs");
-        assertThat(jobs)
-                .as("security.yml must define a 'frontend-audit' job (SR-NA-07)")
+        WorkflowFile buildCore = WorkflowInventory.loadWorkflow(BUILD_CORE);
+        assertThat(buildCore.jobs())
+                .as("_build.yml must define a 'frontend-audit' job (relocated from security.yml, SR-NA-07)")
                 .containsKey("frontend-audit");
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> frontendAuditJob = (Map<String, Object>) jobs.get("frontend-audit");
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> steps = (List<Map<String, Object>>) frontendAuditJob.get("steps");
+        WorkflowJob frontendAudit = buildCore.job("frontend-audit").orElseThrow();
+        List<WorkflowStep> steps = frontendAudit.steps();
         assertThat(steps)
-                .as("frontend-audit job must have at least one step")
+                .as("frontend-audit job in _build.yml must have at least one step")
                 .isNotEmpty();
 
-        boolean foundNpmCi = steps.stream().anyMatch(step -> {
-            String run = (String) step.get("run");
-            return run != null && run.contains("npm ci");
-        });
+        boolean foundNpmCi = steps.stream().anyMatch(s -> s.runContains("npm ci"));
         assertThat(foundNpmCi)
-                .as("frontend-audit job must have a step with 'npm ci' to ensure lockfile fidelity (SR-NA-05)")
+                .as("frontend-audit job in _build.yml must have a step with 'npm ci' (SR-NA-05)")
                 .isTrue();
 
-        boolean foundNpmAudit = steps.stream().anyMatch(step -> {
-            String run = (String) step.get("run");
-            return run != null && run.contains("npm audit");
-        });
+        boolean foundNpmAudit = steps.stream().anyMatch(s -> s.runContains("npm audit"));
         assertThat(foundNpmAudit)
-                .as("frontend-audit job must have a step with 'npm audit' (SR-NA-01)")
+                .as("frontend-audit job in _build.yml must have a step with 'npm audit' (SR-NA-01)")
                 .isTrue();
 
-        // SR-NA-09: working-directory must be 'frontend' (or run command uses cd frontend)
         boolean frontendWorkingDir = steps.stream().anyMatch(step -> {
-            String run = (String) step.get("run");
-            String wd = (String) step.get("working-directory");
-            if (run == null) return false;
-            if (run.contains("npm ci") || run.contains("npm audit")) {
-                return "frontend".equals(wd) || run.contains("cd frontend");
+            if (!step.hasRun()) {
+                return false;
+            }
+            if (step.runContains("npm ci") || step.runContains("npm audit")) {
+                return "frontend".equals(step.workingDirectory()) || step.runContains("cd frontend");
             }
             return false;
         });
         assertThat(frontendWorkingDir)
-                .as("npm ci/npm audit steps must specify working-directory: frontend (or cd frontend) so they target the Angular package.json (SR-NA-09)")
+                .as("npm ci/npm audit steps in _build.yml must target the Angular package.json "
+                        + "via working-directory: frontend (or cd frontend) (SR-NA-09)")
                 .isTrue();
-    }
 
-    /**
-     * SR-NA-01, SR-NA-04: Asserts that the npm audit step specifies
-     * {@code --audit-level=high} or {@code --audit-level=critical}, that {@code --omit=dev}
-     * is present to restrict the scan to production runtime dependencies only, and that
-     * {@code continue-on-error} is absent or explicitly {@code false} on the audit step.
-     *
-     * <p>A missing or {@code true} {@code continue-on-error} would silently swallow audit
-     * failures and defeat the purpose of the gate (SR-NA-04).
-     *
-     * <p>{@code --omit=dev} is required because dev-toolchain packages (e.g. {@code @angular/cli},
-     * webpack loaders) are never included in the deployed Angular SPA bundle and routinely carry
-     * advisories that are not exploitable in production. Without this flag the gate generates
-     * noise and fails on build-time-only vulnerabilities, defeating the signal/noise ratio.
-     */
-    @Test
-    void auditLevelIsHighOrCritical() throws IOException {
-        Map<String, Object> workflow = loadWorkflow();
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> jobs = (Map<String, Object>) workflow.get("jobs");
-        assertThat(jobs)
-                .as("security.yml must define a 'frontend-audit' job")
-                .containsKey("frontend-audit");
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> frontendAuditJob = (Map<String, Object>) jobs.get("frontend-audit");
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> steps = (List<Map<String, Object>>) frontendAuditJob.get("steps");
-
-        // Find the npm audit step
-        Map<String, Object> auditStep = steps.stream()
-                .filter(step -> {
-                    String run = (String) step.get("run");
-                    return run != null && run.contains("npm audit");
-                })
+        WorkflowStep auditStep = steps.stream()
+                .filter(s -> s.runContains("npm audit"))
                 .findFirst()
-                .orElse(null);
+                .orElseThrow(() -> new AssertionError("no 'npm audit' step found in _build.yml frontend-audit job"));
 
-        assertThat(auditStep)
-                .as("frontend-audit job must contain a step with 'npm audit'")
-                .isNotNull();
-
-        String runScript = (String) auditStep.get("run");
-        assertThat(runScript)
-                .as("npm audit step must specify --audit-level=high or --audit-level=critical to avoid low/moderate noise (SR-NA-01)")
+        assertThat(auditStep.run())
+                .as("npm audit step in _build.yml must specify --audit-level=high or "
+                        + "--audit-level=critical to avoid low/moderate noise (SR-NA-01)")
                 .satisfiesAnyOf(
                         s -> assertThat(s).contains("--audit-level=high"),
                         s -> assertThat(s).contains("--audit-level=critical")
                 );
-
-        assertThat(runScript)
-                .as("npm audit step must include --omit=dev to restrict the scan to production runtime " +
-                    "dependencies only — dev-toolchain advisories (e.g. @angular/cli, webpack loaders) are " +
-                    "never deployed in the SPA bundle and must not block the gate (SR-NA-01)")
+        assertThat(auditStep.run())
+                .as("npm audit step in _build.yml must include --omit=dev to scope the scan to "
+                        + "production runtime dependencies only (SR-NA-01)")
                 .contains("--omit=dev");
 
-        // SR-NA-04: continue-on-error must be absent or false
-        Object continueOnError = auditStep.get("continue-on-error");
+        Object continueOnError = auditStep.continueOnError();
         if (continueOnError != null) {
             assertThat(continueOnError)
-                    .as("npm audit step must not have continue-on-error: true — that would swallow failures and defeat the gate (SR-NA-04)")
+                    .as("npm audit step in _build.yml must not have continue-on-error: true -- "
+                            + "that would swallow failures and defeat the gate (SR-NA-04)")
                     .isEqualTo(Boolean.FALSE);
         }
-        // If absent (null), that is acceptable — GitHub Actions defaults to false
+
+        WorkflowFile securityYml = WorkflowInventory.loadWorkflow(SECURITY_YML);
+        assertThat(securityYml.jobs())
+                .as("security.yml must NO LONGER define its own 'frontend-audit' job -- the "
+                        + "relocation to _build.yml must be a move, not a copy, or the two "
+                        + "copies will drift apart silently")
+                .doesNotContainKey("frontend-audit");
+    }
+
+    /**
+     * The {@code secret-scan} (gitleaks) job moves alongside {@code frontend-audit} into
+     * {@code _build.yml}, for the same reason: it is a cheap, secret-free, static check that
+     * belongs in the reusable core so every caller (push, PR, manual dispatch, weekly
+     * schedule) gets incremental secret-scanning coverage uniformly, instead of only when
+     * {@code security.yml}'s own {@code push}/{@code pull_request} triggers happened to fire.
+     */
+    @Test
+    void secretScanMovesToBuildCoreAndNoLongerDuplicatesInSecurityYml() {
+        assertThat(Files.exists(WorkflowInventory.WORKFLOWS_DIR.resolve(BUILD_CORE)))
+                .as("_build.yml must exist before the secret-scan relocation can be verified "
+                        + "-- expected to be RED until Lane C creates the reusable core")
+                .isTrue();
+
+        WorkflowFile buildCore = WorkflowInventory.loadWorkflow(BUILD_CORE);
+        assertThat(buildCore.jobs())
+                .as("_build.yml must define a 'secret-scan' job (relocated from security.yml)")
+                .containsKey("secret-scan");
+
+        WorkflowJob secretScan = buildCore.job("secret-scan").orElseThrow();
+        boolean usesGitleaks = secretScan.stepUsesReferences().stream()
+                .anyMatch(u -> u.contains("gitleaks/gitleaks-action"));
+        assertThat(usesGitleaks)
+                .as("secret-scan job in _build.yml must use gitleaks/gitleaks-action (D-13/SR-8)")
+                .isTrue();
+
+        // fetch-depth: 0 is required so gitleaks can scan the full pushed commit range
+        // (base^..head) rather than a shallow, single-commit clone.
+        boolean fullHistoryCheckout = secretScan.steps().stream()
+                .anyMatch(s -> s.hasUses() && s.usesContains("actions/checkout")
+                        && "0".equals(String.valueOf(s.with().get("fetch-depth"))));
+        assertThat(fullHistoryCheckout)
+                .as("secret-scan job in _build.yml must check out with fetch-depth: 0 so "
+                        + "gitleaks can scan the full pushed/PR commit range")
+                .isTrue();
+
+        WorkflowFile securityYml = WorkflowInventory.loadWorkflow(SECURITY_YML);
+        assertThat(securityYml.jobs())
+                .as("security.yml must NO LONGER define its own 'secret-scan' job -- the "
+                        + "relocation to _build.yml must be a move, not a copy")
+                .doesNotContainKey("secret-scan");
     }
 }

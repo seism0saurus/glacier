@@ -1,246 +1,68 @@
 name: "Pull Request Test"
 
+# Untrusted-safe tier (ADR-CI-01): runs on every PR, including forks, and must never reach
+# a repository secret other than the ambient GITHUB_TOKEN (SR-CI-01/03). Calls the
+# secret-free reusable core (_build), the full 5-leg e2e matrix (_e2e), and the
+# self-contained dynamic scan (_security-dast) -- none of which are ever passed
+# `secrets: inherit` (ADR-CI-02).
+#
+# Cache keys use the "pull" family (ADR-CI-09) so a fork PR can never read back (or
+# poison) the "main" cache family that quality.yml/build-and-deploy.yml populate.
+#
+# The old inline `coverage-aggregation` job (which ran `gh pr comment` from this untrusted
+# context) is retired: the PR number is written to an artifact here and the actual comment
+# is posted by the separate privileged pr-comment.yml, triggered via workflow_run
+# (ADR-CI-14).
+
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  compile:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up JDK 23
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '23'
-          distribution: 'temurin'
-      - name: Use cache for local Maven repository
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-pull-${{ hashFiles('~/.m2/repository') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-pull-
-      - name: Use cache for node
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-pull-${{ hashFiles('~/.m2/frontend/node') }}
-          restore-keys: |
-            ${{ runner.os }}-node-pull-
-      - name: Use cache for node_modules
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-pull-${{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-pull-
-      - name: Compile the webapp
-        run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
+  build:
+    uses: ./.github/workflows/_build.yml
+    with:
+      cache-prefix: pull
 
-  test:
+  # Writes the PR number that pr-comment.yml (workflow_run) later reads back, validates,
+  # and uses to post the coverage comment -- github.event.number is a GitHub-computed
+  # numeric field (not free-text attacker input), but it is still routed through env: and
+  # never spliced directly into the shell script text.
+  pr-number:
     runs-on: ubuntu-latest
-    needs: compile
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up JDK 23
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '23'
-          distribution: 'temurin'
-      - name: Use cache for local Maven repository
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-pull-
-      - name: Use cache for node
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-pull-
-      - name: Use cache for node_modules
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-verify
-      - name: Lint the frontend
-        working-directory: frontend
-        run: npm run lint
-      - name: Verify sqlite-jdbc SHA-256 checksum
-        # sha256sum -c resolves the filename in the .sha256 file relative to the CWD,
-        # so the check must run from inside dependency-checksums/.
-        working-directory: dependency-checksums
-        run: |
-          curl -fsSL -o sqlite-jdbc-3.49.1.0.jar \
-            https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.49.1.0/sqlite-jdbc-3.49.1.0.jar
-          sha256sum -c sqlite-jdbc-3.49.1.0.sha256
-          rm sqlite-jdbc-3.49.1.0.jar
-      # ADR-SEC-02 supply-chain pin: bigbone 2.0.0 is a stable Maven Central release
-      # (io.github.pattafeufeu, since 2026-06-15; the historical SNAPSHOT tripwire is retired).
-      # Download the exact jar the build will use and compare its SHA-256 against the recorded
-      # known-good value, same pattern as sqlite-jdbc above. A mismatch fails the job loudly.
-      - name: Verify bigbone SHA-256 checksum
-        working-directory: dependency-checksums
-        run: |
-          curl -fsSL -o bigbone-2.0.0.jar \
-            https://repo1.maven.org/maven2/io/github/pattafeufeu/bigbone/2.0.0/bigbone-2.0.0.jar
-          sha256sum -c bigbone-2.0.0.sha256
-          rm bigbone-2.0.0.jar
-      - name: Verify the webapp
-        run: ./mvnw --batch-mode verify --file pom.xml
-      - name: Upload Surefire results
-        if: always()
+      - name: Write PR number
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: echo "$PR_NUMBER" > pr-number.txt
+      - name: Upload PR number artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: surefire-results
-          path: target/surefire-reports
-      - name: Upload Jacoco reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: jacoco-reports
-          path: target/site/jacoco
-      - name: Upload Jasmin reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: jasmin-reports
-          path: frontend/coverage/glacier-frontend
-
-  package:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up JDK 23
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '23'
-          distribution: 'temurin'
-      - name: Use cache for local Maven repository
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-pull-
-      - name: Use cache for node
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node
-          key: ${{ runner.os }}-node-pull-
-      - name: Use cache for node_modules
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-pull-
-      - name: Package the webapp
-        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
-      - name: Check if frontend is bundled into jar
-        run: |
-          if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
-            echo "angular packaged to jar"
-          else
-            echo "angular not correctly packaged!"
-            ls -lah /home/runner/work/glacier/glacier/target/classes
-            exit 1
-          fi
-      - name: Copy jar
-        run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
-      - name: Archive glacier jar
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: glacier
-          path: glacier.jar
+          name: pr-number
+          path: pr-number.txt
           retention-days: 1
 
   e2e:
-    runs-on: ubuntu-latest
-    needs: package
-    env:
-      GLACIER_IMAGE_TAG: "${{ github.event.number }}"
-      REPOSITORY: "/home/runner/work/glacier/glacier/"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: glacier
-          path: infrastructure/glacier
-      - name: Use cache for node_modules
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node_modules-pull-${{ hashFiles('~/.m2/frontend/node_modules') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-pull-
-      - name: Use cache for ms-playwright
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: /home/runner/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-pull-${{ hashFiles('~/.cache/ms-playwright') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-pull-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-      - name: Start e2e test inside docker-compose
-        working-directory: infrastructure
-        run: |
-          echo "to update data in infrastructure-content.tar.gz run 'sudo tar -czf infrastructure-content.tar.gz mastodon mastodon.env postgres redis proxy.* v3.ext dynamic.yml traefik.yml'"
-          tar -xf infrastructure-content.tar.gz -C ./
-          chmod -R a+rwx mastodon
-          docker compose -f docker-compose.yaml up --build --abort-on-container-exit playwright --exit-code-from playwright
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: playwright-report
-          path: frontend/playwright-report
-      - name: Upload Playwright Error screenshots
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: playwright-error-screenshots
-          path: frontend/test-results
-      - name: Show logs of service
-        working-directory: infrastructure
-        if: failure()
-        run: |
-          docker ps
-          docker compose logs
+    needs: build
+    uses: ./.github/workflows/_e2e.yml
+    with:
+      legs: "standard,killswitch,a11y,insecure,share-https"
+      build-image: false
+      image-tag: "pr-${{ github.event.number }}"
+      cache-prefix: pull
 
-  coverage-aggregation:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: jacoco-reports
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: jasmin-reports
-      - name: Setup .NET Core
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: 8.x
-          dotnet-quality: 'ga'
-      - name: ReportGenerator
-        uses: danielpalme/ReportGenerator-GitHub-Action@ee3806a36b8b2eb9594cb3e5fae045af7e5ead10 # 5.5.6
-        with:
-          reports: lcov.info;jacoco.xml
-          sourcedirs: 'frontend/src;src/main/java;src/test/java'
-          targetdir: coveragereport
-          reporttypes: 'HtmlInline;MarkdownSummaryGithub'
-          title: 'Aggregated Coverage Report'
-      - name: Upload coverage report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: CoverageReport
-          path: coveragereport
-      - name: Add comment to PR
-        run: gh pr comment $PR_NUMBER --body-file coveragereport/SummaryGithub.md
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.number }}
-      - name: Publish coverage in build summary
-        run: cat coveragereport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
-        shell: bash
+  # Job id carries the "-sarif" suffix (elevated-scope allowlist, gate 5.2) and this job
+  # grants exactly security-events: write beyond the contents: read baseline -- the one
+  # exception WorkflowPermissionsMinimizationTest allows inside a pull_request-triggered
+  # workflow (fork PRs get a read-only token for code-scanning regardless).
+  security-dast-sarif:
+    needs: build
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/_security-dast.yml
+    with:
+      image-tag: "pr-${{ github.event.number }}"
+      run-full-scan: false

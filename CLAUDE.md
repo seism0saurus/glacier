@@ -26,10 +26,10 @@ Every code change — feature, bug fix, refactor, config tweak that affects beha
      - Debug: `docker compose -f docker-compose.only-mastodon.yaml up -d` + run the backend in the IDE with the env vars listed in `infrastructure/README.md`, then `npx playwright test` with `MASTODON_USER_API_URL=https://proxy`, `MASTODON_USER_ACCESS_TOKEN=...`, `GLACIER_HANDLE=@glacier_e2e_test@proxy`, `BASE_URL=http://glacier:8080`.
    - Playwright actually posts toots into the containerized Mastodon via `frontend/e2e/helper/mastodon-client.ts` and waits for them to surface on the wall. Do not replace that with a shortcut that injects messages directly into the Spring app — that path bypasses the federation/streaming behavior the test is meant to guard.
 
-Seed-data changes: if you need to edit the Mastodon snapshot, re-pack it per the note in `.github/workflows/verify.yml`:
+Seed-data changes: if you need to edit the Mastodon snapshot, re-pack it per the note echoed in the reusable `_e2e.yml` e2e step (also duplicated in `build-and-deploy.yml`'s e2e job):
 `sudo tar -czf infrastructure-content.tar.gz mastodon mastodon.env postgres redis proxy.* v3.ext dynamic.yml traefik.yml`.
 
-Before reporting a change as done, run at minimum `./mvnw verify` locally (unit + integration + Jacoco check). Run the Playwright suite for UI/streaming-path changes. CI (`.github/workflows/verify.yml`) will run all three layers on push; do not rely on CI as your first check.
+Before reporting a change as done, run at minimum `./mvnw verify` locally (unit + integration + Jacoco check). Run the Playwright suite for UI/streaming-path changes. CI has no single `verify.yml` anymore — `quality.yml` (`push: branches: ['**']`) runs the secret-free `_build` core on every branch push, and `pull-request.yml` runs `_build` + the full 5-leg e2e matrix + `_security-dast` on every PR; see [`docs/MAINTAINER.md`](docs/MAINTAINER.md) for the full trigger topology. Do not rely on CI as your first check.
 
 ## Claude Code skill usage
 
@@ -166,5 +166,6 @@ Events come in two shapes: strongly typed `MastodonApiEvent.StreamEvent` (`Statu
 - Java package root: `de.seism0saurus.glacier`; tests mirror main. `*Test` = unit (Surefire), `*IT` = integration (Failsafe).
 - Lombok is enabled via annotation processor in `pom.xml`; `lombok.config` lives at repo root. `@Builder` is used widely for the messaging DTOs under `webservice.messaging.messages`.
 - Logback config at `src/main/resources/logback.xml` emits JSON via `logback-jackson`.
-- `push_version.sh <new-version> <new-branch>` bumps the version in `pom.xml`, `frontend/package.json`, and `.github/dependabot.yaml` together. Any version change must touch all three consistently (the jar filename in README and the `copy-and-rename-jar` goal both derive from it).
+- `push_version.sh <version>` (ADR-CI-18) bumps `pom.xml`, `README.md` (jar filename), and `frontend/package.json`/`package-lock.json`, commits the bump, and creates an annotated tag `v<version>` locally — it does not push. The maintainer pushes the branch and the tag explicitly (`git push origin HEAD && git push origin v<version>`); pushing the tag triggers `build-and-deploy.yml` (`push: tags: ['v*.*.*']`). `.github/dependabot.yaml` targets `main` directly and is not touched by the script. See [`docs/MAINTAINER.md`](docs/MAINTAINER.md#bei-releases) for the full release flow.
 - When writing a new ADR, add a row to `docs/decisions/README.md` in the acceptance commit.
+- CI/CD pipeline behaviour (per-commit/PR/release triggers, security gates, manual GitHub-settings checklist) is documented for the human maintainer in [`docs/MAINTAINER.md`](docs/MAINTAINER.md).

@@ -3,6 +3,7 @@
 This guide is for people who want to **contribute to Glacier** or run it locally for development.
 If you just want to use the demo, see the [main README](../README.md).
 If you want to deploy your own instance, see the [admin guide](ADMIN.md).
+If you maintain the CI/CD pipeline or cut a release, see the [maintainer guide](MAINTAINER.md).
 
 ## Contents
 

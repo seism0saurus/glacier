@@ -2,6 +2,8 @@
 
 To ensure a working application when releasing and to provide feedback for developers there is an extensive end-to-end testing suite using containers.
 
+For how and when this suite runs in CI (every PR, manual full-suite dispatch, release tag pushes), see the [maintainer guide](../docs/MAINTAINER.md).
+
 ## Content
 
 - [Completely automated E2E Testing](#completely-automated-e2e-testing)

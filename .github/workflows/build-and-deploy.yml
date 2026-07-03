@@ -1,61 +1,41 @@
 name: "Build and deploy"
 
+# Privileged, secret-bearing tier (ADR-CI-01): the ONLY workflow that can ever reach the
+# deploy credentials (SSH_KEY/KNOWN_HOSTS/SSH_USER/SSH_PORT). Releases are cut as
+# annotated git tags (ADR-CI-18, `v*.*.*`) via push_version.sh -- there is no
+# pull_request trigger here (ADR-CI-10: the former `pull_request: closed` trigger let
+# closing a same-repo PR against main run the whole chain, including deploy, in PR event
+# context; that shape is now categorically impossible since this file has no
+# pull_request-shaped trigger at all).
+
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "main" ]
-    types: [ "closed" ]
+    tags: [ "v*.*.*" ]
+
+permissions: {}
 
 jobs:
-  compile:
-    if: >
-      github.event_name != 'push' || !contains(github.event.head_commit.message, 'Merge pull request') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up JDK 23 and cache (save)
-        uses: ./.github/actions/setup-java-cache
-        with:
-          cache-prefix: main
-          cache-mode: save
-      - name: Compile the webapp
-        run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
-
+  # G6 consolidation (Phase 2 Round 2 cross-review fix, ADR-SEC-02): the release path now
+  # delegates compile -> test -> package to the same secret-free reusable core every other
+  # caller uses (quality.yml, pull-request.yml), instead of re-declaring an independent
+  # compile/test/package trio that skipped the sqlite-jdbc/bigbone SHA-256 checksum tripwire.
+  # This is the ONE pipeline that ships a cosign-signed, SLSA-attested image -- it must not
+  # also be the one pipeline exempt from dependency-substitution verification (OWASP A08:2021).
+  # cache-prefix "main" matches the family the release/main branch already used, so the
+  # mutation job's cache-restore step below (also "main") still hits a warm cache.
+  # permissions: contents: read is granted explicitly here (rather than relying on this
+  # file's top-level `permissions: {}`) because a reusable-workflow call's internal jobs are
+  # capped by the calling job's effective permission set -- quality.yml/pull-request.yml both
+  # grant contents: read for the same reason.
   test:
-    runs-on: ubuntu-latest
-    needs: compile
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up JDK 23 and cache (restore)
-        uses: ./.github/actions/setup-java-cache
-        with:
-          cache-prefix: main
-      - name: Verify the webapp
-        run: ./mvnw --batch-mode verify --file pom.xml
-      - name: Upload Surefire results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: surefire-results
-          path: target/surefire-reports
-      - name: Upload Jacoco reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: jacoco-reports
-          path: target/site/jacoco
-      - name: Upload Jasmin reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: jasmin-reports
-          path: frontend/coverage/glacier-frontend
+    uses: ./.github/workflows/_build.yml
+    permissions:
+      contents: read
+    with:
+      cache-prefix: main
 
   mutation:
-    # Mutation testing runs after unit tests pass, on push/PR to main only.
+    # Mutation testing runs after unit tests pass, on the release tag only.
     # Scoped to Java source directories of the 14 PITest target classes (ADR-FUZZ-04).
     # P2-11 / Sec-08: MutationRegexLockstepTest verifies this regex matches every package
     # listed in <targetClasses> in pom.xml -- update BOTH files together when adding new targets.
@@ -96,54 +76,36 @@ jobs:
           name: pit-reports
           path: target/pit-reports/
 
-  package:
+  # NOTE: the standalone "package" job that used to live here is gone -- the "test" job
+  # above now delegates to _build.yml, whose own package sub-job produces the identical
+  # "glacier" (jar) and "sbom" (CycloneDX) artifacts under the same names, so every
+  # downstream job below keeps working unchanged by depending on "test" instead of "package"
+  # (a reusable-workflow-call job is not "done" until all of its internal jobs, including
+  # package, have finished -- so needs: test still gates on the jar/SBOM being uploaded).
+
+  # Dependency-graph submission needs contents: write -- kept as its own job, confined to
+  # this single privileged workflow (WorkflowPermissionsMinimizationTest:
+  # deployPublishAndDependencySubmissionOnlyExistInBuildAndDeploy), never inside the
+  # secret-free/least-privilege _build.yml core that untrusted-tier callers also use.
+  dependency-submission:
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up JDK 23 and cache (restore)
-        uses: ./.github/actions/setup-java-cache
-        with:
-          cache-prefix: main
-      - name: Package the webapp
-        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
-      - name: Check if frontend is bundled into jar
-        run: |
-          if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
-            echo "angular packaged to jar"
-          else
-            echo "angular not correctly packaged!"
-            ls -lah /home/runner/work/glacier/glacier/target/classes
-            exit 1
-          fi
-      - name: Copy jar
-        run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
-      - name: Archive glacier jar
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: glacier
-          path: glacier.jar
-          retention-days: 1
-      - name: Upload CycloneDX SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: sbom
-          path: |
-            target/bom.json
-            target/bom.xml
-          retention-days: 90
       - name: Update dependency graph
         uses: advanced-security/maven-dependency-submission-action@b275d12641ac2d2108b2cbb7598b154ad2f2cee8
 
   # ── Playwright e2e matrix ─────────────────────────────────────────────────
   #
   # Each matrix leg boots its own isolated docker-compose stack because the
-  # four test modes require mutually incompatible backend configurations:
+  # test modes require mutually incompatible backend configurations:
   #
   #   standard   -- default stack (docker-compose.yaml only)
   #                 chromium + firefox + webkit Playwright projects.
   #                 This leg also builds the Docker image and saves it as an
-  #                 artifact for trivy-image and zap-and-headers to consume.
+  #                 artifact for trivy-image-sarif and zap-and-headers to consume.
   #   killswitch -- GLACIER_FALLBACK_ENABLED=false
   #                 (docker-compose.override.killswitch.yaml)
   #   a11y       -- WCAG 2.2 AA axe-core scans, chromium-only
@@ -159,7 +121,7 @@ jobs:
   # publish-image and security jobs gate on ALL matrix legs passing.
   e2e:
     runs-on: ubuntu-latest
-    needs: package
+    needs: [test, dependency-submission]
     env:
       GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
       REPOSITORY: "/home/runner/work/glacier/glacier/"
@@ -170,7 +132,7 @@ jobs:
           - variant: standard
             # No override file -- runs the default stack.
             # Executes: chromium + firefox + webkit Playwright projects.
-            # Also builds the Docker image artifact for trivy-image + zap-and-headers.
+            # Also builds the Docker image artifact for trivy-image-sarif + zap-and-headers.
             compose_overrides: ""
             artifact_suffix: ""
             build_image: true
@@ -279,9 +241,11 @@ jobs:
           docker compose -f docker-compose.yaml $COMPOSE_OVERRIDES logs
 
   # ── Trivy filesystem scan (jar dependency CVEs) ───────────────────────────
-  trivy-fs:
+  # Job id carries the "-sarif" suffix so it is on the elevated-scope allowlist (gate 5.2)
+  # for the security-events: write grant its upload-sarif step needs.
+  trivy-fs-sarif:
     runs-on: ubuntu-latest
-    needs: package
+    needs: [test, dependency-submission]
     permissions:
       contents: read
       security-events: write
@@ -305,13 +269,14 @@ jobs:
       - name: Upload Trivy filesystem SARIF
         uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         if: always()
+        continue-on-error: true # RR-1/ADR-CI-15: finding gate stays on the scanner exit-code above.
         with:
           sarif_file: trivy-fs-report.sarif
           category: trivy-fs
 
   # ── Trivy image scan (OS-layer CVEs -- scans the exact image before push) ──
   # Depends on the standard e2e leg which builds and saves the Docker image.
-  trivy-image:
+  trivy-image-sarif:
     runs-on: ubuntu-latest
     needs: e2e
     permissions:
@@ -344,6 +309,7 @@ jobs:
             "ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG}"
       - name: Upload Trivy image SARIF
         if: always()
+        continue-on-error: true # RR-1/ADR-CI-15: finding gate stays on the scanner exit-code above.
         uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
           sarif_file: trivy-report.sarif
@@ -356,12 +322,12 @@ jobs:
   # required status checks ("CodeQL / Analyze (java-kotlin)" and
   # "CodeQL / Analyze (javascript-typescript)") -- configure those under
   # Settings -> Branches -> main -> Require status checks to pass.
+  # No SARIF upload happens in this job -- it only needs contents: read.
   zap-and-headers:
     runs-on: ubuntu-latest
     needs: e2e
     permissions:
       contents: read
-      security-events: write
     env:
       GLACIER_IMAGE_TAG: "${{ github.ref_name }}"
       REPOSITORY: "/home/runner/work/glacier/glacier/"
@@ -450,15 +416,15 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────────
   # publish-image only runs when ALL quality gates pass:
-  #   Functional:    e2e matrix (all four legs: standard + killswitch + a11y + insecure)
-  #   Security:      trivy-fs (jar CVEs) + trivy-image (OS-layer CVEs) +
+  #   Functional:    e2e matrix (standard + killswitch + a11y + insecure)
+  #   Security:      trivy-fs-sarif (jar CVEs) + trivy-image-sarif (OS-layer CVEs) +
   #                  zap-and-headers (ZAP baseline + security headers + WS BOLA)
   # Static analysis: CodeQL runs in codeql.yml -- enforce via branch-protection
   #                  required status checks on the main branch.
   # ─────────────────────────────────────────────────────────────────────────────
   publish-image:
     runs-on: ubuntu-latest
-    needs: [e2e, trivy-fs, trivy-image, zap-and-headers]
+    needs: [e2e, trivy-fs-sarif, trivy-image-sarif, zap-and-headers]
     permissions:
       contents: read       # read the repository
       packages: write      # push the image + attestations to ghcr
@@ -532,6 +498,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: publish-image
     environment: glacier.seism0saurus.de
+    # Defense-in-depth: redundant in-repo tag guard (RR-4 partial mitigation).
+    # The workflow already only triggers on push of `v*.*.*` tags; this condition
+    # re-asserts that boundary at the job level in case the trigger is ever
+    # broadened, so the deploy job cannot fire on a non-tag ref regardless.
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Prepare ssh
         env:

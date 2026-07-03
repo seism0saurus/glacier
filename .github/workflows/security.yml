@@ -1,25 +1,15 @@
 name: "Security Scan"
 
-# Runs on every push to a release-style branch ("*.*.*") AFTER the packaging job
-# of verify.yml has produced the docker image. Also exposed via workflow_dispatch
-# so an operator can manually trigger the FULL active scan (heavier, ~30 min).
+# Repaired into a pure schedule + workflow_dispatch wrapper (SR-NA-03: weekly CVE
+# re-detection, plus a manual full-scan escape hatch) around the secret-free reusable
+# core. No push/pull_request triggers of its own anymore -- those responsibilities moved
+# to quality.yml / pull-request.yml, which call the same _build core uniformly for every
+# branch push and every PR (including forks) (ADR-CI-01).
 #
-# Scope rules (rules of engagement):
-#   - All scanners target ONLY http://glacier:8080 (the local container).
-#   - The upstream Mastodon container is NEVER actively scanned.
-#   - No real fediverse instance is ever contacted from this workflow.
-#   - No real tokens are committed; the e2e access token is the same one used
-#     by verify.yml against the seeded local Mastodon (already in compose).
-#
-# Workflow-injection note: this file uses ${{ github.ref_name }} only in env:
-# values (safe: the GitHub-provided ref, not user-controllable). No untrusted
-# inputs (issue/PR titles or bodies) are interpolated into any run: command.
+# _security-dast.yml builds the jar and the Docker image it scans in its own run (ADR-CI-06)
+# -- no more "docker manifest inspect ghcr.io/..." precondition on a prior push.
 
 on:
-  push:
-    branches: ["*.*.*", main]
-  pull_request:
-    branches: [main]
   schedule:
     - cron: '0 6 * * 1'   # every Monday 06:00 UTC — post-commit CVE detection (SR-NA-03)
   workflow_dispatch:
@@ -29,277 +19,23 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
-  baseline:
-    runs-on: ubuntu-latest
+  build:
+    uses: ./.github/workflows/_build.yml
+    with:
+      cache-prefix: security
+
+  # Job id carries the "-sarif" suffix (elevated-scope allowlist, gate 5.2) for the
+  # security-events: write grant its upload-sarif steps need.
+  security-dast-sarif:
+    needs: build
     permissions:
       contents: read
       security-events: write
-    env:
-      GLACIER_IMAGE_TAG: ${{ github.ref_name }}
-      REPOSITORY: "/home/runner/work/glacier/glacier/"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Download packaged jar
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: glacier
-          path: infrastructure/glacier
-        continue-on-error: true
-
-      - name: Fail fast if jar artifact is missing
-        run: |
-          test -f infrastructure/glacier/glacier.jar \
-            || { echo "::error::Glacier jar artifact missing. Run the verify.yml package job first."; exit 1; }
-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
-      - name: Start security stack
-        working-directory: infrastructure
-        run: |
-          tar -xf infrastructure-content.tar.gz -C ./
-          chmod -R a+rwx mastodon
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.security.yaml \
-            up --build -d glacier proxy
-
-          for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then
-              echo "glacier ready"; break
-            fi
-            sleep 2
-          done
-          curl -fsS http://localhost:8080/ > /dev/null
-
-      - name: ZAP baseline scan
-        working-directory: infrastructure
-        run: |
-          docker run --rm \
-            --network=infrastructure_mastodon \
-            -v "$(pwd)/security:/zap/wrk" \
-            -t ghcr.io/zaproxy/zaproxy:stable \
-            zap.sh -cmd -autorun /zap/wrk/zap/baseline.yaml \
-            || true
-
-      - name: Diff ZAP baseline against committed allowlist
-        working-directory: infrastructure
-        run: |
-          python3 security/scripts/diff-zap-baseline.py \
-            security/zap-baseline.json \
-            security/baselines/zap-baseline.json \
-            --threshold Medium
-
-      - name: Header audit
-        working-directory: infrastructure
-        env:
-          BASE_URL: "http://localhost:8080"
-          SHARE_BASE_URL: "http://localhost:8080"
-          EXPECT_SECURE_COOKIE: "false"
-        run: |
-          bash security/scripts/header-audit.sh
-
-      - name: WebSocket BOLA probe
-        working-directory: infrastructure
-        env:
-          BASE_URL: "http://localhost:8080"
-        run: |
-          pip install --quiet websocket-client==1.8.0
-          python3 security/scripts/ws-bola-probe.py
-
-      - name: Verify docker image exists before scanning
-        run: docker manifest inspect ghcr.io/seism0saurus/glacier:${{ github.ref_name }} || (echo "Image not found for ${{ github.ref_name }}" && exit 1)
-
-      - name: Trivy image scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
-          format: "sarif"
-          output: "trivy-report.sarif"
-          severity: "HIGH,CRITICAL"
-          exit-code: "1"
-          ignore-unfixed: true
-          ignorefile: "infrastructure/security/.trivyignore"
-
-      - name: Upload Trivy SARIF to code-scanning
-        if: always()
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
-        with:
-          sarif_file: "trivy-report.sarif"
-
-      - name: Verify jar exists before filesystem scan
-        run: ls infrastructure/glacier/glacier.jar || (echo "Jar not found -- download artifact first" && exit 1)
-
-      - name: Trivy filesystem scan (jar dependencies)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: infrastructure/glacier/
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          ignore-unfixed: true
-          trivyignores: infrastructure/security/.trivyignore-fs
-          format: sarif
-          output: trivy-fs-report.sarif
-
-      - name: Upload Trivy filesystem SARIF
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
-        if: always()
-        with:
-          sarif_file: trivy-fs-report.sarif
-          category: trivy-fs
-
-      - name: Upload security artifacts
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: security-reports
-          path: |
-            infrastructure/security/zap-baseline.html
-            infrastructure/security/zap-baseline.json
-            trivy-report.sarif
-            trivy-fs-report.sarif
-
-      - name: Compose logs on failure
-        if: failure()
-        working-directory: infrastructure
-        run: |
-          docker ps -a
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.security.yaml \
-            logs --tail=200
-
-      - name: Tear down
-        if: always()
-        working-directory: infrastructure
-        run: |
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.security.yaml \
-            down -v --remove-orphans
-
-  full-scan:
-    if: github.event_name == 'workflow_dispatch' && inputs.run_full_scan == true
-    needs: baseline
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    env:
-      GLACIER_IMAGE_TAG: ${{ github.ref_name }}
-      REPOSITORY: "/home/runner/work/glacier/glacier/"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: glacier
-          path: infrastructure/glacier
-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
-      - name: Start stack
-        working-directory: infrastructure
-        run: |
-          tar -xf infrastructure-content.tar.gz -C ./
-          chmod -R a+rwx mastodon
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.security.yaml \
-            up --build -d glacier proxy
-          for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8080/ > /dev/null 2>&1; then break; fi
-            sleep 2
-          done
-
-      - name: ZAP full active scan
-        working-directory: infrastructure
-        run: |
-          docker run --rm \
-            --network=infrastructure_mastodon \
-            -v "$(pwd)/security:/zap/wrk" \
-            -t ghcr.io/zaproxy/zaproxy:stable \
-            zap.sh -cmd -autorun /zap/wrk/zap/full-scan.yaml || true
-
-      - name: Diff full-scan against baseline
-        working-directory: infrastructure
-        run: |
-          python3 security/scripts/diff-zap-baseline.py \
-            security/zap-full-scan.json \
-            security/baselines/zap-baseline.json \
-            --threshold High
-
-      - name: Upload full-scan reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: zap-full-scan-reports
-          path: |
-            infrastructure/security/zap-full-scan.html
-            infrastructure/security/zap-full-scan.json
-            infrastructure/security/zap-full-scan-sarif.sarif
-
-      - name: Upload full-scan SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
-        with:
-          sarif_file: "infrastructure/security/zap-full-scan-sarif.sarif"
-
-      - name: Tear down
-        if: always()
-        working-directory: infrastructure
-        run: |
-          docker compose \
-            -f docker-compose.yaml \
-            -f docker-compose.override.security.yaml \
-            down -v --remove-orphans
-
-  # frontend-audit — npm audit gate for the Angular SPA bundle (SR-FUZZ-07, SR-NA-01..09)
-  frontend-audit:
-    name: Frontend dependency audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22.14.0'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-      - name: Audit frontend dependencies (high+ threshold)
-        working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev
-        # SR-NA-01/SR-NA-04: gates on high/critical advisories; no continue-on-error
-        # --omit=dev: scopes audit to production runtime deps only; dev-toolchain advisories
-        # (e.g. @angular/cli, webpack loaders) are never included in the deployed SPA bundle
-
-  # secret-scan — gitleaks gate (D-13/SR-8 at the VCS layer): no committed secrets
-  # (wallId / token / cookie / API key). Scans INCREMENTALLY — the pushed commits on
-  # push, the PR diff on pull_request — so it gates NEW secrets without failing on the
-  # repo's pre-existing local-only seed token (allowlisted via .gitleaks.toml anyway).
-  # Free for this public, user-owned repo (GITLEAKS_LICENSE is only for org accounts).
-  secret-scan:
-    name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          # gitleaks-action scans the pushed commit range (base^..head), so the full
-          # history must be present — a shallow clone fails on multi-commit pushes.
-          fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/_security-dast.yml
+    with:
+      image-tag: "scheduled-${{ github.run_id }}"
+      run-full-scan: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_scan == true }}

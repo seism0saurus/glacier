@@ -1,0 +1,38 @@
+name: "Full Suite"
+
+# Manual, full-depth run of the complete secret-free quality gate (build + all five e2e
+# legs + dynamic security scan) on any branch/ref an operator chooses -- e.g. to validate
+# a feature branch end-to-end before opening a PR, without waiting for a PR to exist.
+# Secret-free by design: no `secrets:` reference anywhere except the ambient GITHUB_TOKEN
+# needed for the SARIF upload's code-scanning API call.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_build.yml
+    with:
+      cache-prefix: dispatch
+
+  e2e:
+    needs: build
+    uses: ./.github/workflows/_e2e.yml
+    with:
+      legs: "standard,killswitch,a11y,insecure,share-https"
+      build-image: false
+      image-tag: "dispatch-${{ github.run_id }}"
+      cache-prefix: dispatch
+
+  security-dast-sarif:
+    needs: build
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/_security-dast.yml
+    with:
+      image-tag: "dispatch-${{ github.run_id }}"
+      run-full-scan: false

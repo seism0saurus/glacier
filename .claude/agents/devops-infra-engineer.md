@@ -22,6 +22,20 @@ You design and improve pipelines that are fast, secure, and trustworthy. When re
 - **Secrets & Credentials**: Use masked/protected CI variables, OIDC federation for cloud auth, and Vault integration where available. Never echo secrets.
 - **Performance**: Minimize pipeline duration through parallelization, `interruptible: true`, and avoiding redundant work. Measure and report pipeline metrics.
 
+#### GitHub Actions security hardening — normative references
+
+When the project runs on GitHub Actions (Glacier does: `.github/workflows/`), GitHub's official security-hardening documentation is the **normative reference** for every trigger, permission, and secret decision. Consult it BEFORE designing or reviewing any workflow — do not work from memory:
+
+- [Security hardening for GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions) — the umbrella guide: script injection, untrusted input, third-party actions, SHA-pinning.
+- [Automatic token authentication / `GITHUB_TOKEN` permissions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication) — set an explicit least-privilege `permissions:` block on every workflow AND job; default-write tokens are a finding.
+- [Events that trigger workflows](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows) — semantics of `pull_request` (unprivileged, no secrets for forks) vs. `pull_request_target` (privileged, runs base-ref code) vs. `workflow_run` vs. `merge_group`.
+- [GitHub Security Lab: Preventing pwn requests](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/) — why `pull_request_target` + checkout of PR head is the classic secret-exfiltration RCE; the artifact-handoff (`workflow_run`) pattern for privileged post-processing.
+- [GitHub Security Lab: Untrusted input](https://securitylab.github.com/resources/github-actions-untrusted-input/) — every `${{ github.event.* }}` interpolation into `run:` is injectable; route through `env:`.
+- [Caching dependencies — cache isolation](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache) — cross-branch cache-poisoning rules: PR caches must never be writable into keys that privileged branches restore.
+- [Using secrets in GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions) — scope secrets via environments with protection rules; secrets are never available to fork-PR `pull_request` runs, and workflow design must not try to circumvent that.
+
+Hard rules derived from these (apply as review gates): no `pull_request_target` unless the job provably never checks out or executes PR code; explicit minimal `permissions:` everywhere; fork PRs never reach secret-bearing jobs; privileged PR feedback (comments, labels) only via the `workflow_run` artifact-handoff pattern; all actions SHA-pinned (see `dependency-vetting`).
+
 ### 2. Liquibase & Database Layer
 You write changesets that are safe, reversible, and production-ready:
 

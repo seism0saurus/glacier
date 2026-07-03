@@ -1,0 +1,121 @@
+name: "PR Coverage Comment"
+
+# ADR-CI-14: the one privileged workflow that posts the aggregated coverage summary onto a
+# PR. Runs on workflow_run (never pull_request_target) so it always executes with the base
+# repository's trusted workflow definition, and NEVER builds or checks out PR-controlled
+# code -- it only consumes artifacts already produced by the "Pull Request Test" run.
+#
+# The PR number is read from an artifact file the untrusted PR run wrote
+# (github.event.number, a same-repo-or-fork-safe numeric field), downloaded run-id-scoped
+# to the exact triggering run, and validated against ^[0-9]+$ (fail-closed) BEFORE it is
+# used in the privileged `gh pr comment` call -- never a direct
+# ${{ github.event.workflow_run... }} interpolation in that call's run: text.
+
+on:
+  workflow_run:
+    workflows: ["Pull Request Test"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  # Cross-run artifact downloads (a different run-id than this workflow's own) require the
+  # actions: read token scope (see actions/download-artifact docs) -- kept in a separate
+  # job so the privileged pull-requests: write job below never needs anything beyond that
+  # one scope.
+  prepare:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      pr_number: ${{ steps.validate.outputs.pr_number }}
+      coverage_markdown: ${{ steps.expose-summary.outputs.markdown }}
+    steps:
+      # No `ref:` override -- this checks out the default branch content of pr-comment.yml
+      # itself (the base repo's trusted workflow), never the PR head.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download PR number artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pr-number
+          path: pr-number-artifact
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate PR number (fail-closed)
+        id: validate
+        run: |
+          PR_NUMBER=$(tr -d '[:space:]' < pr-number-artifact/pr-number.txt)
+          if ! echo "$PR_NUMBER" | grep -Eq '^[0-9]+$'; then
+            echo "::error::PR number artifact content failed validation against ^[0-9]+$"
+            exit 1
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Download jacoco reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jacoco-reports
+          path: jacoco-reports
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download jasmin reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: jasmin-reports
+          path: jasmin-reports
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.x
+          dotnet-quality: 'ga'
+
+      - name: ReportGenerator
+        uses: danielpalme/ReportGenerator-GitHub-Action@ee3806a36b8b2eb9594cb3e5fae045af7e5ead10 # 5.5.6
+        with:
+          reports: lcov.info;jacoco.xml
+          sourcedirs: 'frontend/src;src/main/java;src/test/java'
+          targetdir: coveragereport
+          reporttypes: 'HtmlInline;MarkdownSummaryGithub'
+          title: 'Aggregated Coverage Report'
+
+      - name: Publish coverage in build summary
+        run: cat coveragereport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Hands the summary to the pr-comment job below via a job OUTPUT rather than another
+      # actions/download-artifact step -- every download-artifact step in this file must be
+      # run-id-scoped to the triggering "Pull Request Test" run (SR-CI-11), and this content
+      # was generated in THIS run, not that one, so it cannot legitimately carry that run-id.
+      - name: Expose coverage summary as a job output
+        id: expose-summary
+        run: |
+          {
+            echo 'markdown<<GLACIER_COVERAGE_EOF'
+            cat coveragereport/SummaryGithub.md
+            echo 'GLACIER_COVERAGE_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  pr-comment:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Write coverage summary to file
+        env:
+          SUMMARY_MD: ${{ needs.prepare.outputs.coverage_markdown }}
+        run: printf '%s\n' "$SUMMARY_MD" > coverage-summary.md
+
+      - name: Add comment to PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file coverage-summary.md
