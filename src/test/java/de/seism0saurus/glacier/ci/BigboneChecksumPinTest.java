@@ -16,24 +16,24 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ADR-SEC-02 supply-chain tripwire: structural gate for the {@code bigbone:2.0.0-SNAPSHOT}
+ * ADR-SEC-02 supply-chain gate: structural check for the {@code bigbone:2.0.0} release
  * checksum verification.
  *
- * <p>{@code bigbone} is the one sanctioned SNAPSHOT dependency (no upstream release exists).
- * A SNAPSHOT is mutable: any upstream republish silently changes the served artifact, which
- * is a supply-chain attack surface (OWASP A06:2021). {@code maven-enforcer}'s
- * {@code requireReleaseDependencies} cannot pin a SNAPSHOT, so the pin is enforced at the CI
- * layer instead: a recorded SHA-256 of the known-good resolved jar is compared against the
- * artifact CI actually resolves. A mismatch fails the workflow loudly so a human consciously
- * re-pins after reviewing the upstream change — turning a silent swap into a gated event.
+ * <p>Historically {@code bigbone} was the one sanctioned SNAPSHOT dependency (no upstream
+ * release existed) and this class guarded a mutable-SNAPSHOT tripwire. Upstream tagged the
+ * stable release {@code io.github.pattafeufeu:bigbone:2.0.0} on 2026-06-15 and discontinued
+ * SNAPSHOT publishing, so the dependency is now an immutable Maven Central artifact pinned
+ * by SHA-256 — the same pattern as {@code sqlite-jdbc}. The CI step resolves the artifact
+ * and compares its hash so a supply-chain swap (registry compromise, proxy tampering) fails
+ * the workflow loudly (OWASP A06:2021).
  *
  * <p>This test guards three invariants that must not silently regress:
  * <ol>
- *   <li>The checksum file {@code dependency-checksums/bigbone-2.0.0-SNAPSHOT.sha256} exists
+ *   <li>The checksum file {@code dependency-checksums/bigbone-2.0.0.sha256} exists
  *       and holds a syntactically valid 64-hex-char SHA-256 in {@code sha256sum} format.</li>
  *   <li>Both build workflows ({@code verify.yml}, {@code pull-request.yml}) contain a step
- *       that references that checksum file AND runs {@code sha256sum} — i.e. the tripwire is
- *       wired into every path that builds against the SNAPSHOT.</li>
+ *       that references that checksum file AND runs {@code sha256sum} — i.e. the gate is
+ *       wired into every path that builds against the artifact.</li>
  *   <li>That verification step runs BEFORE the {@code mvnw verify}/{@code package} build step
  *       in each workflow, so a mutated dependency is caught before its code is executed.</li>
  * </ol>
@@ -47,10 +47,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @see <a href="https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/">OWASP A06:2021</a>
  */
-class BigboneSnapshotTripwireTest {
+class BigboneChecksumPinTest {
 
     private static final Path CHECKSUM_FILE =
-            Paths.get("dependency-checksums/bigbone-2.0.0-SNAPSHOT.sha256");
+            Paths.get("dependency-checksums/bigbone-2.0.0.sha256");
     private static final Pattern SHA256_LINE =
             Pattern.compile("^[0-9a-f]{64}\\s+\\S+\\s*$");
     private static final List<String> BUILD_WORKFLOWS =
@@ -59,7 +59,7 @@ class BigboneSnapshotTripwireTest {
     @Test
     void checksumFileExistsAndIsValidSha256() throws IOException {
         assertThat(Files.exists(CHECKSUM_FILE))
-                .as("dependency-checksums/bigbone-2.0.0-SNAPSHOT.sha256 must exist (ADR-SEC-02 tripwire)")
+                .as("dependency-checksums/bigbone-2.0.0.sha256 must exist (ADR-SEC-02 checksum pin)")
                 .isTrue();
 
         List<String> lines = Files.readAllLines(CHECKSUM_FILE).stream()
@@ -69,11 +69,11 @@ class BigboneSnapshotTripwireTest {
                 .as("checksum file must contain exactly one sha256sum line")
                 .hasSize(1);
         assertThat(lines.get(0))
-                .as("checksum line must be in 'sha256sum' format: <64-hex>  bigbone-2.0.0-SNAPSHOT.jar")
+                .as("checksum line must be in 'sha256sum' format: <64-hex>  bigbone-2.0.0.jar")
                 .matches(SHA256_LINE);
         assertThat(lines.get(0))
-                .as("checksum line must reference the bigbone snapshot jar")
-                .contains("bigbone-2.0.0-SNAPSHOT.jar");
+                .as("checksum line must reference the bigbone release jar")
+                .contains("bigbone-2.0.0.jar");
     }
 
     @Test
@@ -82,7 +82,7 @@ class BigboneSnapshotTripwireTest {
             List<Map<String, Object>> runSteps = allRunSteps(workflowPath);
 
             int tripwireIdx = indexOfFirstRunContaining(runSteps,
-                    "bigbone-2.0.0-SNAPSHOT.sha256", "sha256sum");
+                    "bigbone-2.0.0.sha256", "sha256sum");
             assertThat(tripwireIdx)
                     .as("%s must contain a step that runs sha256sum against the bigbone checksum file (ADR-SEC-02)",
                             workflowPath)

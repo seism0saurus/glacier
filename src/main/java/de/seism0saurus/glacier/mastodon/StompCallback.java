@@ -703,7 +703,11 @@ public class StompCallback implements WebSocketCallback {
      *
      * @param event The event to process.
      */
-    private void processTechnicalEvent(final WebSocketEvent event) {
+    // Package-private for tests: since bigbone 2.0.0 the WebSocketEvent hierarchy is sealed,
+    // so no foreign subtype can reach the default branch through onEvent anymore. The branch
+    // stays as defence-in-depth for future bigbone versions that add permitted subtypes at
+    // runtime; direct invocation keeps its CWE-117 guard testable (StompCallbackTest).
+    void processTechnicalEvent(final WebSocketEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
                     logEvent("got an Open event (class=%s)".formatted(open.getClass().getSimpleName()));

@@ -8,7 +8,7 @@ Glacier is a Spring Boot + Angular "social wall" for the Fediverse: it subscribe
 
 - Backend: Spring Boot 3.4 on Java 23, Kotlin stdlib pulled in for Bigbone.
 - Frontend: Angular 19 + Angular Material, STOMP via `@stomp/rx-stomp`, Karma/Jasmine unit tests, Playwright e2e.
-- Mastodon client: `social.bigbone:bigbone:2.0.0-SNAPSHOT` (requires the Sonatype snapshots repo declared in `pom.xml`).
+- Mastodon client: `io.github.pattafeufeu:bigbone:2.0.0` (stable Maven Central release; Java packages remain `social.bigbone.*`).
 
 ## Testing policy (non-negotiable)
 

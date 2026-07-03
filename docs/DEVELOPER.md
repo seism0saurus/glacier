@@ -24,7 +24,7 @@ If you want to deploy your own instance, see the [admin guide](ADMIN.md).
 
 Glacier is a **Spring Boot 3.4 + Angular 19** application:
 
-- The backend subscribes to Mastodon hashtags via the [Bigbone](https://github.com/andregasser/bigbone) streaming API and fans matching toots to browsers over **STOMP/WebSocket**.
+- The backend subscribes to Mastodon hashtags via the [Bigbone](https://github.com/PattaFeuFeu/bigbone) streaming API and fans matching toots to browsers over **STOMP/WebSocket**.
 - The frontend is an Angular SPA served from the Spring Boot jar's static resources. Toots are rendered as embedded iframes so that each Fediverse server's own styling is preserved.
 - Identity is cookie-based (no login): each browser receives a UUID `wallId` cookie that acts as the WebSocket principal.
 

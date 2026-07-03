@@ -164,7 +164,7 @@ This project is Open Source under the [MIT License](LICENSE) except for:
 
 **Mastodon** — Many thanks to Gargron (Eugen Rochko) and all contributors to [Mastodon](https://github.com/mastodon/mastodon) and the Fediverse.
 
-**bigbone** — Thanks to André Gasser and contributors for the [bigbone Mastodon client for Java](https://github.com/andregasser/bigbone), which made streaming support straightforward to implement.
+**bigbone** — Thanks to André Gasser, the current maintainers, and all contributors for the [bigbone Mastodon client for Java](https://github.com/PattaFeuFeu/bigbone), which made streaming support straightforward to implement.
 
 ## Further documentation
 

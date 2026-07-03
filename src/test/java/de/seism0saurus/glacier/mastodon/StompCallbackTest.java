@@ -561,6 +561,11 @@ public class StompCallbackTest {
      * via {@code (class=%s).formatted(event.getClass().getSimpleName())}, never the
      * peer-controlled {@code toString()} representation of the unknown event object
      * (CWE-117 / D-13 / SR-8).
+     *
+     * <p>Updated for bigbone 2.0.0: {@code TechnicalEvent} is sealed and can no longer be
+     * mocked, so the default branch is unreachable through {@code onEvent}. The test invokes
+     * the package-private {@code processTechnicalEvent} directly with a non-TechnicalEvent
+     * {@link MastodonApiEvent.GenericMessage} mock, which routes to the same default branch.
      */
     @Test
     public void onEvent_EventTechnicalUnknown() {
@@ -570,10 +575,10 @@ public class StompCallbackTest {
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
-        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
 
         // Execute
-        callback.onEvent(mockEvent);
+        callback.processTechnicalEvent(mockEvent);
 
         // Verify: new bounded format — class= prefix, never raw toString() (ADR-TD5-A)
         assertThat(logAppender.getLoggedMessages())
@@ -1228,12 +1233,17 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes an unknown Websocket event correctly.
+     * Tests if the event handler processes an unhandled stream event correctly.
      *
      * <p>TD-5-FU-1 fix (SR-TD5-FU-02): the log message now uses {@code getClass().getSimpleName()}
      * instead of bare {@code getClass()}, so the fully-qualified class name is no longer emitted.
      * The assertion is updated to verify the prefix and the absence of the package-qualified form
      * (D-13/SR-8/CWE-117).
+     *
+     * <p>Updated for bigbone 2.0.0: {@code WebSocketEvent} is sealed, so the outer default
+     * branch is unreachable and un-mockable. The equivalent — genuinely reachable — unknown-event
+     * path is the inner StreamEvent default branch, exercised here with the real
+     * {@link ParsedStreamEvent.FiltersChanged} singleton (a subtype Glacier does not handle).
      */
     @Test
     public void onEvent_WebsocketEventUnknown() {
@@ -1243,14 +1253,15 @@ public class StompCallbackTest {
         StompCallback callback = new StompCallback(
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
-        WebSocketEvent mockEvent = mock(WebSocketEvent.class);
+        MastodonApiEvent.StreamEvent mockEvent =
+                new MastodonApiEvent.StreamEvent(ParsedStreamEvent.FiltersChanged.INSTANCE, List.of());
 
         // Execute
         callback.onEvent(mockEvent);
 
         // Verify: the operational message prefix is preserved
         assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got an unknown event: "));
+                .anySatisfy(msg -> assertThat(msg).contains("got an unknown StreamEvent: "));
 
         // TD-5-FU-1 (SR-TD5-FU-02): Class.toString() ("class fully.qualified.Name") must NOT appear.
         // getSimpleName() is used — the Mockito proxy simple name is JVM-controlled and bounded.
@@ -3370,13 +3381,15 @@ public class StompCallbackTest {
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
-        // Mock a TechnicalEvent that is not one of the four named cases (Open/Closing/Closed/Failure).
-        // Override toString() to return the canary so any %s-formatting leaks are detected.
-        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
+        // bigbone 2.0.0 sealed TechnicalEvent, so mock a non-TechnicalEvent WebSocketEvent
+        // instead and invoke the package-private method directly — it routes to the same
+        // default branch. Override toString() to return the canary so any %s-formatting
+        // leaks are detected.
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         when(mockEvent.toString()).thenReturn(CANARY_FRAGMENT_TD5);
 
         // Act
-        callback.onEvent(mockEvent);
+        callback.processTechnicalEvent(mockEvent);
 
         // Assert SR-TD5-01: canary must not appear in any formatted message
         List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());
@@ -3551,11 +3564,12 @@ public class StompCallbackTest {
      * as the return value of {@code mock.toString()} and confirming that none of them
      * appear in any log output. The only thing that can appear is the class simple name.
      *
-     * <p>Arrange: a mocked {@link TechnicalEvent} (not Open/Closing/Closed/Failure) whose
-     *             {@code toString()} returns each adversarial string in turn.
+     * <p>Arrange: a mocked non-TechnicalEvent {@link MastodonApiEvent.GenericMessage} whose
+     *             {@code toString()} returns each adversarial string in turn (bigbone 2.0.0
+     *             sealed {@code TechnicalEvent}, so it cannot be mocked directly).
      *             This routes through the {@code default} branch of the switch in
      *             {@code processTechnicalEvent}.
-     * Act:     invoke {@code onEvent} with the mocked event.
+     * Act:     invoke the package-private {@code processTechnicalEvent} with the mocked event.
      * Assert (SR-TD5-01):
      * <ol>
      *   <li>No {@link ILoggingEvent#getFormattedMessage()} contains any adversarial fragment —
@@ -3583,14 +3597,15 @@ public class StompCallbackTest {
                 subscriptionManager, messageCache, shareViewStompRelay, restTemplate,
                 PERMISSIVE_VALIDATOR, UUID.randomUUID().toString(), "hashtag", MastodonShortHandle.parse("glacier@example.com"), "example.com");
 
-        // Mock a TechnicalEvent that routes to the default branch (not Open/Closing/Closed/Failure).
+        // bigbone 2.0.0 sealed TechnicalEvent, so mock a non-TechnicalEvent WebSocketEvent that
+        // routes to the default branch and invoke the package-private method directly.
         // Override toString() with the adversarial value: if the fix regresses to %s-formatting,
         // the sentinel will appear in the log and the assertion below will catch it.
-        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
+        MastodonApiEvent.GenericMessage mockEvent = mock(MastodonApiEvent.GenericMessage.class);
         when(mockEvent.toString()).thenReturn(adversarialToString);
 
         // Act
-        callback.onEvent(mockEvent);
+        callback.processTechnicalEvent(mockEvent);
 
         // Collect events from both the StompCallback logger and the AUDIT logger
         List<ILoggingEvent> allEvents = new ArrayList<>(logAppender.getLoggedEvents());

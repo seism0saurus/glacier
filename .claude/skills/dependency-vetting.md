@@ -46,9 +46,9 @@ Don't rely on memory to honor criterion 7 — enforce it in the update tooling s
 
 Never hand-bump a third-party dependency to a same-day release to "unblock" a build — that is exactly the window the cooldown exists to close.
 
-### The one documented SNAPSHOT exception: `bigbone`
+### SNAPSHOTs: no exceptions (the historical `bigbone` exception is closed)
 
-`social.bigbone:bigbone:2.0.0-SNAPSHOT` is the **only** SNAPSHOT allowed (Sec-02 / ADR-SEC-02). It is a known, accepted supply-chain risk because SNAPSHOT is the only version bigbone publishes upstream. The mitigation (single controlled snapshot fetch in CI, no `-Pallow-snapshot` escape hatch) and the exit plan (pin a real release + add `requireReleaseDependencies` once upstream tags one) live in the comment block in `pom.xml`. **Do not** add further SNAPSHOTs, and do not weaken that comment. Track upstream at https://github.com/andregasser/bigbone/releases.
+There are **no** sanctioned SNAPSHOT dependencies. `social.bigbone:bigbone:2.0.0-SNAPSHOT` was the one documented exception (Sec-02 / ADR-SEC-02) while upstream published no release; that exit plan was executed in 2026-07 when upstream — now `PattaFeuFeu/bigbone` — tagged the stable release `io.github.pattafeufeu:bigbone:2.0.0` (2026-06-15) and discontinued SNAPSHOT publishing. bigbone is now a normal Maven Central release, pinned by SHA-256 in `dependency-checksums/` like sqlite-jdbc, and the `requireReleaseDeps` enforcer rule in `pom.xml` applies with no excludes. Any new SNAPSHOT proposal is an automatic escalation to the user.
 
 ## When a dependency fails vetting
 

@@ -855,24 +855,25 @@ class RawWallIdLogHygieneTest {
     // -------------------------------------------------------------------------
 
     /**
-     * T7d (SR-TD5-FU-02, CWE-117, D-13/SR-8): the default branch of the outer {@code event} switch at
-     * {@code StompCallback.java:223} must log only the SimpleName of the event class, not the raw
-     * {@link Class#toString()} form.
+     * T7d (SR-TD5-FU-02, CWE-117, D-13/SR-8): the unknown-event default branch of the
+     * {@code StompCallback} event switch must log only the SimpleName of the event class, not the
+     * raw {@link Class#toString()} form.
      *
      * <p>The vulnerable pattern {@code event.getClass()} passes the {@link Class} object to
      * {@link String#formatted}, which calls {@link Class#toString()} and produces
      * {@code "class social.bigbone.api.entity.streaming.MastodonApiEvent$..."}.
      * The fix requires {@code getClass().getSimpleName()}.
      *
-     * <p>Arrange: mock a {@link WebSocketEvent} that also implements {@link MastodonApiEvent} but
-     *             is NOT a {@link MastodonApiEvent.StreamEvent}, {@code TechnicalEvent}, or
-     *             {@link MastodonApiEvent.GenericMessage} — triggers the outer {@code default}
-     *             branch at line 223.
-     * Act: {@code callback.onEvent(unknownMastodonEvent)}.
+     * <p>Arrange: since bigbone 2.0.0 the {@link WebSocketEvent} hierarchy is sealed, so the
+     *             outer {@code default} branch is unreachable and un-mockable. The equivalent —
+     *             genuinely reachable — unknown-event path is the inner StreamEvent default
+     *             branch, exercised with the real {@link ParsedStreamEvent.FiltersChanged}
+     *             singleton (a subtype Glacier does not handle).
+     * Act: {@code callback.onEvent(unknownStreamEvent)}.
      * Assert (SR-TD5-FU-02):
      * <ol>
      *   <li>{@link ILoggingEvent#getFormattedMessage()} DOES contain
-     *       {@code "got an unknown event: "} — the operational log line is present.</li>
+     *       {@code "got an unknown StreamEvent: "} — the operational log line is present.</li>
      *   <li>{@link ILoggingEvent#getFormattedMessage()} does NOT match {@code "class .*\\..*"} —
      *       the {@code Class.toString()} format (with package) must not reach the encoder.</li>
      *   <li>{@link ILoggingEvent#getArgumentArray()} elements (stringified) do NOT match
@@ -890,21 +891,22 @@ class RawWallIdLogHygieneTest {
                 PERMISSIVE_VALIDATOR, CANARY_UUID, CANARY_HASHTAG, MastodonShortHandle.parse("glacier@example.com"), "glacier.example.com");
         stompCallbackAppender.list.clear();
 
-        // Arrange: mock a WebSocketEvent that also implements MastodonApiEvent.
-        // Mockito creates a subtype that matches MastodonApiEvent pattern but is not
-        // StreamEvent, TechnicalEvent, or GenericMessage — triggers the outer default at line 223.
-        MastodonApiEvent unknownMastodonEvent = mock(MastodonApiEvent.class);
+        // Arrange: bigbone 2.0.0 sealed the WebSocketEvent hierarchy, so the outer default
+        // branch cannot be reached (no foreign subtype can exist). Exercise the equivalent
+        // inner StreamEvent default branch with a real unhandled subtype instead.
+        MastodonApiEvent.StreamEvent unknownStreamEvent =
+                new MastodonApiEvent.StreamEvent(ParsedStreamEvent.FiltersChanged.INSTANCE, List.of());
 
-        // Act — triggers the outer default branch: logEvent("got an unknown event: %s".formatted(…))
-        callback.onEvent(unknownMastodonEvent);
+        // Act — triggers the StreamEvent default branch: logEvent("got an unknown StreamEvent: %s".formatted(…))
+        callback.onEvent(unknownStreamEvent);
 
         List<ILoggingEvent> events = stompCallbackAppender.list;
 
         // Positive assertion: the operational log line must be present
         assertThat(events)
-                .as("SR-TD5-FU-02: logEvent('got an unknown event: ...') must be emitted")
+                .as("SR-TD5-FU-02: logEvent('got an unknown StreamEvent: ...') must be emitted")
                 .anySatisfy(e -> assertThat(e.getFormattedMessage())
-                        .contains("got an unknown event: "));
+                        .contains("got an unknown StreamEvent: "));
 
         // Negative assertion SR-TD5-FU-02: Class.toString() pattern must not appear in any message.
         // Class.toString() produces "class fully.qualified.Name" — recognizable by "class " prefix + dot.

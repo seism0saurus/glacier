@@ -142,20 +142,6 @@
         <lombok.version>1.18.46</lombok.version>
     </properties>
 
-    <repositories>
-        <repository>
-            <id>maven-central-snapshots</id>
-            <name>Maven Central Snapshot Repository</name>
-            <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-
     <dependencies>
         <!--Spring Boot-->
         <dependency>
@@ -199,37 +185,21 @@
         </dependency>
 
         <!--
-            Bigbone Mastodon Client — SNAPSHOT (Sec-02 / ADR-SEC-02)
-            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            bigbone:2.0.0-SNAPSHOT is a mutable dependency: any upstream commit may silently
-            change the artifact served from the Sonatype snapshot repository. This is a known
-            security risk: supply-chain attack via snapshot mutation.
-
-            Mitigation status (Sec-02/P1-09, QR-3 2026-06-26):
-            - maven-enforcer cannot pin a SNAPSHOT by checksum (requireReleaseDependencies
-              would break the build here), so the pin is enforced at the CI layer instead.
-            - SHA-256 TRIPWIRE: dependency-checksums/bigbone-2.0.0-SNAPSHOT.sha256 records the
-              known-good hash of the resolved jar. The "Verify bigbone snapshot SHA-256" step
-              in verify.yml and pull-request.yml resolves the artifact and compares its hash
-              before the build runs; a mismatch fails the workflow loudly so a human reviews
-              the upstream change and consciously re-pins (see dependency-checksums/README.md).
-              Structural gate: BigboneSnapshotTripwireTest keeps the step from silently regressing.
-            - The `-Pallow-snapshot` escape-hatch profile is intentionally NOT added because
-              SNAPSHOT is the ONLY available version of bigbone upstream. Prohibiting it
-              would prevent the build entirely.
-            - The CI pipeline runs mvnw with the update-snapshots flag only in the compile step
-              (build-and-deploy.yml); test/package steps use the cached local repository. This
-              limits the SNAPSHOT fetch to a single controlled step with a known Maven cache key.
-
-            TODO (Sec-02): replace with a stable release version once bigbone upstream tags
-            a release. Track at https://github.com/andregasser/bigbone/releases.
-            When upstream releases, remove this comment and the SNAPSHOT repository declaration,
-            pin the exact release version, and add a maven-enforcer requireReleaseDependencies rule.
+            Bigbone Mastodon Client (Sec-02 / ADR-SEC-02)
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+            Upstream moved from social.bigbone (andregasser/bigbone) to
+            io.github.pattafeufeu (PattaFeuFeu/bigbone) and tagged the first stable
+            release 2.0.0 on 2026-06-15; SNAPSHOT publishing is discontinued. This
+            closed the historical Sec-02 SNAPSHOT exception: the dependency is now an
+            immutable Maven Central release, requireReleaseDeps applies without an
+            exclude, and CI pins the jar by SHA-256 like sqlite-jdbc (see
+            dependency-checksums/README.md, gate: BigboneChecksumPinTest).
+            The Java package namespace remains social.bigbone.*.
         -->
         <dependency>
-            <groupId>social.bigbone</groupId>
+            <groupId>io.github.pattafeufeu</groupId>
             <artifactId>bigbone</artifactId>
-            <version>2.0.0-SNAPSHOT</version>
+            <version>2.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
@@ -427,9 +397,9 @@
                 Maven Enforcer — supply-chain guardrail (see dependency-vetting skill).
                 requireReleaseDeps fails the build if ANY dependency is a SNAPSHOT, i.e. a
                 mutable artifact that can change under us (the classic snapshot-mutation
-                supply-chain attack). The single documented exception is bigbone
-                (Sec-02 / ADR-SEC-02) — the only version published upstream — which is
-                excluded here. Adding any other SNAPSHOT now breaks the build by design.
+                supply-chain attack). Since bigbone 2.0.0 was released (2026-07, closing
+                the historical Sec-02 exception) the rule applies without any excludes:
+                adding a SNAPSHOT breaks the build by design.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -445,10 +415,7 @@
                         <configuration>
                             <rules>
                                 <requireReleaseDeps>
-                                    <message>No SNAPSHOT dependencies allowed (supply-chain hardening). The only sanctioned exception is social.bigbone:bigbone — see the bigbone comment in this pom and ADR-SEC-02.</message>
-                                    <excludes>
-                                        <exclude>social.bigbone:bigbone</exclude>
-                                    </excludes>
+                                    <message>No SNAPSHOT dependencies allowed (supply-chain hardening) — see the bigbone comment in this pom and ADR-SEC-02.</message>
                                 </requireReleaseDeps>
                             </rules>
                             <failFast>true</failFast>
