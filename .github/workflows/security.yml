@@ -115,7 +115,7 @@ jobs:
         run: docker manifest inspect ghcr.io/seism0saurus/glacier:${{ github.ref_name }} || (echo "Image not found for ${{ github.ref_name }}" && exit 1)
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a5 # 0.30.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
           format: "sarif"
@@ -135,7 +135,7 @@ jobs:
         run: ls infrastructure/glacier/glacier.jar || (echo "Jar not found -- download artifact first" && exit 1)
 
       - name: Trivy filesystem scan (jar dependencies)
-        uses: aquasecurity/trivy-action@6c175e9c4083a92bbca2f9724c8a5e33bc2d97a5 # 0.30.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: infrastructure/glacier/
