@@ -83,7 +83,7 @@ Root cause: background async sub-agents have an Edit/Write evaluation anchor out
 
 ## Proposed forward path: P3-C consolidation
 
-1. Create `feature/share-link-qr` in `/home/ulrich.viefhaus/git/seism0saurus/glacier` (main repo) based on current `main` (HEAD `9783cb1`).
+1. Create `feature/share-link-qr` in `<repo-root>` (main repo) based on current `main` (HEAD `9783cb1`).
 2. Merge each lane branch into it in an order that minimises conflict churn (likely: devops → tdd-ddd → secure → frontend; devops first because it only touches infrastructure/, verify.yml, compose overrides; tdd-ddd second because it adds new files in `src/main/java/.../share/domain/` and `application/`; secure third because it extends domain with security work on top of tdd-ddd; frontend last because it's orthogonal to backend lanes).
 3. Run `./mvnw verify` and `cd frontend && npm install && ng test && npx eslint .`.
 4. Each failure is reported as a Phase-3 finding; the Phase-3 audit phase is where the gaps get closed.

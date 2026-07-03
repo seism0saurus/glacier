@@ -3,7 +3,7 @@
 **Purpose**: hand off pipeline state from the current Claude Code session to a fresh session so Phase 3 (Acceptance) can run with clean sub-agent dispatches.
 
 **How to resume**:
-1. `cd /home/ulrich.viefhaus/git/seism0saurus/glacier` (main repo, **not** a worktree).
+1. `cd <repo-root>` (main repo, **not** a worktree).
 2. Launch Claude Code from there.
 3. Run `/feature resume the previous run`.
 4. In the new session, immediately `EnterWorktree path=.claude/worktrees/consolidation` so your orchestrator anchors on the consolidated branch. Sub-agents spawned after that inherit a consolidated-branch CWD and can write freely.
@@ -11,9 +11,9 @@
 
 ## Branch + worktree snapshot (at pause)
 
-- **Main repo**: `/home/ulrich.viefhaus/git/seism0saurus/glacier` (currently on `main` @ `9783cb1`).
+- **Main repo**: `<repo-root>` (currently on `main` @ `9783cb1`).
 - **Consolidated feature branch**: `feature/share-link-qr` — 11 commits ahead of main, 131 files changed (+15,108 / −512).
-- **Consolidation worktree**: `/home/ulrich.viefhaus/git/seism0saurus/glacier/.claude/worktrees/consolidation` (already checked out to `feature/share-link-qr`).
+- **Consolidation worktree**: `<repo-root>/.claude/worktrees/consolidation` (already checked out to `feature/share-link-qr`).
 - **Lane worktrees** (preserve for provenance; do not delete — they contain the original lane commits):
   - `.claude/worktrees/agent-a304356b` (tdd-ddd lane)
   - `.claude/worktrees/agent-a6085740` (secure lane — has 3 commits: 2091377 + a9a0716 merge + 313eb85 extension)
@@ -54,8 +54,8 @@
 Before dispatching auditor sub-agents, run the actual build to surface concrete failures:
 
 ```bash
-cd /home/ulrich.viefhaus/git/seism0saurus/glacier/.claude/worktrees/consolidation
-export JAVA_HOME=/home/ulrich.viefhaus/.jdks/temurin-23.0.2
+cd <repo-root>/.claude/worktrees/consolidation
+export JAVA_HOME=/path/to/jdk23
 
 # Backend
 ./mvnw clean verify -q 2>&1 | tee /tmp/glacier-pipeline-share-link/verify.log
@@ -101,7 +101,7 @@ Ensure `.claude/settings.local.json` (project root, not worktree) has at minimum
 - `Bash(npm *)`, `Bash(./mvnw *)`, `Bash(npx *)`, `Bash(find *)`, `Bash(grep -r *)` for common build/test invocations.
 - `Bash(git *)` for all merge/diff/commit ops.
 
-The agent-a10ed506 worktree's `.claude/settings.local.json` already has these (I added `Edit(**)` / `Write(**)` during this session). If the fresh session runs from main repo, you may need to copy these additions to `/home/ulrich.viefhaus/git/seism0saurus/glacier/.claude/settings.local.json` first. (Main repo's `settings.local.json` may not exist or may lack Edit/Write.)
+The agent-a10ed506 worktree's `.claude/settings.local.json` already has these (I added `Edit(**)` / `Write(**)` during this session). If the fresh session runs from main repo, you may need to copy these additions to `<repo-root>/.claude/settings.local.json` first. (Main repo's `settings.local.json` may not exist or may lack Edit/Write.)
 
 ## Side notes / observations worth remembering
 

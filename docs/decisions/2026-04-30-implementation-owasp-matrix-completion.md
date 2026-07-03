@@ -156,7 +156,7 @@ documents how to run all tests locally and how to add new endpoints or suppressi
 ## Test Results
 
 ```
-./mvnw verify (JAVA_HOME=/home/ulrich.viefhaus/.jdks/temurin-23.0.2)
+./mvnw verify (JAVA_HOME=/path/to/jdk23)
 
 Surefire (unit):     946 tests — 0 failures, 0 errors
 Failsafe (integration): 184 tests — 0 failures, 0 errors

@@ -435,7 +435,7 @@ Expected: build OK; Karma green; e2e collects; i18n guard exit 0.
 
 - [ ] **Step 3: Backend build sanity (frontend bundles into the jar)**
 
-Run: `JAVA_HOME=/home/ulrich.viefhaus/.jdks/temurin-23.0.2 ./mvnw -o -P SkipUnitTest -DskipTests=true package` (from repo root)
+Run: `JAVA_HOME=/path/to/jdk23 ./mvnw -o -P SkipUnitTest -DskipTests=true package` (from repo root)
 Expected: BUILD SUCCESS (confirms styles.scss compiles in the Maven frontend build + `copy-and-rename-jar`).
 
 - [ ] **Step 4: Update the audit doc**
