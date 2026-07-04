@@ -242,20 +242,20 @@ sich von keinem Repo-Gate erzwingen — ein Struktur-Test kann prüfen, dass ein
 `environment:` referenziert, aber nicht, dass für dieses Environment in den Settings auch
 tatsächlich eine Protection-Regel konfiguriert ist. Checkliste:
 
-- [ ] **Environment-scoped Deploy-Secrets** (RR-4/SR-CI-16, offener Follow-up #10): `SSH_KEY`,
+- [x] **Environment-scoped Deploy-Secrets** (RR-4/SR-CI-16, offener Follow-up #10): `SSH_KEY`,
       `KNOWN_HOSTS`, `SSH_USER`, `SSH_PORT` sind ausschließlich im Environment
       `glacier.seism0saurus.de` hinterlegt (Settings → Environments), nicht als
       Repository- oder Organization-Secrets.
-- [ ] **Deployment-Tag-Restriction** auf diesem Environment: nur Refs, die zu `v*.*.*`
+- [x] **Deployment-Tag-Restriction** auf diesem Environment: nur Refs, die zu `v*.*.*`
       passen, dürfen das Environment referenzieren (Settings → Environments →
       `glacier.seism0saurus.de` → Deployment branches and tags).
-- [ ] **Branch-Protection auf `main`**: Pull-Request-Pflicht vor dem Merge, keine
+- [x] **Branch-Protection auf `main`**: Pull-Request-Pflicht vor dem Merge, keine
       Direkt-Pushes.
-- [ ] **CodeQL als Required Status Check**: `CodeQL / Analyze (java-kotlin)` und
+- [x] **CodeQL als Required Status Check**: `CodeQL / Analyze (java-kotlin)` und
       `CodeQL / Analyze (javascript-typescript)` unter Settings → Branches → `main` →
       Require status checks to pass eingetragen.
 
-**Zuletzt verifiziert am:** ______________ (bitte bei jeder Überprüfung dieses Datum
+**Zuletzt verifiziert am:** 04.07.2026 (bitte bei jeder Überprüfung dieses Datum
 aktualisieren)
 
 ## Bekannte akzeptierte Restrisiken
