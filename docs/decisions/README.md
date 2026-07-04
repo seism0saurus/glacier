@@ -121,6 +121,7 @@ When writing a new ADR, add a row here in the acceptance commit.
 |---|---|
 | [2026-07-03-planning-secure-ci-pipeline.md](2026-07-03-planning-secure-ci-pipeline.md) | P1: Plan trust-tier rebuild of GitHub Actions (secret-free reusable core `_build`/`_e2e`/`_security-dast`; `quality.yml`/`pull-request.yml`/`full-suite.yml`/`pr-comment.yml`; 18 ADRs incl. git-tag releases (ADR-CI-18) and `workflow_run` coverage comment (ADR-CI-14); 12 executable structure gates under `ci/` |
 | [2026-07-03-implementation-secure-ci-pipeline.md](2026-07-03-implementation-secure-ci-pipeline.md) | P2: Implement the topology — 6 new workflows, `verify.yml` deleted, `build-and-deploy.yml` consolidated onto `_build.yml` (closes the release-path checksum-tripwire HIGH), tag-release `push_version.sh`, 13 structure-gate test classes; `docs/MAINTAINER.md` added. `./mvnw verify` green. |
+| [2026-07-04-acceptance-secure-ci-pipeline.md](2026-07-04-acceptance-secure-ci-pipeline.md) | P3: PASSED WITH CONDITIONS — 0 Critical/High across two independent audits; F-1/F-2/D-1 fixed, RR-4 verified by the user; real GitHub smoke test green and caught + fixed a `matrix`-in-job-`if` schema bug; `actionlint` added to the `_build` core to catch that class statically. Follow-ups #11/#12/#13/#9 tracked. |
 
 For the maintainer-facing operational documentation of this pipeline (per-commit/PR/release behaviour, manual GitHub-settings checklist, accepted residual risks), see [`docs/MAINTAINER.md`](../MAINTAINER.md) (ADR-CI-17).
 
