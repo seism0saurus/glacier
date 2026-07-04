@@ -47,7 +47,7 @@ test.describe('Share link — killswitch mode', () => {
     );
 
     // Feed should be empty in killswitch (no cache)
-    const tootArticles = await viewerPage.locator('article[role="group"]').count();
+    const tootArticles = await viewerPage.locator('article[role="article"]').count();
     expect(tootArticles).toBe(0);
 
     // Post a fresh toot — should arrive via live WS relay

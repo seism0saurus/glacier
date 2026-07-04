@@ -66,8 +66,16 @@ export default defineConfig({
     },
 
     {
+      // Runs against the realistic HTTPS stack (docker-compose.override.a11y.yaml,
+      // modeled on docker-compose.override.sharehttps.yaml): the owner wall is served
+      // over TLS at https://glacier.proxy so the Secure wallId cookie survives the
+      // handshake and the UI-driven hashtag-subscription + share-link-creation flows
+      // in share-link-a11y.spec.ts behave like the standard "live" stack.
       name: 'a11y',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: process.env['BASE_URL'] || 'https://glacier.proxy/',
+      },
       testMatch: ['**/*-a11y.spec.ts'],
     },
 

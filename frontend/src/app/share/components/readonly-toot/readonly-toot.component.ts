@@ -26,7 +26,11 @@ import { CwToggleComponent } from '../cw-toggle/cw-toggle.component';
  * - `dir=auto` on text container defends against bidi override spoofing.
  *
  * Accessibility contract (UX plan §2):
- * - `<article role="group" aria-labelledby>` per toot.
+ * - `<article role="article" aria-labelledby>` per toot — matches the main wall's
+ *   `WallComponent` convention (`role="feed"` requires `role="article"` children
+ *   per WAI-ARIA 1.2 §5.3.2; `role="group"` here previously tripped axe-core's
+ *   `aria-required-children` rule once a share link with real toot content was
+ *   reachable in the a11y e2e stack — see share-link-a11y.spec.ts).
  * - `<h3>` heading with author + time.
  * - `<time datetime>` element.
  * - Bidi-stripped badge when `toot.bidiStripped=true`.
@@ -47,7 +51,7 @@ import { CwToggleComponent } from '../cw-toggle/cw-toggle.component';
   ],
   template: `
     <article
-      role="group"
+      role="article"
       [attr.aria-labelledby]="headingId"
       class="readonly-toot"
     >

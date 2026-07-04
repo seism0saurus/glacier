@@ -91,9 +91,9 @@ describe('ReadonlyTootComponent', () => {
     expect(article).not.toBeNull();
   });
 
-  it('article has role="group" and aria-labelledby pointing to heading', () => {
+  it('article has role="article" and aria-labelledby pointing to heading', () => {
     const article = fixture.nativeElement.querySelector('article');
-    expect(article.getAttribute('role')).toBe('group');
+    expect(article.getAttribute('role')).toBe('article');
     const labelledBy = article.getAttribute('aria-labelledby');
     const heading = fixture.nativeElement.querySelector(`#${labelledBy}`);
     expect(heading).not.toBeNull();

@@ -9,6 +9,18 @@
 # failures appear as a clearly-labelled CI stage rather than buried inside the
 # main e2e report.
 #
+# HTTPS stack (modeled on docker-compose.override.sharehttps.yaml):
+# share-link-a11y.spec.ts drives real UI flows — hashtag subscription AND
+# share-link creation — through the browser. Both are gated behind the
+# `wallId` identity cookie, which Glacier issues with the `Secure` attribute
+# by default; on a plain-HTTP origin the browser silently drops that cookie,
+# so PrincipalHandler mints a fresh, unpredictable principal on every request/
+# WS handshake and `POST /rest/share-links` returns 401 missing_wallid. Serving
+# the wall over TLS at https://glacier.proxy (same Traefik routers + cert SANs
+# already used by the share-https leg; packed in infrastructure-content.tar.gz)
+# makes the Secure cookie stick, so the UI flow behaves exactly like the
+# standard "live" stack for everything the axe/keyboard/zoom checks scan.
+#
 # Usage (one-shot):
 #   cd infrastructure
 #   tar -xf infrastructure-content.tar.gz -C ./
@@ -21,9 +33,44 @@
 # in frontend/playwright.config.ts.
 
 services:
+  glacier:
+    environment:
+      # glacier.domain must equal the public owner host so the WebSocket
+      # allowed-origins list contains the browser Origin (https://glacier.proxy).
+      # The default MY_DOMAIN=localhost:443 fails twice: not the proxied host,
+      # and its ":443" never matches a browser Origin (default port is stripped).
+      MY_DOMAIN: "glacier.proxy"
+      # Share host = share.<glacier.domain> — matches the shareViewOrigins
+      # derivation and the readonly-URL host; served via the
+      # share-glacier-domain Traefik router. share-link-a11y.spec.ts navigates
+      # here after creating a link through the owner-wall UI.
+      GLACIER_SHARE_HOST: "share.glacier.proxy"
   playwright:
     environment:
-      # Activate only the `a11y` Playwright project.
-      # The docker-compose.yaml command block checks this variable and passes
-      # --project "$PLAYWRIGHT_PROJECT" to npx playwright test when it is set.
-      PLAYWRIGHT_PROJECT: "a11y"
+      # Owner wall over HTTPS (secure origin → Secure cookies sent → live
+      # WebSocket mode → hashtag subscription and share creation work through
+      # the real UI). The self-signed cert is accepted via Playwright's
+      # ignoreHTTPSErrors (frontend/playwright.config.ts).
+      BASE_URL: "https://glacier.proxy"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        npm install
+        npx playwright install --with-deps chromium
+
+        count=0; max=90
+        while ! curl -ksf https://proxy:443/.well-known/nodeinfo &> /dev/null; do
+          count=$((count + 1)); [ "$${count}" -ge "$${max}" ] && { echo "proxy not ready"; exit 1; }
+          echo "Attempt $$count/$${max}: waiting for proxy..."; sleep 2
+        done
+        echo "proxy is ready!"
+
+        count=0
+        while ! curl -ksf https://glacier.proxy/ &> /dev/null; do
+          count=$((count + 1)); [ "$${count}" -ge "$${max}" ] && { echo "glacier (https) not ready"; exit 1; }
+          echo "Attempt $$count/$${max}: waiting for glacier over https..."; sleep 2
+        done
+        echo "glacier is ready over https!"
+
+        npx playwright test --project=a11y
