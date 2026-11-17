@@ -130,7 +130,6 @@ public class StompCallback implements WebSocketCallback {
             }
             case TechnicalEvent technicalEvent -> processTechnicalEvent(technicalEvent);
             case GenericMessage genericMessage -> processGenericEvent(genericMessage, baseDestination);
-            default -> logEvent("got an unknown event: %s".formatted(event.getClass()));
         }
     }
 
@@ -304,7 +303,7 @@ public class StompCallback implements WebSocketCallback {
      *
      * @param event The event to process.
      */
-    private void processTechnicalEvent(final WebSocketEvent event) {
+    private void processTechnicalEvent(final TechnicalEvent event) {
         switch (event) {
             case TechnicalEvent.Open open ->
                     logEvent("got an Open event: %s".formatted(open));
@@ -317,7 +316,6 @@ public class StompCallback implements WebSocketCallback {
                 this.subscriptionManager.terminateSubscription(principal, hashtag);
                 this.subscriptionManager.subscribeToHashtag(principal, hashtag);
             }
-            default -> logEvent("got an unknown WebSocketEvent: %s".formatted(event));
         }
     }
 

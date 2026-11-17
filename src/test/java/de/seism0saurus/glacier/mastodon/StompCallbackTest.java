@@ -474,25 +474,6 @@ public class StompCallbackTest {
     }
 
     /**
-     * Tests if the event handler processes an unknown Technical event correctly
-     */
-    @Test
-    public void onEvent_EventTechnicalUnknown() {
-        // Setup
-        TestLogAppender logAppender = getTestLogAppender();
-
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
-        TechnicalEvent mockEvent = mock(TechnicalEvent.class);
-
-        // Execute
-        callback.onEvent(mockEvent);
-
-        // Verify
-        assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got an unknown WebSocketEvent:"));
-    }
-
-    /**
      * Tests if the event handler processes a GenericMessage status.update event with unloadable toot and optin correctly
      */
     @Test
@@ -737,25 +718,6 @@ public class StompCallbackTest {
                 .anySatisfy(msg -> assertThat(msg).contains("Could not parse GenericMessage"));
     }
 
-
-    /**
-     * Tests if the event handler processes an unknown Websocket event correctly
-     */
-    @Test
-    public void onEvent_WebsocketEventUnknown() {
-        // Setup
-        TestLogAppender logAppender = getTestLogAppender();
-
-        StompCallback callback = new StompCallback(subscriptionManager, mockTemplate, restTemplate, UUID.randomUUID().toString(), "hashtag", "glacier@example.com", "example.com");
-        WebSocketEvent mockEvent = mock(WebSocketEvent.class);
-
-        // Execute
-        callback.onEvent(mockEvent);
-
-        // Verify
-        assertThat(logAppender.getLoggedMessages())
-                .anySatisfy(msg -> assertThat(msg).contains("got an unknown event: class social.bigbone.api.entity.streaming.WebSocketEvent$"));
-    }
 
     /**
      * Tests if the event handler processes a Technical Failure event correctly
