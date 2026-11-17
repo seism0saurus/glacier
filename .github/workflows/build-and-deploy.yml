@@ -7,13 +7,61 @@ on:
     # The branches below must be a subset of the branches above
     branches: [ "main" ]
     types: [ "closed" ]
+  schedule:
+    # Nightly: release a new patch version if main changed since the last tag,
+    # otherwise rebuild the current version on top of a freshly pulled base image.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
 
 jobs:
-  compile:
+  version:
     if: >
       github.event_name != 'push' || !contains(github.event.head_commit.message, 'Merge pull request') ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine version
+        id: version
+        run: |
+          # pom.xml carries only the release line (<revision>X.Y-SNAPSHOT</revision>);
+          # the patch is the next free one after the newest X.Y.* tag.
+          line=$(sed -n 's|.*<revision>\([0-9]*\.[0-9]*\)-SNAPSHOT</revision>.*|\1|p' pom.xml)
+          if [[ -z "$line" ]]; then
+            echo "::error::pom.xml has no <revision>X.Y-SNAPSHOT</revision>"
+            exit 1
+          fi
+          latest=$(git tag --list "${line}.*" --sort=-v:refname | grep -E "^${line//./\\.}\.[0-9]+$" | head -n 1 || true)
+          if [[ -z "$latest" ]]; then
+            version="${line}.0"; changed=true
+          elif [[ $(git rev-list --count "refs/tags/${latest}..HEAD") -gt 0 ]]; then
+            version="${line}.$(( ${latest##*.} + 1 ))"; changed=true
+          else
+            version="$latest"; changed=false
+          fi
+          release=false
+          if [[ "$GITHUB_EVENT_NAME" == schedule || "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            # Only the nightly (or a manual) run cuts a release and tags it.
+            # Without changes it rebuilds $latest so the image gets the patched base image.
+            release=$changed
+          elif [[ "$changed" == true ]]; then
+            # Pushes and merges deploy the current state as a snapshot of the next patch.
+            version="${version}-SNAPSHOT"
+          fi
+          echo "Last tag: ${latest:-none}, building ${version}, new release: ${release}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+
+  compile:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 25
@@ -43,11 +91,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node_modules-main-
       - name: Compile the webapp
-        run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml
+        run: ./mvnw --batch-mode --update-snapshots clean compile --file pom.xml -Drevision="${VERSION}"
 
   test:
     runs-on: ubuntu-latest
-    needs: compile
+    needs: [version, compile]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 25
@@ -71,7 +121,7 @@ jobs:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-verify
       - name: Verify the webapp
-        run: ./mvnw --batch-mode verify --file pom.xml
+        run: ./mvnw --batch-mode verify --file pom.xml -Drevision="${VERSION}"
       - name: Upload Surefire results
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,7 +143,9 @@ jobs:
 
   package:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [version, test]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 25
@@ -117,7 +169,7 @@ jobs:
           path: frontend/node_modules
           key: ${{ runner.os }}-node_modules-main-
       - name: Package the webapp
-        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest"
+        run:  ./mvnw --batch-mode -DskipTests=true package --file pom.xml -P "SkipUnitTest" -Drevision="${VERSION}"
       - name: Check if frontend is bundled into jar
         run: |
           if [[ -d /home/runner/work/glacier/glacier/target/classes/static ]]; then
@@ -128,7 +180,7 @@ jobs:
             exit 1
           fi
       - name: Copy jar
-        run: cp /home/runner/work/glacier/glacier/target/glacier-*.jar glacier.jar
+        run: cp "/home/runner/work/glacier/glacier/target/glacier-${VERSION}.jar" glacier.jar
       - name: Archive glacier jar
         uses: actions/upload-artifact@v4
         with:
@@ -171,7 +223,7 @@ jobs:
       - name: Build image
         working-directory: infrastructure
         run: |
-          docker compose -f docker-compose.yaml build
+          docker compose -f docker-compose.yaml build --pull
           docker save ghcr.io/seism0saurus/glacier:${GLACIER_IMAGE_TAG} -o glacier-image.tar
       - name: Upload image as artifact
         uses: actions/upload-artifact@v4
@@ -207,7 +259,13 @@ jobs:
 
   publish-image:
     runs-on: ubuntu-latest
-    needs: e2e
+    needs: [version, e2e]
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      RELEASE: ${{ needs.version.outputs.release }}
     steps:
       - name: Download image artifact
         uses: actions/download-artifact@v4
@@ -221,12 +279,23 @@ jobs:
         run: |
           docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} ghcr.io/seism0saurus/glacier:main
           docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} ghcr.io/seism0saurus/glacier:latest
+          docker tag ghcr.io/seism0saurus/glacier:${{ github.ref_name }} "ghcr.io/seism0saurus/glacier:${VERSION}"
       - name: Push Docker Image to GitHub Container Registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker push ghcr.io/seism0saurus/glacier:${{ github.ref_name }}
           docker push ghcr.io/seism0saurus/glacier:main
           docker push ghcr.io/seism0saurus/glacier:latest
+          docker push "ghcr.io/seism0saurus/glacier:${VERSION}"
+      - name: Tag the release
+        if: env.RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Tag the commit that was built. Release branches carry the same names as the
+          # tags, so the ref is always spelled out as refs/tags/.
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/${VERSION}" -f sha="${{ github.sha }}"
 
   deploy:
     runs-on: ubuntu-latest

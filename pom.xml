@@ -10,7 +10,8 @@
     </parent>
     <groupId>de.seism0saurus</groupId>
     <artifactId>glacier</artifactId>
-    <version>0.0.8</version>
+    <!-- CI-friendly version: the nightly build sets -Drevision=<major>.<minor>.<patch> -->
+    <version>${revision}</version>
     <description>Glacier mastodon social wall</description>
 
     <profiles>
@@ -62,7 +63,9 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>25</java.version>
-        <glacier.version>0.0.8</glacier.version>
+        <!-- Release line. Only major.minor is maintained here; the patch is derived from
+             the git tags by .github/workflows/build-and-deploy.yml -->
+        <revision>0.0-SNAPSHOT</revision>
         <kotlin.version>2.4.21</kotlin.version>
         <lombok.version>1.18.48</lombok.version>
     </properties>
@@ -386,7 +389,7 @@
                                 <artifactItem>
                                     <groupId>de.seism0saurus</groupId>
                                     <artifactId>glacier</artifactId>
-                                    <version>${glacier.version}</version>
+                                    <version>${project.version}</version>
                                     <type>jar</type>
                                     <outputDirectory>${basedir}/infrastructure/glacier</outputDirectory>
                                     <destFileName>glacier.jar</destFileName>
