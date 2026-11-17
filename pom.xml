@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.5</version>
+        <version>3.5.16</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>de.seism0saurus</groupId>
@@ -61,25 +61,11 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <java.version>23</java.version>
+        <java.version>25</java.version>
         <glacier.version>0.0.8</glacier.version>
-        <kotlin.version>2.1.21</kotlin.version>
-        <lombok.version>1.18.38</lombok.version>
+        <kotlin.version>2.4.21</kotlin.version>
+        <lombok.version>1.18.48</lombok.version>
     </properties>
-
-    <repositories>
-        <repository>
-            <id>maven-central-snapshots</id>
-            <name>Maven Central Snapshot Repository</name>
-            <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
-            <releases>
-                <enabled>false</enabled>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
 
     <dependencies>
         <!--Spring Boot-->
@@ -114,9 +100,9 @@
 
         <!--Bigbone Mastodon Client-->
         <dependency>
-            <groupId>social.bigbone</groupId>
+            <groupId>io.github.pattafeufeu</groupId>
             <artifactId>bigbone</artifactId>
-            <version>2.0.0-SNAPSHOT</version>
+            <version>2.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
@@ -413,7 +399,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.13</version>
+                <version>0.8.16</version>
                 <executions>
                     <execution>
                         <id>default-prepare-agent</id>
